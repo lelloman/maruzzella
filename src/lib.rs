@@ -10,13 +10,20 @@ use gtk::prelude::*;
 use gtk::Application;
 
 pub fn build_application(application_id: &str) -> Application {
+    build_application_with_activate(application_id, |application| {
+        app::build(application);
+    })
+}
+
+pub fn build_application_with_activate<F>(application_id: &str, activate: F) -> Application
+where
+    F: Fn(&Application) + 'static,
+{
     let application = Application::builder()
         .application_id(application_id)
         .build();
 
-    application.connect_activate(|application| {
-        app::build(application);
-    });
+    application.connect_activate(activate);
 
     application
 }

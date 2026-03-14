@@ -1,6 +1,7 @@
 pub mod app;
 pub mod commands;
 pub mod layout;
+pub mod plugins;
 pub mod product;
 pub mod shell;
 pub mod spec;
@@ -10,6 +11,10 @@ use gtk::prelude::*;
 use gtk::Application;
 
 pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
+pub use plugins::{
+    load_plugin, resolve_load_order, LoadedPlugin, PluginDependencySpec, PluginDescriptor,
+    PluginLoadError, PluginResolveError, Version as PluginVersion,
+};
 pub use spec::{
     text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, PanelContentKind, ShellSpec, SplitAxis,
     TabGroupSpec, TabSpec, ToolbarItemSpec, WorkbenchNodeSpec,

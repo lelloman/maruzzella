@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::spec::{default_shell_spec, ShellSpec};
+use crate::product::default_product_spec;
+use crate::spec::ShellSpec;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PanePositions {
@@ -20,7 +21,7 @@ pub struct PersistedShell {
 impl Default for PersistedShell {
     fn default() -> Self {
         Self {
-            spec: default_shell_spec(),
+            spec: default_product_spec().shell_spec(),
             panes: PanePositions::default(),
         }
     }

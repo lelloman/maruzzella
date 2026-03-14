@@ -30,7 +30,7 @@ pub fn build(spec: &ShellSpec) -> TopBar {
 
     let search = Entry::new();
     search.add_css_class("toolbar-search");
-    search.set_placeholder_text(Some("Search Maruzzella"));
+    search.set_placeholder_text(Some(&spec.search_placeholder));
     toolbar.append(&search);
 
     let spacer = GtkBox::new(Orientation::Horizontal, 0);
@@ -52,7 +52,7 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     let status_cluster = GtkBox::new(Orientation::Horizontal, 6);
     status_cluster.set_halign(Align::End);
     status_cluster.add_css_class("toolbar-status-cluster");
-    let meta = Label::new(Some("Anonymous GTK shell host"));
+    let meta = Label::new(Some(&spec.status_text));
     meta.add_css_class("toolbar-meta");
     status_cluster.append(&meta);
     toolbar.append(&status_cluster);

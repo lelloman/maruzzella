@@ -1,6 +1,7 @@
 mod app;
 mod commands;
 mod layout;
+mod product;
 mod shell;
 mod spec;
 mod theme;

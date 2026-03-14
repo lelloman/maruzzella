@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PanelContentKind {
     NavigationList,
     IdentityList,
@@ -7,13 +9,13 @@ pub enum PanelContentKind {
     TextBuffer,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitAxis {
     Horizontal,
     Vertical,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TabSpec {
     pub id: String,
     pub panel_id: String,
@@ -26,14 +28,14 @@ pub struct TabSpec {
     pub close_prompt: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TabGroupSpec {
     pub id: String,
     pub active_tab_id: Option<String>,
     pub tabs: Vec<TabSpec>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ShellSpec {
     pub title: String,
     pub menu_roots: Vec<MenuRootSpec>,
@@ -46,7 +48,7 @@ pub struct ShellSpec {
     pub workbench: WorkbenchNodeSpec,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum WorkbenchNodeSpec {
     Group(TabGroupSpec),
     Split {
@@ -55,13 +57,13 @@ pub enum WorkbenchNodeSpec {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommandSpec {
     pub id: String,
     pub title: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolbarItemSpec {
     pub id: String,
     pub icon_name: Option<String>,
@@ -70,13 +72,13 @@ pub struct ToolbarItemSpec {
     pub secondary: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MenuRootSpec {
     pub id: String,
     pub label: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MenuItemSpec {
     pub id: String,
     pub root_id: String,

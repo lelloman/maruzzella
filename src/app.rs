@@ -1,15 +1,24 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
 
+use crate::layout::{self, PersistedShell};
 use crate::shell::topbar;
-use crate::shell::workbench_custom;
-use crate::spec::{default_shell_spec, ShellSpec, SplitAxis, TabGroupSpec, WorkbenchNodeSpec};
+use crate::shell::workbench_custom::{self, BuiltCustomWorkbenchGroup, CustomWorkbenchGroupHandle};
+use crate::spec::{ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec};
 use crate::theme;
+
+type ShellState = Rc<RefCell<PersistedShell>>;
 
 pub fn build(application: &Application) {
     theme::load();
 
-    let spec = default_shell_spec();
+    let state = Rc::new(RefCell::new(layout::load()));
+    let spec = state.borrow().spec.clone();
+
     let window = ApplicationWindow::builder()
         .application(application)
         .title(&spec.title)
@@ -22,16 +31,17 @@ pub fn build(application: &Application) {
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("app-root");
     root.append(&topbar::build(&spec).root);
-    root.append(&build_shell(&spec));
+    root.append(&build_shell(state));
     window.set_child(Some(&root));
     window.present();
 }
 
-fn build_shell(spec: &ShellSpec) -> gtk::Widget {
-    let left = build_group(&spec.left_panel);
-    let right = build_group(&spec.right_panel);
-    let bottom = build_group(&spec.bottom_panel);
-    let workbench = build_workbench_node(&spec.workbench);
+fn build_shell(state: ShellState) -> gtk::Widget {
+    let spec = state.borrow().spec.clone();
+    let left = build_group(&spec.left_panel, state.clone());
+    let right = build_group(&spec.right_panel, state.clone());
+    let bottom = build_group(&spec.bottom_panel, state.clone());
+    let workbench = build_workbench_node(&spec.workbench, state.clone(), "workbench-root");
 
     let horizontal = Paned::new(Orientation::Horizontal);
     horizontal.set_wide_handle(true);
@@ -39,7 +49,8 @@ fn build_shell(spec: &ShellSpec) -> gtk::Widget {
     horizontal.set_resize_end_child(true);
     horizontal.set_start_child(Some(&left.root));
     horizontal.set_end_child(Some(&workbench));
-    horizontal.set_position(280);
+    restore_pane_position(&horizontal, &state, "shell.horizontal", 280);
+    persist_pane_position(&horizontal, state.clone(), "shell.horizontal");
 
     let vertical = Paned::new(Orientation::Vertical);
     vertical.set_wide_handle(true);
@@ -47,7 +58,8 @@ fn build_shell(spec: &ShellSpec) -> gtk::Widget {
     vertical.set_resize_end_child(true);
     vertical.set_start_child(Some(&horizontal));
     vertical.set_end_child(Some(&bottom.root));
-    vertical.set_position(720);
+    restore_pane_position(&vertical, &state, "shell.vertical", 720);
+    persist_pane_position(&vertical, state.clone(), "shell.vertical");
 
     let outer = Paned::new(Orientation::Horizontal);
     outer.set_wide_handle(true);
@@ -55,22 +67,29 @@ fn build_shell(spec: &ShellSpec) -> gtk::Widget {
     outer.set_resize_end_child(true);
     outer.set_start_child(Some(&vertical));
     outer.set_end_child(Some(&right.root));
-    outer.set_position(1260);
+    restore_pane_position(&outer, &state, "shell.outer", 1260);
+    persist_pane_position(&outer, state, "shell.outer");
     outer.upcast::<gtk::Widget>()
 }
 
-fn build_group(group: &TabGroupSpec) -> workbench_custom::BuiltCustomWorkbenchGroup {
-    workbench_custom::build_group(&group.id, &group.tabs, group.active_tab_id.as_deref())
+fn build_group(group: &TabGroupSpec, state: ShellState) -> BuiltCustomWorkbenchGroup {
+    let built = workbench_custom::build_group(&group.id, &group.tabs, group.active_tab_id.as_deref());
+    install_group_persistence(&built.handle, state);
+    built
 }
 
-fn build_workbench_node(node: &WorkbenchNodeSpec) -> gtk::Widget {
+fn build_workbench_node(node: &WorkbenchNodeSpec, state: ShellState, path: &str) -> gtk::Widget {
     match node {
-        WorkbenchNodeSpec::Group(group) => build_group(group).root.upcast::<gtk::Widget>(),
+        WorkbenchNodeSpec::Group(group) => build_group(group, state).root.upcast::<gtk::Widget>(),
         WorkbenchNodeSpec::Split { axis, children } => {
-            let mut child_widgets = children.iter().map(build_workbench_node).collect::<Vec<_>>();
+            let mut child_widgets = children
+                .iter()
+                .enumerate()
+                .map(|(index, child)| build_workbench_node(child, state.clone(), &format!("{path}:{index}")))
+                .collect::<Vec<_>>();
             let first = child_widgets.remove(0);
             let mut current = first;
-            for child in child_widgets {
+            for (index, child) in child_widgets.into_iter().enumerate() {
                 let paned = Paned::new(match axis {
                     SplitAxis::Horizontal => Orientation::Horizontal,
                     SplitAxis::Vertical => Orientation::Vertical,
@@ -80,9 +99,130 @@ fn build_workbench_node(node: &WorkbenchNodeSpec) -> gtk::Widget {
                 paned.set_resize_end_child(true);
                 paned.set_start_child(Some(&current));
                 paned.set_end_child(Some(&child));
+                let pane_id = format!("{path}:split:{index}");
+                restore_pane_position(&paned, &state, &pane_id, 520);
+                persist_pane_position(&paned, state.clone(), &pane_id);
                 current = paned.upcast::<gtk::Widget>();
             }
             current
         }
     }
+}
+
+fn install_group_persistence(handle: &CustomWorkbenchGroupHandle, state: ShellState) {
+    let handle_for_active = handle.clone();
+    let state_for_active = state.clone();
+    handle.set_active_changed_handler(move |_| {
+        sync_group_into_state(&state_for_active, &handle_for_active);
+    });
+
+    let handle_for_drag = handle.clone();
+    let state_for_drag = state;
+    handle.set_drag_end_handler(move || {
+        sync_group_into_state(&state_for_drag, &handle_for_drag);
+    });
+}
+
+fn sync_group_into_state(state: &ShellState, handle: &CustomWorkbenchGroupHandle) {
+    let group_id = handle.group_id().to_string();
+    let tab_ids = handle.tab_ids();
+    let active_tab_id = handle.active_tab_id();
+
+    {
+        let mut shell = state.borrow_mut();
+        if !sync_group_spec(
+            &mut shell.spec,
+            &group_id,
+            &tab_ids,
+            active_tab_id.as_ref(),
+        ) {
+            return;
+        }
+    }
+
+    persist_state(state);
+}
+
+fn sync_group_spec(
+    spec: &mut ShellSpec,
+    group_id: &str,
+    ordered_tab_ids: &[String],
+    active_tab_id: Option<&String>,
+) -> bool {
+    sync_single_group(&mut spec.left_panel, group_id, ordered_tab_ids, active_tab_id)
+        || sync_single_group(&mut spec.right_panel, group_id, ordered_tab_ids, active_tab_id)
+        || sync_single_group(&mut spec.bottom_panel, group_id, ordered_tab_ids, active_tab_id)
+        || sync_workbench_node(&mut spec.workbench, group_id, ordered_tab_ids, active_tab_id)
+}
+
+fn sync_workbench_node(
+    node: &mut WorkbenchNodeSpec,
+    group_id: &str,
+    ordered_tab_ids: &[String],
+    active_tab_id: Option<&String>,
+) -> bool {
+    match node {
+        WorkbenchNodeSpec::Group(group) => {
+            sync_single_group(group, group_id, ordered_tab_ids, active_tab_id)
+        }
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter_mut()
+            .any(|child| sync_workbench_node(child, group_id, ordered_tab_ids, active_tab_id)),
+    }
+}
+
+fn sync_single_group(
+    group: &mut TabGroupSpec,
+    group_id: &str,
+    ordered_tab_ids: &[String],
+    active_tab_id: Option<&String>,
+) -> bool {
+    if group.id != group_id {
+        return false;
+    }
+
+    let mut tabs_by_id = group
+        .tabs
+        .drain(..)
+        .map(|tab| (tab.id.clone(), tab))
+        .collect::<HashMap<String, TabSpec>>();
+
+    let mut tabs = Vec::with_capacity(ordered_tab_ids.len());
+    for tab_id in ordered_tab_ids {
+        if let Some(tab) = tabs_by_id.remove(tab_id) {
+            tabs.push(tab);
+        }
+    }
+    tabs.extend(tabs_by_id.into_values());
+    group.tabs = tabs;
+    group.active_tab_id = active_tab_id.cloned();
+    true
+}
+
+fn restore_pane_position(paned: &Paned, state: &ShellState, pane_id: &str, default: i32) {
+    let position = state
+        .borrow()
+        .panes
+        .positions
+        .get(pane_id)
+        .copied()
+        .unwrap_or(default);
+    paned.set_position(position);
+}
+
+fn persist_pane_position(paned: &Paned, state: ShellState, pane_id: &str) {
+    let pane_id = pane_id.to_string();
+    paned.connect_position_notify(move |paned| {
+        state
+            .borrow_mut()
+            .panes
+            .positions
+            .insert(pane_id.clone(), paned.position());
+        persist_state(&state);
+    });
+}
+
+fn persist_state(state: &ShellState) {
+    let snapshot = state.borrow().clone();
+    layout::save(&snapshot);
 }

@@ -1,3 +1,4 @@
+pub mod topbar;
 pub mod tabbed_panel;
 pub mod workbench_custom;
 

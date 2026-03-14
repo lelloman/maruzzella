@@ -81,11 +81,12 @@ impl LoadedPlugin {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct RegisteredCommand {
     pub plugin_id: String,
     pub command_id: String,
     pub title: String,
+    pub invoke: Option<maruzzella_api::MzCommandInvokeFn>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -183,6 +184,32 @@ impl PluginRuntime {
 
     pub fn commands(&self) -> &[RegisteredCommand] {
         &self.commands
+    }
+
+    pub fn dispatch_command(
+        &self,
+        command_id: &str,
+        payload: &[u8],
+    ) -> Result<(), MzStatusCode> {
+        let Some(command) = self
+            .commands
+            .iter()
+            .find(|command| command.command_id == command_id)
+        else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let Some(invoke) = command.invoke else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let status = invoke(MzBytes {
+            ptr: payload.as_ptr(),
+            len: payload.len(),
+        });
+        if status.is_ok() {
+            Ok(())
+        } else {
+            Err(status.code)
+        }
     }
 
     pub fn menu_items(&self) -> &[RegisteredMenuItem] {
@@ -480,6 +507,7 @@ struct HostState {
     current_plugin_id: Option<String>,
     commands: Vec<RegisteredCommand>,
     command_ids: HashSet<String>,
+    command_handlers: HashMap<String, maruzzella_api::MzCommandInvokeFn>,
     menu_items: Vec<RegisteredMenuItem>,
     menu_item_ids: HashSet<String>,
     surface_contributions: Vec<RegisteredSurfaceContribution>,
@@ -545,11 +573,16 @@ extern "C" fn host_register_command(command: *const MzCommandSpec) -> MzStatus {
     if !state.command_ids.insert(command_id.clone()) {
         return MzStatus::new(MzStatusCode::AlreadyExists);
     }
+    let handler_command_id = command_id.clone();
     state.commands.push(RegisteredCommand {
         plugin_id,
         command_id,
         title,
+        invoke: command.invoke,
     });
+    if let Some(invoke) = command.invoke {
+        state.command_handlers.insert(handler_command_id, invoke);
+    }
     MzStatus::OK
 }
 
@@ -652,8 +685,17 @@ extern "C" fn host_register_view_factory(factory: *const MzViewFactorySpec) -> M
     MzStatus::OK
 }
 
-extern "C" fn host_dispatch_command(_command_id: MzStr, _payload: MzBytes) -> MzStatus {
-    MzStatus::new(MzStatusCode::NotFound)
+extern "C" fn host_dispatch_command(command_id: MzStr, payload: MzBytes) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(command_id) = decode_runtime_str("dispatch.command_id", command_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(invoke) = state.command_handlers.get(&command_id).copied() else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    invoke(payload)
 }
 
 thread_local! {
@@ -714,6 +756,7 @@ mod tests {
     static REGISTERED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);
     static STARTED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);
     static REGISTERED_PLUGIN_B: AtomicUsize = AtomicUsize::new(0);
+    static INVOKED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);
 
     extern "C" fn test_descriptor() -> MzPluginDescriptorView {
         MzPluginDescriptorView::empty()
@@ -738,6 +781,7 @@ mod tests {
             plugin_id: MzStr::from_static("maruzzella.base"),
             command_id: MzStr::from_static("shell.plugins"),
             title: MzStr::from_static("Plugins"),
+            invoke: Some(plugin_a_invoke),
         };
         let menu = maruzzella_api::MzMenuItemSpec {
             plugin_id: MzStr::from_static("maruzzella.base"),
@@ -788,6 +832,11 @@ mod tests {
             command_id: MzStr::from_static("notes.open"),
         };
         host.register_menu_item.expect("menu registrar")(&menu);
+        maruzzella_api::MzStatus::OK
+    }
+
+    extern "C" fn plugin_a_invoke(_: MzBytes) -> maruzzella_api::MzStatus {
+        INVOKED_PLUGIN_A.fetch_add(1, Ordering::SeqCst);
         maruzzella_api::MzStatus::OK
     }
 
@@ -879,6 +928,7 @@ mod tests {
         REGISTERED_PLUGIN_A.store(0, Ordering::SeqCst);
         STARTED_PLUGIN_A.store(0, Ordering::SeqCst);
         REGISTERED_PLUGIN_B.store(0, Ordering::SeqCst);
+        INVOKED_PLUGIN_A.store(0, Ordering::SeqCst);
 
         let base = LoadedPlugin {
             path: PathBuf::from("base.so"),
@@ -959,5 +1009,9 @@ mod tests {
         assert_eq!(runtime.surface_contributions().len(), 1);
         assert_eq!(runtime.logs().len(), 1);
         assert_eq!(runtime.logs()[0].message, "base plugin started");
+        runtime
+            .dispatch_command("shell.plugins", &[])
+            .expect("plugin command should dispatch");
+        assert_eq!(INVOKED_PLUGIN_A.load(Ordering::SeqCst), 1);
     }
 }

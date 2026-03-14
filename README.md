@@ -119,3 +119,5 @@ On the host side, `maruzzella` now exposes the first loading and activation prim
 - `load_plugin(path)`: open a dynamic library and decode its descriptor
 - `resolve_load_order(&plugins)`: dependency-aware ordering
 - `PluginRuntime::activate(plugins)`: invoke plugin `register` and `startup` against a host API and collect contributions
+
+Plugin commands are now executable, not just declarative metadata: a plugin can register a command together with an ABI-safe handler function, and Maruzzella will dispatch GTK menu actions back into that plugin.

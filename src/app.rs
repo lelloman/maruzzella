@@ -25,7 +25,7 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
         &config.product.shell_spec(),
     )));
     let mut spec = state.borrow().spec.clone();
-    let plugin_runtime = build_plugin_runtime(config);
+    let plugin_runtime = build_plugin_runtime(config).map(Rc::new);
     if let Some(runtime) = plugin_runtime.as_ref() {
         product::merge_plugin_runtime(&mut spec, runtime);
     }
@@ -37,7 +37,7 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
         .default_height(980)
         .build();
     window.add_css_class("app-window");
-    let registry = commands::shell_registry(&window, &spec);
+    let registry = commands::shell_registry(&window, &spec, plugin_runtime.clone());
     topbar::install_actions(&window, &spec, &registry);
 
     let root = GtkBox::new(Orientation::Vertical, 0);

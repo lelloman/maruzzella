@@ -102,11 +102,12 @@ impl PluginDescriptor {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct CommandSpec {
     pub plugin_id: &'static str,
     pub command_id: &'static str,
     pub title: &'static str,
+    pub invoke: Option<maruzzella_api::MzCommandInvokeFn>,
 }
 
 impl CommandSpec {
@@ -119,7 +120,16 @@ impl CommandSpec {
             plugin_id,
             command_id,
             title,
+            invoke: None,
         }
+    }
+
+    pub const fn with_handler(
+        mut self,
+        invoke: maruzzella_api::MzCommandInvokeFn,
+    ) -> Self {
+        self.invoke = Some(invoke);
+        self
     }
 
     fn into_ffi(self) -> MzCommandSpec {
@@ -127,6 +137,7 @@ impl CommandSpec {
             plugin_id: MzStr::from_static(self.plugin_id),
             command_id: MzStr::from_static(self.command_id),
             title: MzStr::from_static(self.title),
+            invoke: self.invoke,
         }
     }
 }

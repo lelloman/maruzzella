@@ -150,11 +150,12 @@ pub enum MzLogLevel {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct MzCommandSpec {
     pub plugin_id: MzStr,
     pub command_id: MzStr,
     pub title: MzStr,
+    pub invoke: Option<MzCommandInvokeFn>,
 }
 
 #[repr(C)]
@@ -196,6 +197,7 @@ pub struct MzViewFactorySpec {
 }
 
 pub type MzLogFn = extern "C" fn(level: MzLogLevel, message: MzStr);
+pub type MzCommandInvokeFn = extern "C" fn(payload: MzBytes) -> MzStatus;
 pub type MzRegisterCommandFn = extern "C" fn(command: *const MzCommandSpec) -> MzStatus;
 pub type MzRegisterMenuItemFn = extern "C" fn(item: *const MzMenuItemSpec) -> MzStatus;
 pub type MzRegisterSurfaceContributionFn =

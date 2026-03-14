@@ -4,6 +4,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{ApplicationWindow, Box as GtkBox, Dialog, Label, Orientation, ResponseType};
 
+use crate::plugins::PluginRuntime;
 use crate::spec::{CommandSpec, ShellSpec};
 use crate::theme;
 
@@ -31,7 +32,11 @@ impl CommandRegistry {
     }
 }
 
-pub fn shell_registry(window: &ApplicationWindow, spec: &ShellSpec) -> CommandRegistry {
+pub fn shell_registry(
+    window: &ApplicationWindow,
+    spec: &ShellSpec,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
+) -> CommandRegistry {
     let mut registry = CommandRegistry::new();
 
     registry.register("shell.reload_theme", move || {
@@ -57,6 +62,21 @@ pub fn shell_registry(window: &ApplicationWindow, spec: &ShellSpec) -> CommandRe
     registry.register("shell.open_command_palette", move || {
         present_command_palette(&palette_window, &commands);
     });
+
+    if let Some(plugin_runtime) = plugin_runtime {
+        for command in &spec.commands {
+            if registry.handler_for(&command.id).is_some() {
+                continue;
+            }
+            let command_id = command.id.clone();
+            let runtime = plugin_runtime.clone();
+            registry.register(&command_id.clone(), move || {
+                if let Err(status) = runtime.dispatch_command(&command_id, &[]) {
+                    eprintln!("plugin command failed: {command_id} ({status:?})");
+                }
+            });
+        }
+    }
 
     registry
 }

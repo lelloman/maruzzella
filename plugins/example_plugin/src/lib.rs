@@ -5,6 +5,11 @@ use maruzzella_sdk::{
 
 struct ExamplePlugin;
 
+extern "C" fn show_example_plugin(payload: maruzzella_sdk::ffi::MzBytes) -> maruzzella_sdk::ffi::MzStatus {
+    let _ = payload;
+    maruzzella_sdk::ffi::MzStatus::OK
+}
+
 impl Plugin for ExamplePlugin {
     fn descriptor() -> PluginDescriptor {
         static DEPENDENCIES: &[PluginDependency] = &[PluginDependency::required(
@@ -32,7 +37,8 @@ impl Plugin for ExamplePlugin {
             "com.example.hello",
             "example.hello.show",
             "Show Example Plugin",
-        ))?;
+        )
+        .with_handler(show_example_plugin))?;
 
         host.register_menu_item(MenuItemSpec::new(
             "com.example.hello",

@@ -1,11 +1,13 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str;
 
 use libloading::{Library, Symbol};
 use maruzzella_api::{
-    MzPluginDependency, MzPluginDescriptorView, MzPluginVTable, MzStr, MZ_ABI_VERSION_V1,
+    MzBytes, MzCommandSpec, MzHostApi, MzLogLevel, MzMenuItemSpec, MzPluginDependency,
+    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStatusCode, MzStr,
+    MzSurfaceContribution, MzViewFactorySpec, MZ_ABI_VERSION_V1,
 };
 
 const ENTRY_SYMBOL: &[u8] = b"maruzzella_plugin_entry\0";
@@ -79,6 +81,127 @@ impl LoadedPlugin {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisteredCommand {
+    pub plugin_id: String,
+    pub command_id: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisteredMenuItem {
+    pub plugin_id: String,
+    pub menu_id: String,
+    pub parent_id: String,
+    pub title: String,
+    pub command_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisteredSurfaceContribution {
+    pub plugin_id: String,
+    pub surface_id: String,
+    pub contribution_id: String,
+    pub payload: Vec<u8>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RegisteredViewFactory {
+    pub plugin_id: String,
+    pub view_id: String,
+    pub create: maruzzella_api::MzCreateViewFn,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PluginLogEntry {
+    pub plugin_id: String,
+    pub level: MzLogLevel,
+    pub message: String,
+}
+
+#[derive(Debug)]
+pub struct PluginRuntime {
+    plugins: Vec<LoadedPlugin>,
+    activation_order: Vec<String>,
+    commands: Vec<RegisteredCommand>,
+    menu_items: Vec<RegisteredMenuItem>,
+    surface_contributions: Vec<RegisteredSurfaceContribution>,
+    view_factories: Vec<RegisteredViewFactory>,
+    logs: Vec<PluginLogEntry>,
+}
+
+impl PluginRuntime {
+    pub fn activate(plugins: Vec<LoadedPlugin>) -> Result<Self, PluginRuntimeError> {
+        let ordered = resolve_load_order(&plugins).map_err(PluginRuntimeError::Resolve)?;
+        let activation_order = ordered
+            .iter()
+            .map(|plugin| plugin.descriptor.id.clone())
+            .collect::<Vec<_>>();
+
+        let mut host_state = HostState::default();
+        for plugin in ordered {
+            host_state.current_plugin_id = Some(plugin.descriptor.id.clone());
+            let _scope = ActiveHostScope::enter(&mut host_state);
+            let host_api = host_state.host_api();
+
+            let register_status = (plugin.vtable.register)(&host_api);
+            if !register_status.is_ok() {
+                return Err(PluginRuntimeError::RegisterFailed {
+                    plugin_id: plugin.descriptor.id.clone(),
+                    status: register_status.code,
+                });
+            }
+
+            let startup_status = (plugin.vtable.startup)(&host_api);
+            if !startup_status.is_ok() {
+                return Err(PluginRuntimeError::StartupFailed {
+                    plugin_id: plugin.descriptor.id.clone(),
+                    status: startup_status.code,
+                });
+            }
+        }
+        host_state.current_plugin_id = None;
+
+        Ok(Self {
+            plugins,
+            activation_order,
+            commands: host_state.commands,
+            menu_items: host_state.menu_items,
+            surface_contributions: host_state.surface_contributions,
+            view_factories: host_state.view_factories,
+            logs: host_state.logs,
+        })
+    }
+
+    pub fn plugins(&self) -> &[LoadedPlugin] {
+        &self.plugins
+    }
+
+    pub fn activation_order(&self) -> &[String] {
+        &self.activation_order
+    }
+
+    pub fn commands(&self) -> &[RegisteredCommand] {
+        &self.commands
+    }
+
+    pub fn menu_items(&self) -> &[RegisteredMenuItem] {
+        &self.menu_items
+    }
+
+    pub fn surface_contributions(&self) -> &[RegisteredSurfaceContribution] {
+        &self.surface_contributions
+    }
+
+    pub fn view_factories(&self) -> &[RegisteredViewFactory] {
+        &self.view_factories
+    }
+
+    pub fn logs(&self) -> &[PluginLogEntry] {
+        &self.logs
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum PluginLoadError {
     LibraryOpen {
@@ -125,6 +248,19 @@ pub enum PluginResolveError {
     },
     DependencyCycle {
         plugin_ids: Vec<String>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PluginRuntimeError {
+    Resolve(PluginResolveError),
+    RegisterFailed {
+        plugin_id: String,
+        status: MzStatusCode,
+    },
+    StartupFailed {
+        plugin_id: String,
+        status: MzStatusCode,
     },
 }
 
@@ -339,9 +475,245 @@ fn dependency_slice<'a>(
     }
 }
 
+#[derive(Default)]
+struct HostState {
+    current_plugin_id: Option<String>,
+    commands: Vec<RegisteredCommand>,
+    command_ids: HashSet<String>,
+    menu_items: Vec<RegisteredMenuItem>,
+    menu_item_ids: HashSet<String>,
+    surface_contributions: Vec<RegisteredSurfaceContribution>,
+    surface_contribution_ids: HashSet<(String, String)>,
+    view_factories: Vec<RegisteredViewFactory>,
+    view_factory_ids: HashSet<String>,
+    logs: Vec<PluginLogEntry>,
+}
+
+impl HostState {
+    fn host_api(&mut self) -> MzHostApi {
+        MzHostApi {
+            abi_version: MZ_ABI_VERSION_V1,
+            host_context: self as *mut Self as *mut _,
+            log: Some(host_log),
+            register_command: Some(host_register_command),
+            register_menu_item: Some(host_register_menu_item),
+            register_surface_contribution: Some(host_register_surface_contribution),
+            register_view_factory: Some(host_register_view_factory),
+            dispatch_command: Some(host_dispatch_command),
+        }
+    }
+
+    fn plugin_id(&self) -> &str {
+        self.current_plugin_id
+            .as_deref()
+            .unwrap_or("<unknown-plugin>")
+    }
+}
+
+extern "C" fn host_log(level: MzLogLevel, message: MzStr) {
+    let Some(state) = current_host_state() else {
+        return;
+    };
+    let Ok(message) = decode_runtime_str("log.message", message) else {
+        return;
+    };
+    state.logs.push(PluginLogEntry {
+        plugin_id: state.plugin_id().to_string(),
+        level,
+        message,
+    });
+}
+
+extern "C" fn host_register_command(command: *const MzCommandSpec) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(command) = (unsafe { command.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    let Ok(plugin_id) = decode_runtime_str("command.plugin_id", command.plugin_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(command_id) = decode_runtime_str("command.command_id", command.command_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(title) = decode_runtime_str("command.title", command.title) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    if !state.command_ids.insert(command_id.clone()) {
+        return MzStatus::new(MzStatusCode::AlreadyExists);
+    }
+    state.commands.push(RegisteredCommand {
+        plugin_id,
+        command_id,
+        title,
+    });
+    MzStatus::OK
+}
+
+extern "C" fn host_register_menu_item(item: *const MzMenuItemSpec) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(item) = (unsafe { item.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    let Ok(plugin_id) = decode_runtime_str("menu.plugin_id", item.plugin_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(menu_id) = decode_runtime_str("menu.menu_id", item.menu_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(parent_id) = decode_runtime_str("menu.parent_id", item.parent_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(title) = decode_runtime_str("menu.title", item.title) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(command_id) = decode_runtime_str("menu.command_id", item.command_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    if !state.menu_item_ids.insert(menu_id.clone()) {
+        return MzStatus::new(MzStatusCode::AlreadyExists);
+    }
+    state.menu_items.push(RegisteredMenuItem {
+        plugin_id,
+        menu_id,
+        parent_id,
+        title,
+        command_id,
+    });
+    MzStatus::OK
+}
+
+extern "C" fn host_register_surface_contribution(
+    contribution: *const MzSurfaceContribution,
+) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(contribution) = (unsafe { contribution.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    let Ok(plugin_id) = decode_runtime_str("surface.plugin_id", contribution.plugin_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(surface_id) = decode_runtime_str("surface.surface_id", contribution.surface_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(contribution_id) =
+        decode_runtime_str("surface.contribution_id", contribution.contribution_id)
+    else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let payload = bytes_to_vec(contribution.payload);
+
+    let key = (surface_id.clone(), contribution_id.clone());
+    if !state.surface_contribution_ids.insert(key) {
+        return MzStatus::new(MzStatusCode::AlreadyExists);
+    }
+    state.surface_contributions.push(RegisteredSurfaceContribution {
+        plugin_id,
+        surface_id,
+        contribution_id,
+        payload,
+    });
+    MzStatus::OK
+}
+
+extern "C" fn host_register_view_factory(factory: *const MzViewFactorySpec) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(factory) = (unsafe { factory.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    let Ok(plugin_id) = decode_runtime_str("view.plugin_id", factory.plugin_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(view_id) = decode_runtime_str("view.view_id", factory.view_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    if !state.view_factory_ids.insert(view_id.clone()) {
+        return MzStatus::new(MzStatusCode::AlreadyExists);
+    }
+    state.view_factories.push(RegisteredViewFactory {
+        plugin_id,
+        view_id,
+        create: factory.create,
+    });
+    MzStatus::OK
+}
+
+extern "C" fn host_dispatch_command(_command_id: MzStr, _payload: MzBytes) -> MzStatus {
+    MzStatus::new(MzStatusCode::NotFound)
+}
+
+thread_local! {
+    static ACTIVE_HOST_STATE: std::cell::Cell<*mut HostState> = const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+fn current_host_state() -> Option<&'static mut HostState> {
+    ACTIVE_HOST_STATE.with(|cell| {
+        let ptr = cell.get();
+        if ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { &mut *ptr })
+        }
+    })
+}
+
+struct ActiveHostScope;
+
+impl ActiveHostScope {
+    fn enter(state: &mut HostState) -> Self {
+        ACTIVE_HOST_STATE.with(|cell| cell.set(state as *mut _));
+        Self
+    }
+}
+
+impl Drop for ActiveHostScope {
+    fn drop(&mut self) {
+        ACTIVE_HOST_STATE.with(|cell| cell.set(std::ptr::null_mut()));
+    }
+}
+
+fn decode_runtime_str(field: &'static str, value: MzStr) -> Result<String, &'static str> {
+    if value.len == 0 {
+        return Ok(String::new());
+    }
+    if value.ptr.is_null() {
+        return Err(field);
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(value.ptr, value.len) };
+    let value = std::str::from_utf8(bytes).map_err(|_| field)?;
+    Ok(value.to_string())
+}
+
+fn bytes_to_vec(bytes: MzBytes) -> Vec<u8> {
+    if bytes.ptr.is_null() || bytes.len == 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) }.to_vec()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static REGISTERED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);
+    static STARTED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);
+    static REGISTERED_PLUGIN_B: AtomicUsize = AtomicUsize::new(0);
 
     extern "C" fn test_descriptor() -> MzPluginDescriptorView {
         MzPluginDescriptorView::empty()
@@ -356,6 +728,68 @@ mod tests {
     }
 
     extern "C" fn test_shutdown(_: *const maruzzella_api::MzHostApi) {}
+
+    extern "C" fn plugin_a_register(host: *const maruzzella_api::MzHostApi) -> maruzzella_api::MzStatus {
+        REGISTERED_PLUGIN_A.fetch_add(1, Ordering::SeqCst);
+        let Some(host) = (unsafe { host.as_ref() }) else {
+            return maruzzella_api::MzStatus::new(MzStatusCode::InvalidArgument);
+        };
+        let command = maruzzella_api::MzCommandSpec {
+            plugin_id: MzStr::from_static("maruzzella.base"),
+            command_id: MzStr::from_static("shell.plugins"),
+            title: MzStr::from_static("Plugins"),
+        };
+        let menu = maruzzella_api::MzMenuItemSpec {
+            plugin_id: MzStr::from_static("maruzzella.base"),
+            menu_id: MzStr::from_static("plugins"),
+            parent_id: MzStr::from_static("maruzzella.menu.file.items"),
+            title: MzStr::from_static("Plugins"),
+            command_id: MzStr::from_static("shell.plugins"),
+        };
+        let surface = maruzzella_api::MzSurfaceContribution {
+            plugin_id: MzStr::from_static("maruzzella.base"),
+            surface_id: MzStr::from_static("maruzzella.about.sections"),
+            contribution_id: MzStr::from_static("base.about"),
+            payload: maruzzella_api::MzBytes {
+                ptr: br#"{"title":"Base"}"#.as_ptr(),
+                len: br#"{"title":"Base"}"#.len(),
+            },
+        };
+
+        host.register_command.expect("command registrar")(&command);
+        host.register_menu_item.expect("menu registrar")(&menu);
+        host.register_surface_contribution
+            .expect("surface registrar")(&surface);
+        maruzzella_api::MzStatus::OK
+    }
+
+    extern "C" fn plugin_a_startup(host: *const maruzzella_api::MzHostApi) -> maruzzella_api::MzStatus {
+        STARTED_PLUGIN_A.fetch_add(1, Ordering::SeqCst);
+        let Some(host) = (unsafe { host.as_ref() }) else {
+            return maruzzella_api::MzStatus::new(MzStatusCode::InvalidArgument);
+        };
+        host.log.expect("logger")(
+            MzLogLevel::Info,
+            MzStr::from_static("base plugin started"),
+        );
+        maruzzella_api::MzStatus::OK
+    }
+
+    extern "C" fn plugin_b_register(host: *const maruzzella_api::MzHostApi) -> maruzzella_api::MzStatus {
+        REGISTERED_PLUGIN_B.fetch_add(1, Ordering::SeqCst);
+        let Some(host) = (unsafe { host.as_ref() }) else {
+            return maruzzella_api::MzStatus::new(MzStatusCode::InvalidArgument);
+        };
+        let menu = maruzzella_api::MzMenuItemSpec {
+            plugin_id: MzStr::from_static("com.example.notes"),
+            menu_id: MzStr::from_static("notes"),
+            parent_id: MzStr::from_static("maruzzella.menu.file.items"),
+            title: MzStr::from_static("Notes"),
+            command_id: MzStr::from_static("notes.open"),
+        };
+        host.register_menu_item.expect("menu registrar")(&menu);
+        maruzzella_api::MzStatus::OK
+    }
 
     fn plugin(
         id: &str,
@@ -438,5 +872,92 @@ mod tests {
                 dependency_id: "maruzzella.base".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn runtime_activates_plugins_and_collects_contributions() {
+        REGISTERED_PLUGIN_A.store(0, Ordering::SeqCst);
+        STARTED_PLUGIN_A.store(0, Ordering::SeqCst);
+        REGISTERED_PLUGIN_B.store(0, Ordering::SeqCst);
+
+        let base = LoadedPlugin {
+            path: PathBuf::from("base.so"),
+            descriptor: PluginDescriptor {
+                id: "maruzzella.base".to_string(),
+                name: "Base".to_string(),
+                version: Version { major: 1, minor: 0, patch: 0 },
+                required_abi_version: MZ_ABI_VERSION_V1,
+                description: String::new(),
+                dependencies: vec![],
+            },
+            vtable: Box::leak(Box::new(MzPluginVTable {
+                abi_version: MZ_ABI_VERSION_V1,
+                descriptor: test_descriptor,
+                register: plugin_a_register,
+                startup: plugin_a_startup,
+                shutdown: test_shutdown,
+            })),
+            _library: {
+                #[cfg(unix)]
+                {
+                    libloading::os::unix::Library::this().into()
+                }
+                #[cfg(windows)]
+                {
+                    libloading::os::windows::Library::this()
+                        .expect("current process library should be loadable")
+                        .into()
+                }
+            },
+        };
+        let notes = LoadedPlugin {
+            path: PathBuf::from("notes.so"),
+            descriptor: PluginDescriptor {
+                id: "com.example.notes".to_string(),
+                name: "Notes".to_string(),
+                version: Version { major: 1, minor: 0, patch: 0 },
+                required_abi_version: MZ_ABI_VERSION_V1,
+                description: String::new(),
+                dependencies: vec![PluginDependencySpec {
+                    plugin_id: "maruzzella.base".to_string(),
+                    min_version: Version { major: 1, minor: 0, patch: 0 },
+                    max_version_exclusive: Version { major: 2, minor: 0, patch: 0 },
+                    required: true,
+                }],
+            },
+            vtable: Box::leak(Box::new(MzPluginVTable {
+                abi_version: MZ_ABI_VERSION_V1,
+                descriptor: test_descriptor,
+                register: plugin_b_register,
+                startup: test_startup,
+                shutdown: test_shutdown,
+            })),
+            _library: {
+                #[cfg(unix)]
+                {
+                    libloading::os::unix::Library::this().into()
+                }
+                #[cfg(windows)]
+                {
+                    libloading::os::windows::Library::this()
+                        .expect("current process library should be loadable")
+                        .into()
+                }
+            },
+        };
+
+        let runtime = PluginRuntime::activate(vec![notes, base]).expect("runtime should activate");
+        assert_eq!(
+            runtime.activation_order(),
+            &["maruzzella.base".to_string(), "com.example.notes".to_string()]
+        );
+        assert_eq!(REGISTERED_PLUGIN_A.load(Ordering::SeqCst), 1);
+        assert_eq!(STARTED_PLUGIN_A.load(Ordering::SeqCst), 1);
+        assert_eq!(REGISTERED_PLUGIN_B.load(Ordering::SeqCst), 1);
+        assert_eq!(runtime.commands().len(), 1);
+        assert_eq!(runtime.menu_items().len(), 2);
+        assert_eq!(runtime.surface_contributions().len(), 1);
+        assert_eq!(runtime.logs().len(), 1);
+        assert_eq!(runtime.logs()[0].message, "base plugin started");
     }
 }

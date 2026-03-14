@@ -13,7 +13,9 @@ use gtk::Application;
 pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
 pub use plugins::{
     load_plugin, resolve_load_order, LoadedPlugin, PluginDependencySpec, PluginDescriptor,
-    PluginLoadError, PluginResolveError, Version as PluginVersion,
+    PluginLoadError, PluginLogEntry, PluginResolveError, PluginRuntime, PluginRuntimeError,
+    RegisteredCommand, RegisteredMenuItem, RegisteredSurfaceContribution,
+    RegisteredViewFactory, Version as PluginVersion,
 };
 pub use spec::{
     text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, PanelContentKind, ShellSpec, SplitAxis,

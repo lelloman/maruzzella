@@ -105,3 +105,9 @@ The workspace now also contains:
 - `maruzzella_api`: ABI-safe plugin boundary types
 - `maruzzella_sdk`: ergonomic Rust helpers and export macro for plugin authors
 - `plugins/example_plugin`: sample `cdylib` plugin using the SDK
+
+On the host side, `maruzzella` now exposes the first loading and activation primitives:
+
+- `load_plugin(path)`: open a dynamic library and decode its descriptor
+- `resolve_load_order(&plugins)`: dependency-aware ordering
+- `PluginRuntime::activate(plugins)`: invoke plugin `register` and `startup` against a host API and collect contributions

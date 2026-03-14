@@ -1,22 +1,3 @@
-mod app;
-mod commands;
-mod layout;
-mod product;
-mod shell;
-mod spec;
-mod theme;
-
-use gtk::prelude::*;
-use gtk::Application;
-
 fn main() {
-    let application = Application::builder()
-        .application_id("com.lelloman.maruzzella")
-        .build();
-
-    application.connect_activate(|application| {
-        app::build(application);
-    });
-
-    application.run();
+    maruzzella::run_default();
 }

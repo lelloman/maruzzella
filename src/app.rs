@@ -3,7 +3,7 @@ use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
 
 use crate::shell::topbar;
 use crate::shell::workbench_custom;
-use crate::studio::{default_shell_spec, ShellSpec, SplitDirection, TabGroupSpec, WorkbenchNodeSpec};
+use crate::spec::{default_shell_spec, ShellSpec, SplitAxis, TabGroupSpec, WorkbenchNodeSpec};
 use crate::theme;
 
 pub fn build(application: &Application) {
@@ -28,9 +28,9 @@ pub fn build(application: &Application) {
 }
 
 fn build_shell(spec: &ShellSpec) -> gtk::Widget {
-    let left = build_group(&spec.left);
-    let right = build_group(&spec.right);
-    let bottom = build_group(&spec.bottom);
+    let left = build_group(&spec.left_panel);
+    let right = build_group(&spec.right_panel);
+    let bottom = build_group(&spec.bottom_panel);
     let workbench = build_workbench_node(&spec.workbench);
 
     let horizontal = Paned::new(Orientation::Horizontal);
@@ -66,14 +66,14 @@ fn build_group(group: &TabGroupSpec) -> workbench_custom::BuiltCustomWorkbenchGr
 fn build_workbench_node(node: &WorkbenchNodeSpec) -> gtk::Widget {
     match node {
         WorkbenchNodeSpec::Group(group) => build_group(group).root.upcast::<gtk::Widget>(),
-        WorkbenchNodeSpec::Split { direction, children } => {
+        WorkbenchNodeSpec::Split { axis, children } => {
             let mut child_widgets = children.iter().map(build_workbench_node).collect::<Vec<_>>();
             let first = child_widgets.remove(0);
             let mut current = first;
             for child in child_widgets {
-                let paned = Paned::new(match direction {
-                    SplitDirection::Horizontal => Orientation::Horizontal,
-                    SplitDirection::Vertical => Orientation::Vertical,
+                let paned = Paned::new(match axis {
+                    SplitAxis::Horizontal => Orientation::Horizontal,
+                    SplitAxis::Vertical => Orientation::Vertical,
                 });
                 paned.set_wide_handle(true);
                 paned.set_resize_start_child(true);

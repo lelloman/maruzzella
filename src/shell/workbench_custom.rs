@@ -11,7 +11,7 @@ use gtk::{
     StackTransitionType, TextBuffer, Widget,
 };
 
-use crate::studio::DockTabSpec;
+use crate::spec::TabSpec;
 
 use super::tabbed_panel::{self, BuiltTabPage};
 
@@ -617,7 +617,7 @@ impl CustomWorkbenchGroupHandle {
 
 pub fn build_group(
     group_id: &str,
-    tabs: &[DockTabSpec],
+    tabs: &[TabSpec],
     active_tab_id: Option<&str>,
 ) -> BuiltCustomWorkbenchGroup {
     let overlay = Overlay::new();

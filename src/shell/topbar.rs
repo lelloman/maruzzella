@@ -4,7 +4,7 @@ use gtk::{
     Align, Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar, Separator,
 };
 
-use crate::studio::{action_name, menu_action_ref, ActionBarItemSpec, MenuItemSpec, ShellSpec};
+use crate::spec::{command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarItemSpec};
 
 pub struct TopBar {
     pub root: GtkBox,
@@ -36,14 +36,14 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     spacer.set_hexpand(true);
     toolbar.append(&spacer);
 
-    let leading = spec.action_bar_items.iter().filter(|item| !item.secondary);
+    let leading = spec.toolbar_items.iter().filter(|item| !item.secondary);
     for item in leading {
         toolbar.append(&action_bar_item_button(item));
     }
 
     let utility_group = GtkBox::new(Orientation::Horizontal, 4);
     utility_group.add_css_class("toolbar-utility-group");
-    for item in spec.action_bar_items.iter().filter(|item| item.secondary) {
+    for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
         utility_group.append(&action_bar_item_button(item));
     }
     toolbar.append(&utility_group);
@@ -60,8 +60,8 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     TopBar { root }
 }
 
-fn action_bar_item_button(item: &ActionBarItemSpec) -> Button {
-    let action_ref = menu_action_ref(&item.action_id);
+fn action_bar_item_button(item: &ToolbarItemSpec) -> Button {
+    let action_ref = menu_action_ref(&item.command_id);
     match (&item.icon_name, &item.label) {
         (Some(icon_name), Some(label)) => toolbar_button(icon_name, label, &action_ref),
         (Some(icon_name), None) => icon_button(icon_name, &action_ref, &item.id),
@@ -122,15 +122,15 @@ fn build_menu_model(spec: &ShellSpec) -> gio::Menu {
 fn submenu(items: &[MenuItemSpec]) -> gio::Menu {
     let submenu = gio::Menu::new();
     for item in items {
-        submenu.append(Some(&item.label), Some(&menu_action_ref(&item.action_id)));
+        submenu.append(Some(&item.label), Some(&menu_action_ref(&item.command_id)));
     }
     submenu
 }
 
 pub fn install_actions(window: &gtk::ApplicationWindow, spec: &ShellSpec) {
-    for action in &spec.actions {
-        let simple = gio::SimpleAction::new(&action_name(&action.id), None);
-        let title = action.title.clone();
+    for command in &spec.commands {
+        let simple = gio::SimpleAction::new(&command_name(&command.id), None);
+        let title = command.title.clone();
         simple.connect_activate(move |_, _| {
             eprintln!("action triggered: {title}");
         });

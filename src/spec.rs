@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TabHost {
+pub enum PanelContentKind {
     NavigationList,
     IdentityList,
     InspectorDetails,
@@ -8,19 +8,19 @@ pub enum TabHost {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SplitDirection {
+pub enum SplitAxis {
     Horizontal,
     Vertical,
 }
 
 #[derive(Clone, Debug)]
-pub struct DockTabSpec {
+pub struct TabSpec {
     pub id: String,
-    pub dock_id: String,
+    pub panel_id: String,
     pub title: String,
-    pub tab_type: String,
+    pub view_kind: String,
     pub instance_key: Option<String>,
-    pub host: TabHost,
+    pub content_kind: PanelContentKind,
     pub placeholder: String,
     pub closable: bool,
     pub close_prompt: Option<String>,
@@ -30,7 +30,7 @@ pub struct DockTabSpec {
 pub struct TabGroupSpec {
     pub id: String,
     pub active_tab_id: Option<String>,
-    pub tabs: Vec<DockTabSpec>,
+    pub tabs: Vec<TabSpec>,
 }
 
 #[derive(Clone, Debug)]
@@ -38,11 +38,11 @@ pub struct ShellSpec {
     pub title: String,
     pub menu_roots: Vec<MenuRootSpec>,
     pub menu_items: Vec<MenuItemSpec>,
-    pub actions: Vec<ActionSpec>,
-    pub action_bar_items: Vec<ActionBarItemSpec>,
-    pub left: TabGroupSpec,
-    pub right: TabGroupSpec,
-    pub bottom: TabGroupSpec,
+    pub commands: Vec<CommandSpec>,
+    pub toolbar_items: Vec<ToolbarItemSpec>,
+    pub left_panel: TabGroupSpec,
+    pub right_panel: TabGroupSpec,
+    pub bottom_panel: TabGroupSpec,
     pub workbench: WorkbenchNodeSpec,
 }
 
@@ -50,23 +50,23 @@ pub struct ShellSpec {
 pub enum WorkbenchNodeSpec {
     Group(TabGroupSpec),
     Split {
-        direction: SplitDirection,
+        axis: SplitAxis,
         children: Vec<WorkbenchNodeSpec>,
     },
 }
 
 #[derive(Clone, Debug)]
-pub struct ActionSpec {
+pub struct CommandSpec {
     pub id: String,
     pub title: String,
 }
 
 #[derive(Clone, Debug)]
-pub struct ActionBarItemSpec {
+pub struct ToolbarItemSpec {
     pub id: String,
     pub icon_name: Option<String>,
     pub label: Option<String>,
-    pub action_id: String,
+    pub command_id: String,
     pub secondary: bool,
 }
 
@@ -81,11 +81,11 @@ pub struct MenuItemSpec {
     pub id: String,
     pub root_id: String,
     pub label: String,
-    pub action_id: String,
+    pub command_id: String,
 }
 
 impl TabGroupSpec {
-    pub fn new(id: &str, active_tab_id: Option<&str>, tabs: Vec<DockTabSpec>) -> Self {
+    pub fn new(id: &str, active_tab_id: Option<&str>, tabs: Vec<TabSpec>) -> Self {
         Self {
             id: id.to_string(),
             active_tab_id: active_tab_id.map(str::to_string),
@@ -94,22 +94,22 @@ impl TabGroupSpec {
     }
 }
 
-pub fn action_name(action_id: &str) -> String {
-    action_id.replace('.', "-")
+pub fn command_name(command_id: &str) -> String {
+    command_id.replace('.', "-")
 }
 
-pub fn menu_action_ref(action_id: &str) -> String {
-    format!("win.{}", action_name(action_id))
+pub fn menu_action_ref(command_id: &str) -> String {
+    format!("win.{}", command_name(command_id))
 }
 
-pub fn text_tab(id: &str, dock_id: &str, title: &str, body: &str, closable: bool) -> DockTabSpec {
-    DockTabSpec {
+pub fn text_tab(id: &str, panel_id: &str, title: &str, body: &str, closable: bool) -> TabSpec {
+    TabSpec {
         id: id.to_string(),
-        dock_id: dock_id.to_string(),
+        panel_id: panel_id.to_string(),
         title: title.to_string(),
-        tab_type: "text".to_string(),
+        view_kind: "text".to_string(),
         instance_key: None,
-        host: TabHost::TextBuffer,
+        content_kind: PanelContentKind::TextBuffer,
         placeholder: body.to_string(),
         closable,
         close_prompt: None,
@@ -117,31 +117,31 @@ pub fn text_tab(id: &str, dock_id: &str, title: &str, body: &str, closable: bool
 }
 
 pub fn default_shell_spec() -> ShellSpec {
-    let actions = vec![
-        ActionSpec { id: "shell.open_command_palette".to_string(), title: "Command Palette".to_string() },
-        ActionSpec { id: "shell.reload_theme".to_string(), title: "Reload Theme".to_string() },
-        ActionSpec { id: "shell.about".to_string(), title: "About Maruzzella".to_string() },
+    let commands = vec![
+        CommandSpec { id: "shell.open_command_palette".to_string(), title: "Command Palette".to_string() },
+        CommandSpec { id: "shell.reload_theme".to_string(), title: "Reload Theme".to_string() },
+        CommandSpec { id: "shell.about".to_string(), title: "About Maruzzella".to_string() },
     ];
-    let action_bar_items = vec![
-        ActionBarItemSpec {
+    let toolbar_items = vec![
+        ToolbarItemSpec {
             id: "palette".to_string(),
             icon_name: Some("system-search-symbolic".to_string()),
             label: Some("Palette".to_string()),
-            action_id: "shell.open_command_palette".to_string(),
+            command_id: "shell.open_command_palette".to_string(),
             secondary: false,
         },
-        ActionBarItemSpec {
+        ToolbarItemSpec {
             id: "theme".to_string(),
             icon_name: Some("applications-graphics-symbolic".to_string()),
             label: None,
-            action_id: "shell.reload_theme".to_string(),
+            command_id: "shell.reload_theme".to_string(),
             secondary: true,
         },
-        ActionBarItemSpec {
+        ToolbarItemSpec {
             id: "about".to_string(),
             icon_name: Some("help-about-symbolic".to_string()),
             label: None,
-            action_id: "shell.about".to_string(),
+            command_id: "shell.about".to_string(),
             secondary: true,
         },
     ];
@@ -154,47 +154,47 @@ pub fn default_shell_spec() -> ShellSpec {
             id: "command-palette".to_string(),
             root_id: "app".to_string(),
             label: "Command Palette".to_string(),
-            action_id: "shell.open_command_palette".to_string(),
+            command_id: "shell.open_command_palette".to_string(),
         },
         MenuItemSpec {
             id: "about".to_string(),
             root_id: "app".to_string(),
             label: "About Maruzzella".to_string(),
-            action_id: "shell.about".to_string(),
+            command_id: "shell.about".to_string(),
         },
         MenuItemSpec {
             id: "reload-theme".to_string(),
             root_id: "view".to_string(),
             label: "Reload Theme".to_string(),
-            action_id: "shell.reload_theme".to_string(),
+            command_id: "shell.reload_theme".to_string(),
         },
     ];
-    let left = TabGroupSpec::new(
-        "tool-left",
+    let left_panel = TabGroupSpec::new(
+        "panel-left",
         Some("navigation"),
         vec![
-            text_tab("navigation", "tool-left", "Navigation", "Anonymous shell navigation goes here.", false),
-            text_tab("library", "tool-left", "Library", "A product can mount its own content here.", false),
+            text_tab("navigation", "panel-left", "Navigation", "Anonymous shell navigation goes here.", false),
+            text_tab("library", "panel-left", "Library", "A product can mount its own content here.", false),
         ],
     );
-    let right = TabGroupSpec::new(
-        "tool-right",
+    let right_panel = TabGroupSpec::new(
+        "panel-right",
         Some("inspector"),
         vec![
-            text_tab("inspector", "tool-right", "Inspector", "Selection-aware details live here.", false),
-            text_tab("outline", "tool-right", "Outline", "Structure and metadata panels fit here.", false),
+            text_tab("inspector", "panel-right", "Inspector", "Selection-aware details live here.", false),
+            text_tab("outline", "panel-right", "Outline", "Structure and metadata panels fit here.", false),
         ],
     );
-    let bottom = TabGroupSpec::new(
-        "tool-bottom",
+    let bottom_panel = TabGroupSpec::new(
+        "panel-bottom",
         Some("logs"),
         vec![
-            text_tab("logs", "tool-bottom", "Logs", "Runtime output, tasks, and traces.", false),
-            text_tab("problems", "tool-bottom", "Problems", "Validation and build output.", false),
+            text_tab("logs", "panel-bottom", "Logs", "Runtime output, tasks, and traces.", false),
+            text_tab("problems", "panel-bottom", "Problems", "Validation and build output.", false),
         ],
     );
     let workbench = WorkbenchNodeSpec::Split {
-        direction: SplitDirection::Horizontal,
+        axis: SplitAxis::Horizontal,
         children: vec![
             WorkbenchNodeSpec::Group(TabGroupSpec::new(
                 "workbench-a",
@@ -220,11 +220,11 @@ pub fn default_shell_spec() -> ShellSpec {
         title: "Maruzzella".to_string(),
         menu_roots,
         menu_items,
-        actions,
-        action_bar_items,
-        left,
-        right,
-        bottom,
+        commands,
+        toolbar_items,
+        left_panel,
+        right_panel,
+        bottom_panel,
         workbench,
     }
 }

@@ -1,6 +1,6 @@
 mod app;
 mod shell;
-mod studio;
+mod spec;
 mod theme;
 
 use gtk::prelude::*;

@@ -6,7 +6,7 @@ use gtk::{
     TextView,
 };
 
-use crate::studio::{DockTabSpec, TabHost};
+use crate::spec::{PanelContentKind, TabSpec};
 
 use super::{bare_pane_container, scrolled, section_title};
 
@@ -34,7 +34,7 @@ pub struct BuiltNotebook {
     pub labels: HashMap<String, Label>,
 }
 
-pub fn build(css_class: &str, tabs: &[DockTabSpec]) -> BuiltNotebook {
+pub fn build(css_class: &str, tabs: &[TabSpec]) -> BuiltNotebook {
     let (root, content) = bare_pane_container(css_class);
     let notebook = Notebook::new();
     notebook.add_css_class("workbench-tabs");
@@ -88,21 +88,21 @@ pub fn build(css_class: &str, tabs: &[DockTabSpec]) -> BuiltNotebook {
     }
 }
 
-pub fn build_tab_page(css_class: &str, tab: &DockTabSpec) -> BuiltTabPage {
+pub fn build_tab_page(css_class: &str, tab: &TabSpec) -> BuiltTabPage {
     let mut buffer = None;
     let mut list = None;
     let mut entry = None;
     let mut labels = HashMap::new();
     let mut close_button = None;
-    let widget = match tab.host {
-        TabHost::NavigationList | TabHost::IdentityList => {
+    let widget = match tab.content_kind {
+        PanelContentKind::NavigationList | PanelContentKind::IdentityList => {
             let built_list = ListBox::new();
             built_list.set_selection_mode(SelectionMode::Single);
             built_list.add_css_class("dense-list");
             list = Some(built_list.clone());
             scrolled(&built_list).upcast::<gtk::Widget>()
         }
-        TabHost::InspectorDetails => {
+        PanelContentKind::InspectorDetails => {
             let inspector_box = GtkBox::new(Orientation::Vertical, 10);
             inspector_box.add_css_class("inspector-content");
 
@@ -129,7 +129,7 @@ pub fn build_tab_page(css_class: &str, tab: &DockTabSpec) -> BuiltTabPage {
 
             scrolled(&inspector_box).upcast::<gtk::Widget>()
         }
-        TabHost::CommandList => {
+        PanelContentKind::CommandList => {
             let box_ = GtkBox::new(Orientation::Vertical, 8);
             box_.add_css_class("inspector-content");
             let search = Entry::new();
@@ -144,7 +144,7 @@ pub fn build_tab_page(css_class: &str, tab: &DockTabSpec) -> BuiltTabPage {
             box_.append(&scrolled(&built_list));
             box_.upcast::<gtk::Widget>()
         }
-        TabHost::TextBuffer => {
+        PanelContentKind::TextBuffer => {
             let built_buffer = TextBuffer::new(None);
             built_buffer.set_text(&tab.placeholder);
             let view = TextView::builder()

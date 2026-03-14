@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 pub mod app;
 pub mod commands;
 pub mod layout;
@@ -27,6 +29,7 @@ pub struct MaruzzellaConfig {
     pub application_id: String,
     pub persistence_id: String,
     pub product: ProductSpec,
+    pub plugin_paths: Vec<PathBuf>,
 }
 
 impl Default for MaruzzellaConfig {
@@ -41,6 +44,7 @@ impl MaruzzellaConfig {
             application_id: application_id.to_string(),
             persistence_id: "maruzzella".to_string(),
             product: default_product_spec(),
+            plugin_paths: Vec::new(),
         }
     }
 
@@ -51,6 +55,23 @@ impl MaruzzellaConfig {
 
     pub fn with_product(mut self, product: ProductSpec) -> Self {
         self.product = product;
+        self
+    }
+
+    pub fn with_plugin_path(mut self, path: impl AsRef<Path>) -> Self {
+        self.plugin_paths.push(path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn with_plugin_paths<I, P>(mut self, paths: I) -> Self
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
+        self.plugin_paths = paths
+            .into_iter()
+            .map(|path| path.as_ref().to_path_buf())
+            .collect();
         self
     }
 }

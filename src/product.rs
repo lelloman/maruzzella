@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+
+use crate::plugins::PluginRuntime;
 use crate::spec::{
     text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, ShellSpec, SplitAxis, TabGroupSpec,
     ToolbarItemSpec, WorkbenchNodeSpec,
@@ -43,6 +46,75 @@ impl ProductSpec {
             bottom_panel: self.layout.bottom_panel.clone(),
             workbench: self.layout.workbench.clone(),
         }
+    }
+}
+
+pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
+    let mut known_command_ids = spec
+        .commands
+        .iter()
+        .map(|command| command.id.clone())
+        .collect::<HashSet<_>>();
+    for command in runtime.commands() {
+        if known_command_ids.insert(command.command_id.clone()) {
+            spec.commands.push(CommandSpec {
+                id: command.command_id.clone(),
+                title: command.title.clone(),
+            });
+        }
+    }
+
+    let mut known_root_ids = spec
+        .menu_roots
+        .iter()
+        .map(|root| root.id.clone())
+        .collect::<HashSet<_>>();
+    let mut known_menu_ids = spec
+        .menu_items
+        .iter()
+        .map(|item| item.id.clone())
+        .collect::<HashSet<_>>();
+
+    for item in runtime.menu_items() {
+        let Some((root_id, root_label)) = root_for_parent_surface(&item.parent_id) else {
+            if !known_root_ids.contains(&item.parent_id) {
+                continue;
+            }
+            if known_menu_ids.insert(item.menu_id.clone()) {
+                spec.menu_items.push(MenuItemSpec {
+                    id: item.menu_id.clone(),
+                    root_id: item.parent_id.clone(),
+                    label: item.title.clone(),
+                    command_id: item.command_id.clone(),
+                });
+            }
+            continue;
+        };
+
+        if known_root_ids.insert(root_id.to_string()) {
+            spec.menu_roots.push(MenuRootSpec {
+                id: root_id.to_string(),
+                label: root_label.to_string(),
+            });
+        }
+
+        if known_menu_ids.insert(item.menu_id.clone()) {
+            spec.menu_items.push(MenuItemSpec {
+                id: item.menu_id.clone(),
+                root_id: root_id.to_string(),
+                label: item.title.clone(),
+                command_id: item.command_id.clone(),
+            });
+        }
+    }
+}
+
+fn root_for_parent_surface(parent_id: &str) -> Option<(&'static str, &'static str)> {
+    match parent_id {
+        "maruzzella.menu.file.items" => Some(("file", "File")),
+        "maruzzella.menu.help.items" => Some(("help", "Help")),
+        "maruzzella.menu.view.items" => Some(("view", "View")),
+        _ => None,
     }
 }
 
@@ -160,5 +232,48 @@ pub fn default_product_spec() -> ProductSpec {
         commands,
         toolbar_items,
         layout,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugins::{
+        PluginRuntime, RegisteredCommand, RegisteredMenuItem, RegisteredSurfaceContribution,
+    };
+
+    #[test]
+    fn merges_plugin_commands_and_surface_backed_menu_roots() {
+        let runtime = PluginRuntime {
+            plugins: Vec::new(),
+            activation_order: vec!["maruzzella.base".to_string()],
+            commands: vec![RegisteredCommand {
+                plugin_id: "maruzzella.base".to_string(),
+                command_id: "shell.plugins".to_string(),
+                title: "Plugins".to_string(),
+            }],
+            menu_items: vec![RegisteredMenuItem {
+                plugin_id: "maruzzella.base".to_string(),
+                menu_id: "plugins".to_string(),
+                parent_id: "maruzzella.menu.file.items".to_string(),
+                title: "Plugins".to_string(),
+                command_id: "shell.plugins".to_string(),
+            }],
+            surface_contributions: vec![RegisteredSurfaceContribution {
+                plugin_id: "maruzzella.base".to_string(),
+                surface_id: "maruzzella.about.sections".to_string(),
+                contribution_id: "base.about".to_string(),
+                payload: Vec::new(),
+            }],
+            view_factories: Vec::new(),
+            logs: Vec::new(),
+        };
+
+        let mut spec = default_product_spec().shell_spec();
+        merge_plugin_runtime(&mut spec, &runtime);
+
+        assert!(spec.commands.iter().any(|command| command.id == "shell.plugins"));
+        assert!(spec.menu_roots.iter().any(|root| root.id == "file"));
+        assert!(spec.menu_items.iter().any(|item| item.id == "plugins" && item.root_id == "file"));
     }
 }

@@ -121,13 +121,13 @@ pub struct PluginLogEntry {
 
 #[derive(Debug)]
 pub struct PluginRuntime {
-    plugins: Vec<LoadedPlugin>,
-    activation_order: Vec<String>,
-    commands: Vec<RegisteredCommand>,
-    menu_items: Vec<RegisteredMenuItem>,
-    surface_contributions: Vec<RegisteredSurfaceContribution>,
-    view_factories: Vec<RegisteredViewFactory>,
-    logs: Vec<PluginLogEntry>,
+    pub(crate) plugins: Vec<LoadedPlugin>,
+    pub(crate) activation_order: Vec<String>,
+    pub(crate) commands: Vec<RegisteredCommand>,
+    pub(crate) menu_items: Vec<RegisteredMenuItem>,
+    pub(crate) surface_contributions: Vec<RegisteredSurfaceContribution>,
+    pub(crate) view_factories: Vec<RegisteredViewFactory>,
+    pub(crate) logs: Vec<PluginLogEntry>,
 }
 
 impl PluginRuntime {

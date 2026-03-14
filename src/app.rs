@@ -8,6 +8,8 @@ use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
 use crate::MaruzzellaConfig;
 use crate::commands;
 use crate::layout::{self, PersistedShell};
+use crate::plugins::{load_plugin, PluginRuntime};
+use crate::product;
 use crate::shell::topbar;
 use crate::shell::workbench_custom::{self, BuiltCustomWorkbenchGroup, CustomWorkbenchGroupHandle};
 use crate::spec::{ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec};
@@ -22,7 +24,11 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
         &config.persistence_id,
         &config.product.shell_spec(),
     )));
-    let spec = state.borrow().spec.clone();
+    let mut spec = state.borrow().spec.clone();
+    let plugin_runtime = build_plugin_runtime(config);
+    if let Some(runtime) = plugin_runtime.as_ref() {
+        product::merge_plugin_runtime(&mut spec, runtime);
+    }
 
     let window = ApplicationWindow::builder()
         .application(application)
@@ -39,7 +45,38 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
     root.append(&topbar::build(&spec).root);
     root.append(&build_shell(state, config.persistence_id.clone()));
     window.set_child(Some(&root));
+    if let Some(runtime) = plugin_runtime {
+        unsafe {
+            window.set_data("maruzzella-plugin-runtime", runtime);
+        }
+    }
     window.present();
+}
+
+fn build_plugin_runtime(config: &MaruzzellaConfig) -> Option<PluginRuntime> {
+    if config.plugin_paths.is_empty() {
+        return None;
+    }
+
+    let mut plugins = Vec::new();
+    for path in &config.plugin_paths {
+        match load_plugin(path) {
+            Ok(plugin) => plugins.push(plugin),
+            Err(error) => eprintln!("failed to load plugin {}: {error:?}", path.display()),
+        }
+    }
+
+    if plugins.is_empty() {
+        return None;
+    }
+
+    match PluginRuntime::activate(plugins) {
+        Ok(runtime) => Some(runtime),
+        Err(error) => {
+            eprintln!("failed to activate plugins: {error:?}");
+            None
+        }
+    }
 }
 
 fn build_shell(state: ShellState, persistence_id: String) -> gtk::Widget {

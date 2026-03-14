@@ -99,3 +99,9 @@ The shell model in `src/spec.rs` is serializable, so layouts can be generated or
 ## Design Notes
 
 The first plugin ABI draft lives in [docs/plugin-abi-rfc.md](/home/lelloman/lelloprojects/maruzzella/docs/plugin-abi-rfc.md).
+
+The workspace now also contains:
+
+- `maruzzella_api`: ABI-safe plugin boundary types
+- `maruzzella_sdk`: ergonomic Rust helpers and export macro for plugin authors
+- `plugins/example_plugin`: sample `cdylib` plugin using the SDK

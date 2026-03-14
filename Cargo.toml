@@ -1,3 +1,6 @@
+[workspace]
+members = ["maruzzella_api", "maruzzella_sdk", "plugins/example_plugin"]
+
 [package]
 name = "maruzzella"
 version = "0.1.0"

@@ -5,6 +5,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
 
+use crate::MaruzzellaConfig;
 use crate::commands;
 use crate::layout::{self, PersistedShell};
 use crate::shell::topbar;
@@ -14,10 +15,13 @@ use crate::theme;
 
 type ShellState = Rc<RefCell<PersistedShell>>;
 
-pub fn build(application: &Application) {
+pub fn build(application: &Application, config: &MaruzzellaConfig) {
     theme::load();
 
-    let state = Rc::new(RefCell::new(layout::load()));
+    let state = Rc::new(RefCell::new(layout::load(
+        &config.persistence_id,
+        &config.product.shell_spec(),
+    )));
     let spec = state.borrow().spec.clone();
 
     let window = ApplicationWindow::builder()
@@ -33,17 +37,22 @@ pub fn build(application: &Application) {
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("app-root");
     root.append(&topbar::build(&spec).root);
-    root.append(&build_shell(state));
+    root.append(&build_shell(state, config.persistence_id.clone()));
     window.set_child(Some(&root));
     window.present();
 }
 
-fn build_shell(state: ShellState) -> gtk::Widget {
+fn build_shell(state: ShellState, persistence_id: String) -> gtk::Widget {
     let spec = state.borrow().spec.clone();
-    let left = build_group(&spec.left_panel, state.clone());
-    let right = build_group(&spec.right_panel, state.clone());
-    let bottom = build_group(&spec.bottom_panel, state.clone());
-    let workbench = build_workbench_node(&spec.workbench, state.clone(), "workbench-root");
+    let left = build_group(&spec.left_panel, state.clone(), persistence_id.clone());
+    let right = build_group(&spec.right_panel, state.clone(), persistence_id.clone());
+    let bottom = build_group(&spec.bottom_panel, state.clone(), persistence_id.clone());
+    let workbench = build_workbench_node(
+        &spec.workbench,
+        state.clone(),
+        persistence_id.clone(),
+        "workbench-root",
+    );
 
     let horizontal = Paned::new(Orientation::Horizontal);
     horizontal.set_wide_handle(true);
@@ -52,7 +61,7 @@ fn build_shell(state: ShellState) -> gtk::Widget {
     horizontal.set_start_child(Some(&left.root));
     horizontal.set_end_child(Some(&workbench));
     restore_pane_position(&horizontal, &state, "shell.horizontal", 280);
-    persist_pane_position(&horizontal, state.clone(), "shell.horizontal");
+    persist_pane_position(&horizontal, state.clone(), persistence_id.clone(), "shell.horizontal");
 
     let vertical = Paned::new(Orientation::Vertical);
     vertical.set_wide_handle(true);
@@ -61,7 +70,7 @@ fn build_shell(state: ShellState) -> gtk::Widget {
     vertical.set_start_child(Some(&horizontal));
     vertical.set_end_child(Some(&bottom.root));
     restore_pane_position(&vertical, &state, "shell.vertical", 720);
-    persist_pane_position(&vertical, state.clone(), "shell.vertical");
+    persist_pane_position(&vertical, state.clone(), persistence_id.clone(), "shell.vertical");
 
     let outer = Paned::new(Orientation::Horizontal);
     outer.set_wide_handle(true);
@@ -70,24 +79,42 @@ fn build_shell(state: ShellState) -> gtk::Widget {
     outer.set_start_child(Some(&vertical));
     outer.set_end_child(Some(&right.root));
     restore_pane_position(&outer, &state, "shell.outer", 1260);
-    persist_pane_position(&outer, state, "shell.outer");
+    persist_pane_position(&outer, state, persistence_id, "shell.outer");
     outer.upcast::<gtk::Widget>()
 }
 
-fn build_group(group: &TabGroupSpec, state: ShellState) -> BuiltCustomWorkbenchGroup {
+fn build_group(
+    group: &TabGroupSpec,
+    state: ShellState,
+    persistence_id: String,
+) -> BuiltCustomWorkbenchGroup {
     let built = workbench_custom::build_group(&group.id, &group.tabs, group.active_tab_id.as_deref());
-    install_group_persistence(&built.handle, state);
+    install_group_persistence(&built.handle, state, persistence_id);
     built
 }
 
-fn build_workbench_node(node: &WorkbenchNodeSpec, state: ShellState, path: &str) -> gtk::Widget {
+fn build_workbench_node(
+    node: &WorkbenchNodeSpec,
+    state: ShellState,
+    persistence_id: String,
+    path: &str,
+) -> gtk::Widget {
     match node {
-        WorkbenchNodeSpec::Group(group) => build_group(group, state).root.upcast::<gtk::Widget>(),
+        WorkbenchNodeSpec::Group(group) => {
+            build_group(group, state, persistence_id).root.upcast::<gtk::Widget>()
+        }
         WorkbenchNodeSpec::Split { axis, children } => {
             let mut child_widgets = children
                 .iter()
                 .enumerate()
-                .map(|(index, child)| build_workbench_node(child, state.clone(), &format!("{path}:{index}")))
+                .map(|(index, child)| {
+                    build_workbench_node(
+                        child,
+                        state.clone(),
+                        persistence_id.clone(),
+                        &format!("{path}:{index}"),
+                    )
+                })
                 .collect::<Vec<_>>();
             let first = child_widgets.remove(0);
             let mut current = first;
@@ -103,7 +130,7 @@ fn build_workbench_node(node: &WorkbenchNodeSpec, state: ShellState, path: &str)
                 paned.set_end_child(Some(&child));
                 let pane_id = format!("{path}:split:{index}");
                 restore_pane_position(&paned, &state, &pane_id, 520);
-                persist_pane_position(&paned, state.clone(), &pane_id);
+                persist_pane_position(&paned, state.clone(), persistence_id.clone(), &pane_id);
                 current = paned.upcast::<gtk::Widget>();
             }
             current
@@ -111,21 +138,31 @@ fn build_workbench_node(node: &WorkbenchNodeSpec, state: ShellState, path: &str)
     }
 }
 
-fn install_group_persistence(handle: &CustomWorkbenchGroupHandle, state: ShellState) {
+fn install_group_persistence(
+    handle: &CustomWorkbenchGroupHandle,
+    state: ShellState,
+    persistence_id: String,
+) {
     let handle_for_active = handle.clone();
     let state_for_active = state.clone();
+    let persistence_id_for_active = persistence_id.clone();
     handle.set_active_changed_handler(move |_| {
-        sync_group_into_state(&state_for_active, &handle_for_active);
+        sync_group_into_state(&state_for_active, &handle_for_active, &persistence_id_for_active);
     });
 
     let handle_for_drag = handle.clone();
     let state_for_drag = state;
+    let persistence_id_for_drag = persistence_id;
     handle.set_drag_end_handler(move || {
-        sync_group_into_state(&state_for_drag, &handle_for_drag);
+        sync_group_into_state(&state_for_drag, &handle_for_drag, &persistence_id_for_drag);
     });
 }
 
-fn sync_group_into_state(state: &ShellState, handle: &CustomWorkbenchGroupHandle) {
+fn sync_group_into_state(
+    state: &ShellState,
+    handle: &CustomWorkbenchGroupHandle,
+    persistence_id: &str,
+) {
     let group_id = handle.group_id().to_string();
     let tab_ids = handle.tab_ids();
     let active_tab_id = handle.active_tab_id();
@@ -142,7 +179,7 @@ fn sync_group_into_state(state: &ShellState, handle: &CustomWorkbenchGroupHandle
         }
     }
 
-    persist_state(state);
+    persist_state(state, persistence_id);
 }
 
 fn sync_group_spec(
@@ -212,7 +249,12 @@ fn restore_pane_position(paned: &Paned, state: &ShellState, pane_id: &str, defau
     paned.set_position(position);
 }
 
-fn persist_pane_position(paned: &Paned, state: ShellState, pane_id: &str) {
+fn persist_pane_position(
+    paned: &Paned,
+    state: ShellState,
+    persistence_id: String,
+    pane_id: &str,
+) {
     let pane_id = pane_id.to_string();
     paned.connect_position_notify(move |paned| {
         state
@@ -220,11 +262,11 @@ fn persist_pane_position(paned: &Paned, state: ShellState, pane_id: &str) {
             .panes
             .positions
             .insert(pane_id.clone(), paned.position());
-        persist_state(&state);
+        persist_state(&state, &persistence_id);
     });
 }
 
-fn persist_state(state: &ShellState) {
+fn persist_state(state: &ShellState, persistence_id: &str) {
     let snapshot = state.borrow().clone();
-    layout::save(&snapshot);
+    layout::save(persistence_id, &snapshot);
 }

@@ -27,16 +27,22 @@ impl Default for PersistedShell {
     }
 }
 
-pub fn load() -> PersistedShell {
-    let path = path();
+pub fn load(persistence_id: &str, default_spec: &ShellSpec) -> PersistedShell {
+    let path = path(persistence_id);
     let Ok(raw) = fs::read_to_string(&path) else {
-        return PersistedShell::default();
+        return PersistedShell {
+            spec: default_spec.clone(),
+            panes: PanePositions::default(),
+        };
     };
-    serde_json::from_str(&raw).unwrap_or_else(|_| PersistedShell::default())
+    serde_json::from_str(&raw).unwrap_or_else(|_| PersistedShell {
+        spec: default_spec.clone(),
+        panes: PanePositions::default(),
+    })
 }
 
-pub fn save(shell: &PersistedShell) {
-    let path = path();
+pub fn save(persistence_id: &str, shell: &PersistedShell) {
+    let path = path(persistence_id);
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -45,9 +51,9 @@ pub fn save(shell: &PersistedShell) {
     }
 }
 
-fn path() -> PathBuf {
+pub fn path(persistence_id: &str) -> PathBuf {
     let mut path = config_root();
-    path.push("maruzzella");
+    path.push(persistence_id);
     path.push("layout.json");
     path
 }

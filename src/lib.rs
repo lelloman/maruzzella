@@ -9,9 +9,49 @@ pub mod theme;
 use gtk::prelude::*;
 use gtk::Application;
 
-pub fn build_application(application_id: &str) -> Application {
-    build_application_with_activate(application_id, |application| {
-        app::build(application);
+pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
+pub use spec::{
+    text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, PanelContentKind, ShellSpec, SplitAxis,
+    TabGroupSpec, TabSpec, ToolbarItemSpec, WorkbenchNodeSpec,
+};
+
+#[derive(Clone, Debug)]
+pub struct MaruzzellaConfig {
+    pub application_id: String,
+    pub persistence_id: String,
+    pub product: ProductSpec,
+}
+
+impl Default for MaruzzellaConfig {
+    fn default() -> Self {
+        Self::new("com.lelloman.maruzzella")
+    }
+}
+
+impl MaruzzellaConfig {
+    pub fn new(application_id: &str) -> Self {
+        Self {
+            application_id: application_id.to_string(),
+            persistence_id: "maruzzella".to_string(),
+            product: default_product_spec(),
+        }
+    }
+
+    pub fn with_persistence_id(mut self, persistence_id: &str) -> Self {
+        self.persistence_id = persistence_id.to_string();
+        self
+    }
+
+    pub fn with_product(mut self, product: ProductSpec) -> Self {
+        self.product = product;
+        self
+    }
+}
+
+pub fn build_application(config: MaruzzellaConfig) -> Application {
+    let config_for_activate = config.clone();
+    build_application_with_activate(&config.application_id, move |application| {
+        app::build(application, &config_for_activate);
     })
 }
 
@@ -29,5 +69,9 @@ where
 }
 
 pub fn run_default() {
-    build_application("com.lelloman.maruzzella").run();
+    run(MaruzzellaConfig::default());
+}
+
+pub fn run(config: MaruzzellaConfig) {
+    build_application(config).run();
 }

@@ -4,6 +4,7 @@ use gtk::{
     Align, Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar, Separator,
 };
 
+use crate::commands::CommandRegistry;
 use crate::spec::{command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarItemSpec};
 
 pub struct TopBar {
@@ -127,12 +128,21 @@ fn submenu(items: &[MenuItemSpec]) -> gio::Menu {
     submenu
 }
 
-pub fn install_actions(window: &gtk::ApplicationWindow, spec: &ShellSpec) {
+pub fn install_actions(
+    window: &gtk::ApplicationWindow,
+    spec: &ShellSpec,
+    registry: &CommandRegistry,
+) {
     for command in &spec.commands {
         let simple = gio::SimpleAction::new(&command_name(&command.id), None);
+        let handler = registry.handler_for(&command.id);
         let title = command.title.clone();
         simple.connect_activate(move |_, _| {
-            eprintln!("action triggered: {title}");
+            if let Some(handler) = handler.as_ref() {
+                handler();
+            } else {
+                eprintln!("unhandled command: {title}");
+            }
         });
         window.add_action(&simple);
     }

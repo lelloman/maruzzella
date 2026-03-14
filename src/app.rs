@@ -5,6 +5,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
 
+use crate::commands;
 use crate::layout::{self, PersistedShell};
 use crate::shell::topbar;
 use crate::shell::workbench_custom::{self, BuiltCustomWorkbenchGroup, CustomWorkbenchGroupHandle};
@@ -26,7 +27,8 @@ pub fn build(application: &Application) {
         .default_height(980)
         .build();
     window.add_css_class("app-window");
-    topbar::install_actions(&window, &spec);
+    let registry = commands::shell_registry(&window, &spec);
+    topbar::install_actions(&window, &spec, &registry);
 
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("app-root");

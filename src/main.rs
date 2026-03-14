@@ -1,4 +1,5 @@
 mod app;
+mod commands;
 mod layout;
 mod shell;
 mod spec;

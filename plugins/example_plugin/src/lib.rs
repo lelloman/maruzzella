@@ -98,6 +98,10 @@ extern "C" fn create_example_view(
     _host: *const maruzzella_sdk::ffi::MzHostApi,
     _request: *const maruzzella_sdk::ffi::MzViewRequest,
 ) -> *mut std::ffi::c_void {
+    if !gtk::is_initialized_main_thread() && gtk::init().is_err() {
+        return std::ptr::null_mut();
+    }
+
     let root = GtkBox::new(Orientation::Vertical, 12);
     root.set_margin_top(18);
     root.set_margin_bottom(18);
@@ -124,7 +128,10 @@ extern "C" fn create_example_view(
     root.append(&body);
     root.append(&button);
 
-    root.upcast::<gtk::Widget>().into_glib_ptr() as *mut std::ffi::c_void
+    unsafe {
+        <gtk::Widget as IntoGlibPtr<*mut gtk::ffi::GtkWidget>>::into_glib_ptr(root.upcast())
+            as *mut std::ffi::c_void
+    }
 }
 
 export_plugin!(ExamplePlugin);

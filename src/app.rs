@@ -21,6 +21,9 @@ use crate::theme;
 
 type ShellState = Rc<RefCell<PersistedShell>>;
 
+const MIN_SIDE_PANEL_WIDTH: i32 = 220;
+const MIN_BOTTOM_PANEL_HEIGHT: i32 = 140;
+
 pub fn build(application: &Application, config: &MaruzzellaConfig) {
     theme::load();
 
@@ -86,18 +89,21 @@ fn build_shell(
         persistence_id.clone(),
         plugin_runtime.clone(),
     );
+    left.root.set_size_request(MIN_SIDE_PANEL_WIDTH, -1);
     let right = build_group(
         &spec.right_panel,
         state.clone(),
         persistence_id.clone(),
         plugin_runtime.clone(),
     );
+    right.root.set_size_request(MIN_SIDE_PANEL_WIDTH, -1);
     let bottom = build_group(
         &spec.bottom_panel,
         state.clone(),
         persistence_id.clone(),
         plugin_runtime.clone(),
     );
+    bottom.root.set_size_request(-1, MIN_BOTTOM_PANEL_HEIGHT);
     let workbench = build_workbench_node(
         &spec.workbench,
         state.clone(),
@@ -110,6 +116,7 @@ fn build_shell(
     horizontal.set_wide_handle(true);
     horizontal.set_resize_start_child(true);
     horizontal.set_resize_end_child(true);
+    horizontal.set_shrink_start_child(false);
     horizontal.set_start_child(Some(&left.root));
     horizontal.set_end_child(Some(&workbench));
     restore_pane_position(&horizontal, &state, "shell.horizontal", 280);
@@ -119,6 +126,7 @@ fn build_shell(
     vertical.set_wide_handle(true);
     vertical.set_resize_start_child(true);
     vertical.set_resize_end_child(true);
+    vertical.set_shrink_end_child(false);
     vertical.set_start_child(Some(&horizontal));
     vertical.set_end_child(Some(&bottom.root));
     restore_pane_position(&vertical, &state, "shell.vertical", 720);
@@ -128,6 +136,7 @@ fn build_shell(
     outer.set_wide_handle(true);
     outer.set_resize_start_child(true);
     outer.set_resize_end_child(true);
+    outer.set_shrink_end_child(false);
     outer.set_start_child(Some(&vertical));
     outer.set_end_child(Some(&right.root));
     restore_pane_position(&outer, &state, "shell.outer", 1260);

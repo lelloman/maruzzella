@@ -17,6 +17,8 @@ Implemented so far:
 7. host-side plugin activation runtime
 8. plugin runtime integration into app startup
 9. plugin command dispatch from GTK actions into plugin handlers
+10. plugin-backed tab views
+11. built-in `maruzzella.base` plugin for `About` and `Plugins` shell contributions
 
 These pieces are enough to prove the basic architecture:
 
@@ -26,12 +28,12 @@ These pieces are enough to prove the basic architecture:
 - Maruzzella loads and activates plugins
 - plugins can contribute commands and menus
 - plugin commands can execute real code
+- plugins can mount real GTK widgets into shell tabs
+- core shell behavior can begin moving behind the plugin runtime
 
 What is still explicitly not done:
 
-- the shell renderer does not yet instantiate plugin-provided GTK widgets
-- default UI content is still mostly placeholder `ProductSpec` tabs
-- there is no built-in `maruzzella.base` plugin yet
+- default UI content is still mostly placeholder `ProductSpec` tabs outside the new plugin-view path
 - plugin manager UI and plugin configuration storage do not exist yet
 
 ## Guiding Direction
@@ -70,11 +72,17 @@ Goal:
 
 - move core shell behavior out of hardcoded host logic and into `maruzzella.base`
 
+Status:
+
+- started
+- `maruzzella.base` now registers built-in `About` and `Plugins` shell commands/menu items
+- host-side dialogs and handlers still exist in core while the command/menu declarations come from the plugin
+
 Work:
 
 - define `maruzzella.base`
 - make top-level menu roots effectively plugin-driven
-- move `Plugins` and `About` commands/menu items into the base plugin
+- move more shell-owned commands/menu items out of `default_product_spec()`
 - move shell contribution surfaces into the base plugin or shared API as appropriate
 
 Exit condition:
@@ -173,15 +181,14 @@ Exit condition:
 
 ## Immediate Next Step
 
-The next implementation target should be **Plugin Views**.
+The next implementation target should be **Contribution Surfaces**.
 
 Reason:
 
-- commands are now executable
-- menus are now live
-- the next missing piece is real plugin-provided UI
-- without views, plugins still cannot meaningfully inhabit the shell
-- once views exist, the base plugin and plugin manager become worth building
+- commands, menus, and plugin-backed views are now live
+- the base plugin exists, but shared shell contracts are still ad hoc
+- structured surfaces are the next step before settings/config pages become clean
+- richer plugin manager UI depends on those surfaces being explicit
 
 ## Notes On Sequencing
 

@@ -81,6 +81,19 @@ impl LoadedPlugin {
     pub fn vtable(&self) -> &'static MzPluginVTable {
         self.vtable
     }
+
+    pub(crate) fn from_static_vtable(
+        path: impl Into<PathBuf>,
+        descriptor: PluginDescriptor,
+        vtable: &'static MzPluginVTable,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            descriptor,
+            vtable,
+            _library: current_process_library(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -859,6 +872,19 @@ fn bytes_to_vec(bytes: MzBytes) -> Vec<u8> {
         Vec::new()
     } else {
         unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) }.to_vec()
+    }
+}
+
+fn current_process_library() -> Library {
+    #[cfg(unix)]
+    {
+        libloading::os::unix::Library::this().into()
+    }
+    #[cfg(windows)]
+    {
+        libloading::os::windows::Library::this()
+            .expect("current process library should be loadable")
+            .into()
     }
 }
 

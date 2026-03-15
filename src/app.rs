@@ -5,6 +5,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
 
+use crate::base_plugin;
 use crate::MaruzzellaConfig;
 use crate::commands;
 use crate::layout::{self, PersistedShell};
@@ -58,20 +59,12 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
 }
 
 fn build_plugin_runtime(config: &MaruzzellaConfig) -> Option<PluginRuntime> {
-    if config.plugin_paths.is_empty() {
-        return None;
-    }
-
-    let mut plugins = Vec::new();
+    let mut plugins = vec![base_plugin::load()];
     for path in &config.plugin_paths {
         match load_plugin(path) {
             Ok(plugin) => plugins.push(plugin),
             Err(error) => eprintln!("failed to load plugin {}: {error:?}", path.display()),
         }
-    }
-
-    if plugins.is_empty() {
-        return None;
     }
 
     match PluginRuntime::activate(plugins) {

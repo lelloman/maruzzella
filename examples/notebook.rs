@@ -9,9 +9,9 @@ fn main() {
     product.branding.search_placeholder = "Search notes, boards, and logs".to_string();
     product.branding.status_text = "Example app built on Maruzzella".to_string();
 
-    product.menu_roots[0].label = "Notebook".to_string();
-    product.menu_items[1].label = "About Notebook".to_string();
-    product.commands[2].title = "About Notebook".to_string();
+    if let Some(view_root) = product.menu_roots.iter_mut().find(|root| root.id == "view") {
+        view_root.label = "View".to_string();
+    }
 
     product.layout.left_panel = TabGroupSpec::new(
         "panel-left",

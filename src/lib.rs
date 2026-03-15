@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 pub mod app;
+pub mod base_plugin;
 pub mod commands;
 pub mod layout;
 pub mod plugins;

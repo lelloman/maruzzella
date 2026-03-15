@@ -12,9 +12,10 @@ Today the project is in an intermediate but coherent state:
 - layout persistence is working
 - the public crate API is usable by downstream apps
 - the first plugin ABI/runtime slice is working for loading plugins, resolving dependencies, merging commands and menus, and dispatching plugin commands
-- the shell UI is still mostly driven by placeholder `ProductSpec` tabs rather than real plugin-owned views
+- a built-in `maruzzella.base` plugin now provides core `About` and `Plugins` shell commands/menu entries
+- plugin-backed GTK views can now be mounted into tabs, but most default shell content is still placeholder `ProductSpec` content
 
-That means the plugin architecture is proven, but plugins do not yet meaningfully inhabit the shell UI.
+That means the plugin architecture is proven and plugins can now inhabit the shell UI, but most shared shell contracts are still not formalized.
 
 ## What It Does
 
@@ -131,6 +132,7 @@ The workspace now also contains:
 
 - `maruzzella_api`: ABI-safe plugin boundary types
 - `maruzzella_sdk`: ergonomic Rust helpers and export macro for plugin authors
+- `maruzzella.base`: built-in plugin providing core shell commands and menu contributions
 - `plugins/example_plugin`: sample `cdylib` plugin using the SDK
 
 On the host side, `maruzzella` now exposes the first loading and activation primitives:
@@ -143,8 +145,6 @@ Plugin commands are now executable, not just declarative metadata: a plugin can 
 
 What is not done yet:
 
-- plugin-provided GTK views are not yet wired into tab construction
-- `maruzzella.base` does not exist yet as a built-in plugin
 - plugin manager UI, plugin settings surfaces, and plugin-owned persistence are still planned work
 
-The next implementation target is [docs/implementation-roadmap.md](/home/lelloman/lelloprojects/maruzzella/docs/implementation-roadmap.md): **Plugin Views**.
+Plugin views are now wired, so the next major targets in [docs/implementation-roadmap.md](/home/lelloman/lelloprojects/maruzzella/docs/implementation-roadmap.md) are deeper contribution surfaces, richer plugin management UI, and plugin-owned configuration/persistence.

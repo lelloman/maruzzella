@@ -127,7 +127,6 @@ pub fn default_product_spec() -> ProductSpec {
     let commands = vec![
         CommandSpec { id: "shell.open_command_palette".to_string(), title: "Command Palette".to_string() },
         CommandSpec { id: "shell.reload_theme".to_string(), title: "Reload Theme".to_string() },
-        CommandSpec { id: "shell.about".to_string(), title: "About Maruzzella".to_string() },
     ];
     let toolbar_items = vec![
         ToolbarItemSpec {
@@ -152,22 +151,13 @@ pub fn default_product_spec() -> ProductSpec {
             secondary: true,
         },
     ];
-    let menu_roots = vec![
-        MenuRootSpec { id: "app".to_string(), label: "Maruzzella".to_string() },
-        MenuRootSpec { id: "view".to_string(), label: "View".to_string() },
-    ];
+    let menu_roots = vec![MenuRootSpec { id: "view".to_string(), label: "View".to_string() }];
     let menu_items = vec![
         MenuItemSpec {
             id: "command-palette".to_string(),
-            root_id: "app".to_string(),
+            root_id: "view".to_string(),
             label: "Command Palette".to_string(),
             command_id: "shell.open_command_palette".to_string(),
-        },
-        MenuItemSpec {
-            id: "about".to_string(),
-            root_id: "app".to_string(),
-            label: "About Maruzzella".to_string(),
-            command_id: "shell.about".to_string(),
         },
         MenuItemSpec {
             id: "reload-theme".to_string(),

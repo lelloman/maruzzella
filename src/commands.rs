@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::{ApplicationWindow, Box as GtkBox, Dialog, Label, Orientation, ResponseType};
+use gtk::{ApplicationWindow, Box as GtkBox, Dialog, Label, Orientation, ResponseType, Separator};
 
 use crate::plugins::PluginRuntime;
 use crate::spec::{CommandSpec, ShellSpec};
@@ -63,6 +63,12 @@ pub fn shell_registry(
         present_command_palette(&palette_window, &commands);
     });
 
+    let plugins_window = window.clone();
+    let runtime_for_plugins = plugin_runtime.clone();
+    registry.register("shell.plugins", move || {
+        present_plugins_dialog(&plugins_window, runtime_for_plugins.as_deref());
+    });
+
     if let Some(plugin_runtime) = plugin_runtime {
         for command in &spec.commands {
             if registry.handler_for(&command.id).is_some() {
@@ -105,6 +111,65 @@ fn present_command_palette(window: &ApplicationWindow, commands: &[CommandSpec])
         label.set_xalign(0.0);
         label.add_css_class("mono");
         layout.append(&label);
+    }
+
+    body.append(&layout);
+    dialog.connect_response(|dialog, _| {
+        dialog.close();
+    });
+    dialog.present();
+}
+
+fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRuntime>) {
+    let dialog = Dialog::builder()
+        .transient_for(window)
+        .modal(true)
+        .title("Plugins")
+        .default_width(560)
+        .default_height(420)
+        .build();
+    dialog.add_button("Close", ResponseType::Close);
+
+    let body = dialog.content_area();
+    body.set_spacing(12);
+
+    let layout = GtkBox::new(Orientation::Vertical, 12);
+    let summary = Label::new(Some("Loaded plugins"));
+    summary.set_xalign(0.0);
+    summary.add_css_class("section-title");
+    layout.append(&summary);
+
+    if let Some(runtime) = runtime {
+        for plugin in runtime.plugins() {
+            let descriptor = plugin.descriptor();
+
+            let title = Label::new(Some(&format!(
+                "{} ({})",
+                descriptor.name, descriptor.id
+            )));
+            title.set_xalign(0.0);
+            title.add_css_class("mono");
+
+            let version = Label::new(Some(&format!("version {}", descriptor.version)));
+            version.set_xalign(0.0);
+            version.add_css_class("muted");
+
+            layout.append(&title);
+            layout.append(&version);
+
+            if !descriptor.description.is_empty() {
+                let description = Label::new(Some(&descriptor.description));
+                description.set_xalign(0.0);
+                description.set_wrap(true);
+                layout.append(&description);
+            }
+
+            layout.append(&Separator::new(Orientation::Horizontal));
+        }
+    } else {
+        let empty = Label::new(Some("No plugin runtime is active."));
+        empty.set_xalign(0.0);
+        layout.append(&empty);
     }
 
     body.append(&layout);

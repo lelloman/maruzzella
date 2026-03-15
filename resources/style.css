@@ -1,16 +1,16 @@
-@define-color bg_0 #1f2124;
-@define-color bg_1 #2a2d31;
-@define-color workbench #1e1f22;
-@define-color panel_left #2b2d30;
-@define-color panel_right #2b2d30;
-@define-color panel_bottom #17181c;
-@define-color border #34383e;
-@define-color border_strong #4d5360;
-@define-color text_0 #d3d8df;
-@define-color text_1 #adb4bf;
-@define-color text_2 #727a86;
-@define-color accent #4b78c2;
-@define-color accent_strong #5d9bff;
+@define-color bg_0 {{color_bg_0}};
+@define-color bg_1 {{color_bg_1}};
+@define-color workbench {{color_workbench}};
+@define-color panel_left {{color_panel_left}};
+@define-color panel_right {{color_panel_right}};
+@define-color panel_bottom {{color_panel_bottom}};
+@define-color border {{color_border}};
+@define-color border_strong {{color_border_strong}};
+@define-color text_0 {{color_text_0}};
+@define-color text_1 {{color_text_1}};
+@define-color text_2 {{color_text_2}};
+@define-color accent {{color_accent}};
+@define-color accent_strong {{color_accent_strong}};
 
 window,
 .app-window,
@@ -22,8 +22,8 @@ stack,
 grid {
   background: @bg_0;
   color: @text_1;
-  font-size: 14px;
-  font-family: "JetBrains Sans", "Noto Sans", "Cantarell", sans-serif;
+  font-size: {{font_size_base}};
+  font-family: {{font_family_base}};
 }
 
 label {
@@ -63,149 +63,149 @@ undershoot.left {
 }
 
 .app-window {
-  background: #1e1f22;
+  background: {{color_app_shell}};
 }
 
 .app-root {
-  background: #1e1f22;
+  background: {{color_app_shell}};
 }
 
 .shell-frame {
-  background: #1e1f22;
+  background: {{color_app_shell}};
 }
 
 .topbar-shell {
-  background: #2a2c2f;
-  border-bottom: 1px solid #31343a;
+  background: {{color_topbar}};
+  border-bottom: {{topbar_border}};
 }
 
 .window-strip {
-  min-height: 23px;
-  padding: 0 6px;
-  background: #2a2c2f;
-  border-bottom: 1px solid #303339;
+  min-height: {{window_strip_height}};
+  padding: 0 {{space_window_strip_inline}};
+  background: {{color_topbar}};
+  border-bottom: {{window_strip_border}};
 }
 
 .window-title,
 .window-branch,
 .window-target {
-  font-size: 13px;
-  color: #99a2af;
+  font-size: {{font_size_ui}};
+  color: {{color_window_meta}};
 }
 
 .window-title {
-  color: #c9ced6;
+  color: {{color_window_title}};
 }
 
 .window-branch {
-  padding: 0 4px;
+  padding: {{window_branch_padding}};
   border-radius: 0;
-  background: #303338;
+  background: {{color_window_branch_bg}};
   border: 0;
 }
 
 .window-controls {
-  spacing: 2px;
+  spacing: {{window_controls_spacing}};
 }
 
 .menu-bar {
-  min-height: 18px;
-  background: #23252a;
+  min-height: {{menu_bar_height}};
+  background: {{color_menu_bg}};
   border-bottom: 0;
-  padding: 0 4px;
+  padding: 0 {{space_menu_inline}};
 }
 
 .menu-bar > child > button,
 .menu-bar button {
-  min-height: 18px;
-  padding: 0 9px;
-  border-radius: 0;
+  min-height: {{control_height_small}};
+  padding: 0 {{space_menu_button_inline}};
+  border-radius: {{radius_none}};
   background: transparent;
   border: 0;
-  color: #9ea6b2;
-  font-size: 13px;
+  color: {{color_menu_text}};
+  font-size: {{font_size_ui}};
 }
 
 .menu-bar > child > button:hover,
 .menu-bar button:hover {
-  background: #343943;
+  background: {{color_menu_hover}};
   color: @text_0;
 }
 
 .studio-toolbar {
-  min-height: 40px;
-  padding: 8px 12px;
-  background: #26292e;
+  min-height: {{toolbar_height}};
+  padding: {{space_lg}} {{space_xl}};
+  background: {{color_toolbar_bg}};
   border-top: 0;
-  border-bottom: 1px solid #34383e;
+  border-bottom: {{toolbar_bottom_border}};
 }
 
 .toolbar-group {
-  padding: 3px;
-  border-radius: 10px;
-  background: #2d3137;
-  border: 1px solid #353a42;
+  padding: {{space_toolbar_group}};
+  border-radius: {{radius_large}};
+  background: {{color_toolbar_group}};
+  border: {{toolbar_group_border}};
 }
 
 .toolbar-group-primary {
-  spacing: 10px;
+  spacing: {{space_toolbar_group_primary}};
 }
 
 .toolbar-group-actions,
 .toolbar-utility-group {
-  background: #2b2f35;
+  background: {{color_toolbar_group_subtle}};
 }
 
 .toolbar-title-chip {
-  min-height: 28px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: #22252a;
-  border: 1px solid #353a42;
+  min-height: {{control_height_large}};
+  padding: 0 {{space_xl}};
+  border-radius: {{radius_medium}};
+  background: {{color_toolbar_title_chip}};
+  border: {{toolbar_group_border}};
 }
 
 .toolbar-title {
-  color: #c9d0d8;
-  font-size: 12px;
+  color: {{color_toolbar_title}};
+  font-size: {{font_size_small}};
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: {{toolbar_title_tracking}};
 }
 
 .toolbar-meta,
 .toolbar-status {
-  color: #8b93a0;
-  font-size: 12px;
+  color: {{color_toolbar_meta}};
+  font-size: {{font_size_small}};
 }
 
 .toolbar-status-cluster {
-  padding: 0 2px 0 8px;
+  padding: {{padding_toolbar_status_cluster}};
 }
 
 .toolbar-button,
 button {
-  min-height: 26px;
-  padding: 0 14px;
-  border-radius: 0;
+  min-height: {{control_height_button}};
+  padding: 0 {{space_button_inline}};
+  border-radius: {{radius_none}};
   background: transparent;
   border: 0;
-  color: #b5bcc7;
+  color: {{color_button_text}};
   box-shadow: none;
-  font-size: 13px;
+  font-size: {{font_size_ui}};
 }
 
 .toolbar-button:hover,
 button:hover {
-  background: #2a2e33;
+  background: {{color_button_hover}};
 }
 
 .toolbar-button:active,
 button:active {
-  background: #2b2f34;
+  background: {{color_button_active}};
 }
 
 .toolbar-button-label {
-  color: #b5bcc7;
-  font-size: 13px;
+  color: {{color_button_text}};
+  font-size: {{font_size_ui}};
   font-weight: 500;
 }
 
@@ -218,28 +218,28 @@ button:active {
 }
 
 .context-chip .toolbar-button-label {
-  color: #9ea6b2;
-  font-size: 12px;
+  color: {{color_menu_text}};
+  font-size: {{font_size_small}};
 }
 
 .context-chip image {
-  opacity: 0.62;
+  opacity: {{context_chip_icon_opacity}};
 }
 
 .project-chip {
-  padding-left: 10px;
-  padding-right: 10px;
+  padding-left: {{space_project_chip_inline}};
+  padding-right: {{space_project_chip_inline}};
 }
 
 .flat-chip {
-  min-height: 22px;
-  padding: 0 10px;
+  min-height: {{flat_chip_height}};
+  padding: {{flat_chip_padding}};
   background: transparent;
 }
 
 .flat-control {
-  min-height: 24px;
-  padding: 0 12px;
+  min-height: {{flat_control_height}};
+  padding: {{flat_control_padding}};
 }
 
 .muted-action {
@@ -247,120 +247,120 @@ button:active {
 }
 
 .muted-action .toolbar-button-label {
-  color: #a8afba;
+  color: {{color_muted_action_text}};
 }
 
 .muted-action:hover {
-  background: #2f3338;
+  background: {{color_muted_action_hover}};
 }
 
 .muted-action:active {
-  background: #292d31;
+  background: {{color_muted_action_active}};
 }
 
 .accent-action {
-  background: #383d45;
-  color: #d8dee8;
+  background: {{color_accent_action_bg}};
+  color: {{color_accent_action_text}};
 }
 
 .accent-action:hover {
-  background: #434952;
+  background: {{color_accent_action_hover}};
 }
 
 .nav-rail {
-  min-width: 24px;
-  padding: 6px 0;
-  background: #272a2f;
+  min-width: {{nav_rail_width}};
+  padding: {{nav_rail_padding}};
+  background: {{color_nav_rail_bg}};
   border-right: 0;
 }
 
 .nav-rail-group {
-  spacing: 4px;
+  spacing: {{space_nav_rail_group}};
 }
 
 .nav-rail separator {
-  background: #32363d;
-  min-height: 1px;
-  margin: 3px 0;
+  background: {{color_nav_separator}};
+  min-height: {{hairline_size}};
+  margin: {{nav_separator_margin}};
 }
 
 .nav-rail-button {
-  min-width: 28px;
-  min-height: 28px;
-  padding: 3px;
-  border-radius: 0;
+  min-width: {{nav_button_width}};
+  min-height: {{nav_button_height}};
+  padding: {{nav_button_padding}};
+  border-radius: {{radius_none}};
   background: transparent;
   border: 0;
-  color: #7f8895;
+  color: {{color_nav_button_text}};
 }
 
 .nav-rail image,
 .toolbar-button image,
 .toolbar-icon-button image,
 button image {
-  -gtk-icon-size: 16px;
+  -gtk-icon-size: {{icon_size}};
 }
 
 .nav-rail-button:hover {
-  background: #2c3036;
+  background: @border;
   color: @text_0;
 }
 
 .nav-rail-button:active {
-  background: #314a70;
-  color: #f3f8ff;
+  background: {{color_accent}};
+  color: {{color_selection_text}};
 }
 
 .toolbar-entry,
 .command-entry,
 entry {
-  min-height: 24px;
-  padding: 0 10px;
-  background: #26292e;
+  min-height: {{control_height_medium}};
+  padding: 0 {{space_entry_inline}};
+  background: {{color_entry_bg}};
   color: @text_0;
   border: 0;
-  border-radius: 0;
-  font-size: 13px;
+  border-radius: {{radius_none}};
+  font-size: {{font_size_ui}};
 }
 
 .toolbar-search {
-  min-width: 260px;
-  max-width: 340px;
-  background: #202328;
-  border: 1px solid #353a42;
-  border-radius: 8px;
-  padding: 0 14px;
+  min-width: {{search_width_min}};
+  max-width: {{search_width_max}};
+  background: {{color_search_bg}};
+  border: {{search_border}};
+  border-radius: {{radius_medium}};
+  padding: 0 {{space_search_inline}};
 }
 
 .toolbar-search:focus {
-  border: 1px solid #486a9e;
+  border: {{search_focus_border}};
   box-shadow: none;
-  background: #24282e;
+  background: {{color_search_focus_bg}};
 }
 
 .toolbar-icon-button {
-  min-width: 30px;
-  min-height: 30px;
-  padding: 4px 7px;
-  border-radius: 8px;
+  min-width: {{icon_button_width}};
+  min-height: {{icon_button_height}};
+  padding: {{icon_button_padding}};
+  border-radius: {{radius_medium}};
   background: transparent;
-  border: 1px solid transparent;
+  border: {{icon_button_border}};
 }
 
 .toolbar-icon-button:hover {
-  background: #383d45;
-  border-color: #444a54;
+  background: {{color_icon_button_hover}};
+  border-color: {{color_icon_button_hover_border}};
 }
 
 .toolbar-utility-group {
-  spacing: 4px;
+  spacing: {{space_utility_group}};
 }
 
 entry selection,
 textview selection,
 text selection {
-  background: #345278;
-  color: #f4f8fe;
+  background: {{color_selection_bg}};
+  color: {{color_selection_text}};
 }
 
 entry:focus {
@@ -369,18 +369,18 @@ entry:focus {
 }
 
 .command-entry {
-  min-width: 160px;
+  min-width: {{command_width_min}};
 }
 
 paned > separator,
 separator {
-  background: alpha(#3b4048, 0.22);
-  min-width: 8px;
-  min-height: 8px;
+  background: alpha({{color_separator_fill}}, {{separator_alpha}});
+  min-width: {{separator_size}};
+  min-height: {{separator_size}};
 }
 
 .workspace-pane {
-  background: #2b2d30;
+  background: @panel_left;
 }
 
 .workspace-pane.tool-window,
@@ -406,42 +406,42 @@ separator {
 }
 
 .tool-window {
-  background: #2b2d30;
+  background: @panel_left;
 }
 
 .inspector-pane {
-  background: #2b2d30;
+  background: @panel_right;
 }
 
 .console-pane {
-  background: #17181c;
+  background: @panel_bottom;
 }
 
 .workbench {
-  background: #1e1f22;
+  background: @workbench;
   border-top: 0;
 }
 
 .workbench-drop-zone {
-  min-width: 28px;
-  min-height: 28px;
+  min-width: {{drop_zone_width}};
+  min-height: {{drop_zone_height}};
   background: transparent;
 }
 
 .workbench-drop-zone.drop-zone-left,
 .workbench-drop-zone.drop-zone-right {
-  min-width: 40px;
+  min-width: {{drop_zone_side_width}};
 }
 
 .workbench-drop-zone.drop-zone-bottom {
-  min-height: 40px;
+  min-height: {{drop_zone_bottom_height}};
 }
 
 .workbench-drop-zone.drop-zone-left,
 .workbench-drop-zone.drop-zone-right,
 .workbench-drop-zone.drop-zone-bottom {
-  background: alpha(#5d95df, 0.24);
-  border: 1px solid alpha(#80adf0, 0.36);
+  background: alpha({{color_drop_zone_fill}}, {{drop_zone_fill_alpha}});
+  border: {{drop_zone_border}};
 }
 
 notebook header,
@@ -459,7 +459,7 @@ notebook.workbench-tabs > stack,
 notebook.workbench-tabs > stack > box,
 notebook.workbench-tabs > stack > scrolledwindow,
 notebook.workbench-tabs > stack > scrolledwindow > viewport {
-  background: #1e1f22;
+  background: @workbench;
 }
 
 notebook header tabs,
@@ -469,31 +469,31 @@ notebook.workbench-tabs > header tabs {
 
 notebook header tab,
 notebook.workbench-tabs > header tabs tab {
-  min-height: 24px;
-  padding: 0 11px 1px 11px;
+  min-height: {{control_height_medium}};
+  padding: {{notebook_tab_padding}};
   margin: 0;
-  border-radius: 0;
+  border-radius: {{radius_none}};
   border-right: 0;
   border-top: 0;
-  border-bottom: 2px solid transparent;
-  background: #24272c;
-  color: #7f8794;
+  border-bottom: {{notebook_tab_border_width}} solid transparent;
+  background: {{color_notebook_tab_bg}};
+  color: {{color_notebook_tab_text}};
   box-shadow: none;
   background-image: none;
 }
 
 notebook header tab:hover,
 notebook.workbench-tabs > header tabs tab:hover {
-  background: #31353a;
-  border-bottom-color: #5f6670;
-  color: #b7bec9;
+  background: {{color_notebook_tab_hover}};
+  border-bottom-color: {{color_notebook_tab_hover_border}};
+  color: {{color_notebook_tab_hover_text}};
 }
 
 notebook header tab:checked,
 notebook.workbench-tabs > header tabs tab:checked {
-  background: #2c3036;
-  border-bottom-width: 3px;
-  border-bottom-color: #7a8089;
+  background: {{color_notebook_tab_active}};
+  border-bottom-width: {{notebook_tab_active_border_width}};
+  border-bottom-color: {{color_notebook_tab_active_border}};
   color: @text_0;
 }
 
@@ -502,9 +502,9 @@ notebook.workbench-tabs > header tabs tab:drop(active),
 notebook.editor-tabs > header tabs tab:drop(active),
 notebook.tool-tabs > header tabs tab:drop(active),
 notebook.bottom-tabs > header tabs tab:drop(active) {
-  background: #2c3036;
-  border-bottom-color: #6b727c;
-  box-shadow: inset 0 -2px #6b727c;
+  background: {{color_notebook_tab_active}};
+  border-bottom-color: {{color_notebook_tab_drop_border}};
+  box-shadow: {{notebook_tab_drop_shadow}};
   color: @text_0;
 }
 
@@ -514,11 +514,11 @@ notebook.editor-tabs > header {
 }
 
 notebook.editor-tabs > header tabs tab {
-  background: #2b2e33;
+  background: {{color_editor_tab_bg}};
 }
 
 notebook.editor-tabs > header tabs tab:checked {
-  background: #30343a;
+  background: {{color_editor_tab_active}};
 }
 
 notebook.tool-tabs > header {
@@ -526,14 +526,14 @@ notebook.tool-tabs > header {
 }
 
 notebook.tool-tabs > header tabs tab {
-  min-height: 23px;
+  min-height: {{tool_tab_height}};
   background: transparent;
 }
 
 notebook.tool-tabs > header tabs tab:checked {
   background: transparent;
-  border-bottom-width: 3px;
-  border-bottom-color: #7a8089;
+  border-bottom-width: {{notebook_tab_active_border_width}};
+  border-bottom-color: {{color_notebook_tab_active_border}};
 }
 
 notebook.bottom-tabs > header {
@@ -541,7 +541,7 @@ notebook.bottom-tabs > header {
 }
 
 notebook.bottom-tabs > header tabs tab {
-  min-height: 23px;
+  min-height: {{tool_tab_height}};
   background: transparent;
 }
 
@@ -550,56 +550,56 @@ notebook.bottom-tabs > header tabs tab:checked {
 }
 
 .tab-header {
-  spacing: 5px;
+  spacing: {{space_tab_header}};
   align-items: center;
 }
 
 .tab-label {
-  font-size: 13px;
+  font-size: {{font_size_ui}};
   font-weight: 500;
   letter-spacing: 0;
 }
 
 .tab-close-button {
-  min-width: 18px;
-  min-height: 18px;
-  padding: 2px;
+  min-width: {{tab_close_width}};
+  min-height: {{tab_close_height}};
+  padding: {{tab_close_padding}};
   border: 0;
-  border-radius: 0;
+  border-radius: {{radius_none}};
   background: transparent;
-  color: #808896;
+  color: {{color_tab_close_text}};
 }
 
 .tab-close-button:hover {
-  background: #404650;
+  background: {{color_tab_close_hover}};
   color: @text_0;
 }
 
 .custom-workbench-preview {
-  background: #181a1f;
-  border-top: 1px solid alpha(#8b96a8, 0.18);
+  background: {{color_preview_bg}};
+  border-top: {{preview_top_border}};
 }
 
 .custom-workbench-preview > .panel-header {
-  padding: 8px 12px;
-  background: #1c1f25;
+  padding: {{space_lg}} {{space_xl}};
+  background: {{color_preview_header_bg}};
 }
 
 .custom-workbench-group {
-  background: #1e1f22;
+  background: @workbench;
 }
 
 .custom-workbench-group > box {
-  background: #1e1f22;
+  background: @workbench;
 }
 
 .workbench-tab-strip-scroller {
-  background: #202329;
-  border-bottom: 1px solid alpha(#8b96a8, 0.14);
+  background: {{color_tab_strip_scroller_bg}};
+  border-bottom: {{tab_strip_scroller_border}};
 }
 
 .workbench-tab-strip {
-  min-height: 31px;
+  min-height: {{tab_strip_height}};
   padding: 0;
   spacing: 0;
   background: transparent;
@@ -607,93 +607,93 @@ notebook.bottom-tabs > header tabs tab:checked {
 
 .workbench-tab-strip > .tab-header,
 .drag-preview {
-  min-height: 28px;
-  padding: 0 12px 1px 12px;
+  min-height: {{tab_height}};
+  padding: {{workbench_tab_padding}};
   margin: 0;
   border-top: 0;
   border-left: 0;
   border-right: 0;
-  border-bottom: 2px solid transparent;
-  background: #26292f;
-  color: #9098a5;
+  border-bottom: {{workbench_tab_border_width}} solid transparent;
+  background: {{color_workbench_tab_bg}};
+  color: {{color_workbench_tab_text}};
 }
 
 .workbench-tab-strip > .tab-header:hover {
-  background: #2f343b;
-  color: #c5ccd6;
+  background: {{color_workbench_tab_hover}};
+  color: {{color_workbench_tab_hover_text}};
 }
 
 .workbench-tab-strip > .tab-header.active {
-  background: #30343a;
-  border-bottom-color: #7a8089;
+  background: {{color_workbench_tab_active}};
+  border-bottom-color: {{color_notebook_tab_active_border}};
   color: @text_0;
 }
 
 .drag-preview {
-  background: #353a42;
-  border-bottom-color: #8a9099;
-  box-shadow: 0 10px 22px alpha(black, 0.28);
+  background: {{color_drag_preview_bg}};
+  border-bottom-color: {{color_drag_preview_border}};
+  box-shadow: {{drag_preview_shadow}};
 }
 
 .drag-preview.dragging {
-  opacity: 0.96;
+  opacity: {{drag_preview_opacity}};
 }
 
 .tab-drag-gap {
-  min-width: 48px;
-  min-height: 28px;
+  min-width: {{tab_drag_gap_width}};
+  min-height: {{tab_drag_gap_height}};
   margin: 0;
   border-top: 0;
   border-left: 0;
   border-right: 0;
-  border-bottom: 2px dashed alpha(#8ea4c5, 0.55);
-  background: alpha(#8ea4c5, 0.12);
+  border-bottom: {{tab_drag_gap_border}};
+  background: {{tab_drag_gap_bg}};
 }
 
 .workbench-split-preview {
-  margin: 6px;
-  background: alpha(#6d88af, 0.22);
-  border: 1px solid alpha(#8ea4c5, 0.42);
+  margin: {{workbench_split_margin}};
+  background: {{workbench_split_fill}};
+  border: {{workbench_split_border}};
 }
 
 .split-preview-left,
 .split-preview-right {
-  min-width: 80px;
+  min-width: {{split_preview_side_width}};
 }
 
 .split-preview-bottom {
-  min-height: 72px;
+  min-height: {{split_preview_bottom_height}};
 }
 
 .panel-header {
-  min-height: 16px;
-  padding: 0 6px;
+  min-height: {{panel_header_height}};
+  padding: 0 {{space_md}};
   background: transparent;
   border-bottom: 0;
 }
 
 .panel-title {
-  font-size: 12px;
+  font-size: {{font_size_small}};
   font-weight: 600;
-  letter-spacing: 0.04em;
-  color: #8f97a3;
+  letter-spacing: {{panel_title_tracking}};
+  color: {{panel_title_color}};
 }
 
 .section-title {
-  font-size: 10px;
+  font-size: {{font_size_tiny}};
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: {{section_title_tracking}};
   text-transform: uppercase;
   color: @text_2;
 }
 
 .inspector-content,
 .workbench-page {
-  padding: 8px;
+  padding: {{panel_content_padding}};
 }
 
 .workbench-page {
-  background: #1e1f22;
+  background: @workbench;
 }
 
 .panel-scroller,
@@ -713,7 +713,7 @@ row {
 }
 
 .dense-row {
-  min-height: 20px;
+  min-height: {{dense_row_height}};
   padding: 0;
   margin: 0;
   border-bottom: 0;
@@ -724,153 +724,153 @@ row {
 list row:selected,
 listview row:selected,
 row:selected {
-  background: #373f49;
-  color: #f2f6fc;
+  background: {{dense_row_selected_bg}};
+  color: {{dense_row_selected_text}};
 }
 
 .dense-row:hover,
 list row:hover,
 row:hover {
-  background: alpha(#40464f, 0.28);
+  background: {{dense_row_hover_bg}};
 }
 
 .list-row-box {
-  padding: 6px 10px;
+  padding: {{list_row_padding}};
 }
 
 .row-title {
   color: @text_0;
-  font-size: 13px;
+  font-size: {{font_size_ui}};
   font-weight: 500;
 }
 
 .muted {
   color: @text_2;
-  font-size: 12px;
+  font-size: {{font_size_small}};
 }
 
 .mono,
 textview,
 text,
 .console-view {
-  font-family: "JetBrains Mono", "Iosevka Fixed", monospace;
-  font-size: 13px;
+  font-family: {{font_family_mono}};
+  font-size: {{font_size_ui}};
 }
 
 .inspector-value {
-  color: #d9e4f6;
+  color: {{inspector_value_color}};
 }
 
 .status-badge {
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
+  padding: {{status_badge_padding}};
+  border-radius: {{radius_small}};
+  font-size: {{font_size_tiny}};
   font-weight: 700;
-  background: #3a404d;
-  color: #dbe5f2;
+  background: {{color_status_badge_bg}};
+  color: {{color_status_badge_text}};
 }
 
 .status-idle {
-  background: #2b313a;
-  color: #aeb8c9;
+  background: {{color_status_idle_bg}};
+  color: {{color_status_idle_text}};
 }
 
 .status-loaded {
-  background: #3d3322;
-  color: #f0cf7c;
+  background: {{color_status_loaded_bg}};
+  color: {{color_status_loaded_text}};
 }
 
 .status-running {
-  background: #1f3a30;
-  color: #83d0ae;
+  background: {{color_status_running_bg}};
+  color: {{color_status_running_text}};
 }
 
 textview,
 textview text,
 text {
-  background: #1e1f22;
-  color: #d7dce5;
+  background: @workbench;
+  color: {{color_textview_text}};
 }
 
 .workbench textview,
 .workbench textview text,
 .inspector-pane textview,
 .inspector-pane textview text {
-  background: #1e1f22;
+  background: @workbench;
 }
 
 .tool-window listview,
 .tool-window list,
 .tool-window row,
 .tool-window viewport {
-  background: #2d3033;
+  background: {{color_tool_window_surface}};
 }
 
 .inspector-pane viewport,
 .inspector-pane box,
 .inspector-pane list,
 .inspector-pane row {
-  background: #2d3033;
+  background: {{color_tool_window_surface}};
 }
 
 .console-view,
 .console-view text,
 .console-pane viewport,
 .console-pane scrolledwindow {
-  background: #17181c;
+  background: @panel_bottom;
 }
 
 scrollbar trough {
-  background: #25282d;
+  background: {{color_scrollbar_trough}};
 }
 
 scrollbar slider {
-  min-width: 6px;
-  min-height: 6px;
-  background: #4a5059;
-  border-radius: 999px;
+  min-width: {{scrollbar_slider_size}};
+  min-height: {{scrollbar_slider_size}};
+  background: {{color_scrollbar_slider}};
+  border-radius: {{radius_pill}};
 }
 
 scrollbar slider:hover {
-  background: #59616d;
+  background: {{color_scrollbar_slider_hover}};
 }
 
 .status-bar {
-  min-height: 14px;
-  padding: 0 6px;
-  background: #26292e;
+  min-height: {{status_bar_height}};
+  padding: 0 {{space_md}};
+  background: {{color_status_bar_bg}};
   border-top: 0;
 }
 
 .status-item {
-  font-size: 12px;
-  color: #9fa7b3;
+  font-size: {{font_size_small}};
+  color: {{color_status_item}};
 }
 
 .status-item-strong {
-  color: #dfe4eb;
+  color: {{color_status_item_strong}};
 }
 
 .plugin-search-entry {
-  margin-bottom: 2px;
+  margin-bottom: {{plugin_search_margin_bottom}};
 }
 
 .plugin-index-list .dense-row {
   background: transparent;
-  border-bottom: 1px solid alpha(#353c48, 0.35);
+  border-bottom: {{plugin_list_row_border}};
 }
 
 .plugin-list-row-box {
-  padding: 10px 12px;
+  padding: {{plugin_list_row_padding}};
 }
 
 .plugin-list-row .status-badge {
-  border-radius: 4px;
+  border-radius: {{radius_small}};
 }
 
 .plugin-source-badge {
-  background: #243245;
-  color: #b8d2ef;
+  background: {{color_plugin_source_badge_bg}};
+  color: {{color_plugin_source_badge_text}};
 }
 
 .plugin-detail-root {
@@ -878,75 +878,73 @@ scrollbar slider:hover {
 }
 
 .plugin-hero {
-  background: #242933;
+  background: {{color_plugin_hero_bg}};
   border: 0;
-  border-radius: 4px;
-  padding: 14px;
+  border-radius: {{radius_small}};
+  padding: {{plugin_hero_padding}};
 }
 
 .plugin-detail-name {
-  font-size: 22px;
+  font-size: {{font_size_title}};
   font-weight: 700;
-  color: #f3f7fd;
+  color: {{color_plugin_name}};
 }
 
 .plugin-detail-description {
-  color: #cfd7e4;
+  color: {{color_plugin_description}};
 }
 
 .plugin-detail-overview {
-  color: #aab6c9;
+  color: {{color_plugin_overview}};
 }
 
 .plugin-manager-footer {
-  padding-top: 8px;
-  padding-right: 4px;
-  padding-bottom: 4px;
+  padding: {{plugin_footer_padding}};
 }
 
 popover.menu,
 popover.background.menu,
 popover.background {
-  background: #1e232a;
+  background: {{color_popover_bg}};
   color: @text_1;
-  border: 1px solid alpha(#3f4756, 0.7);
+  border: {{popover_border}};
   box-shadow: none;
 }
 
 popover.menu contents,
 popover.background.menu contents,
 popover.background contents {
-  background: #1e232a;
-  padding: 4px;
-  border-radius: 0;
+  background: {{color_popover_bg}};
+  padding: {{popover_content_padding}};
+  border-radius: {{radius_none}};
 }
 
 popover.menu modelbutton,
 popover.background.menu modelbutton,
 popover.background modelbutton {
-  min-height: 25px;
-  padding: 3px 12px;
-  border-radius: 0;
+  min-height: {{popover_button_height}};
+  padding: {{popover_button_padding}};
+  border-radius: {{radius_none}};
   background: transparent;
-  color: #dce4f1;
+  color: {{color_popover_button_text}};
 }
 
 popover.menu modelbutton:hover,
 popover.background.menu modelbutton:hover,
 popover.background modelbutton:hover {
-  background: #2e425e;
-  color: #f7fbff;
+  background: {{color_popover_button_hover}};
+  color: {{color_popover_button_hover_text}};
 }
 
 popover.menu modelbutton:disabled,
 popover.background.menu modelbutton:disabled,
 popover.background modelbutton:disabled {
-  color: #7d8796;
+  color: {{color_popover_button_disabled}};
 }
 
 popover.menu separator,
 popover.background.menu separator,
 popover.background separator {
-  background: #343b47;
-  margin: 4px 0;
+  background: {{color_popover_separator}};
+  margin: {{popover_separator_margin}};
 }

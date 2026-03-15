@@ -33,7 +33,8 @@ That means the plugin architecture is proven and plugins can now inhabit the she
 - `src/shell/`: shell UI components including top bar, tabbed panels, and custom workbench tabs
 - `src/layout.rs`: load/save persisted shell state
 - `src/spec.rs`: serializable shell, tab, menu, and workbench layout model
-- `resources/style.css`: application styling
+- `src/theme.rs`: runtime theme loading and token rendering
+- `resources/style.css`: default theme template
 
 ## Run
 
@@ -66,7 +67,9 @@ cargo run --example plugin_view
 The intended integration surface is the crate root:
 
 - `MaruzzellaConfig`: application id, persistence namespace, and product definition
+- `ThemeSpec`: configurable theme tokens and optional external stylesheet template
 - `MaruzzellaConfig::with_plugin_path(...)`: register a dynamic plugin library to load at startup
+- `MaruzzellaConfig::with_theme(...)`: swap typography, palette, sizing, or the whole stylesheet
 - `run(config)`: launch a configured shell
 - `build_application(config)`: build a GTK application without running it yet
 - `ProductSpec` and related spec types: define branding, menus, toolbar actions, panels, and workbench layout
@@ -74,7 +77,7 @@ The intended integration surface is the crate root:
 Minimal example:
 
 ```rust
-use maruzzella::{default_product_spec, run, MaruzzellaConfig};
+use maruzzella::{default_product_spec, run, MaruzzellaConfig, ThemeSpec};
 
 fn main() {
     let mut product = default_product_spec();
@@ -82,6 +85,7 @@ fn main() {
 
     let config = MaruzzellaConfig::new("com.example.my-app")
         .with_persistence_id("my-app")
+        .with_theme(ThemeSpec::default())
         .with_product(product);
 
     run(config);
@@ -94,6 +98,48 @@ Dynamic plugins can also be attached through config:
 let config = MaruzzellaConfig::new("com.example.my-app")
     .with_plugin_path("plugins/libexample_plugin.so");
 ```
+
+## Theming
+
+The shell styling is no longer tied to a single baked-in CSS file.
+
+- `ThemeSpec::default()` gives the bundled Maruzzella look
+- `ThemeSpec` exposes typed palette, typography, and density tokens for common changes
+- `ThemeDensity` also controls window defaults and panel minimum sizes
+- `ThemeSpec::with_stylesheet_path(...)` points at an external GTK CSS template for full theme swapping
+- `ThemeSpec::with_override(key, value)` injects extra `{{token}}` values for custom templates
+- the bundled stylesheet is now expressed in semantic component tokens rather than anonymous literal placeholders
+
+Minimal theme override:
+
+```rust
+use maruzzella::{MaruzzellaConfig, ThemeSpec};
+
+let mut theme = ThemeSpec::default();
+theme.typography.font_family = "\"IBM Plex Sans\", \"Cantarell\", sans-serif".to_string();
+theme.typography.mono_font_family = "\"IBM Plex Mono\", monospace".to_string();
+theme.palette.accent = "#d06b2f".to_string();
+theme.density.radius_medium = 14;
+theme.density.toolbar_height = 44;
+theme.density.window_default_width = 1680;
+theme.density.min_side_panel_width = 260;
+
+let config = MaruzzellaConfig::new("com.example.my-app").with_theme(theme);
+```
+
+Full stylesheet swap:
+
+```rust
+use maruzzella::{MaruzzellaConfig, ThemeSpec};
+
+let theme = ThemeSpec::default()
+    .with_stylesheet_path("themes/sand/style.css")
+    .with_override("hero_glow", "alpha(#d06b2f, 0.18)");
+
+let config = MaruzzellaConfig::new("com.example.my-app").with_theme(theme);
+```
+
+The bundled `Reload Theme` command now reloads the active theme spec, including the external stylesheet file if one is configured.
 
 ## Persistence
 

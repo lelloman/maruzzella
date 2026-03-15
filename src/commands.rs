@@ -41,7 +41,7 @@ pub fn shell_registry(
     let mut registry = CommandRegistry::new();
 
     registry.register("shell.reload_theme", move || {
-        theme::load();
+        theme::reload();
     });
 
     let about_window = window.clone();

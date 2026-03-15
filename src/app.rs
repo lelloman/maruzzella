@@ -23,11 +23,9 @@ use crate::theme;
 
 type ShellState = Rc<RefCell<PersistedShell>>;
 
-const MIN_SIDE_PANEL_WIDTH: i32 = 220;
-const MIN_BOTTOM_PANEL_HEIGHT: i32 = 140;
-
 pub fn build(application: &Application, config: &MaruzzellaConfig) {
-    theme::load();
+    theme::install(config.theme.clone());
+    let density = &config.theme.density;
 
     let state = Rc::new(RefCell::new(layout::load(
         &config.persistence_id,
@@ -42,8 +40,8 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
     let window = ApplicationWindow::builder()
         .application(application)
         .title(&spec.title)
-        .default_width(1600)
-        .default_height(980)
+        .default_width(density.window_default_width)
+        .default_height(density.window_default_height)
         .build();
     window.add_css_class("app-window");
     let registry = commands::shell_registry(&window, &spec, Some(plugin_host.clone()));
@@ -52,7 +50,12 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("app-root");
     root.append(&topbar::build(&spec).root);
-    root.append(&build_shell(state, config.persistence_id.clone(), plugin_host.runtime().cloned()));
+    root.append(&build_shell(
+        state,
+        config.persistence_id.clone(),
+        plugin_host.runtime().cloned(),
+        &config.theme.density,
+    ));
     window.set_child(Some(&root));
     unsafe {
         window.set_data("maruzzella-plugin-host", plugin_host);
@@ -83,6 +86,7 @@ fn build_shell(
     state: ShellState,
     persistence_id: String,
     plugin_runtime: Option<Rc<PluginRuntime>>,
+    density: &theme::ThemeDensity,
 ) -> gtk::Widget {
     let spec = state.borrow().spec.clone();
     let left = build_group(
@@ -91,21 +95,21 @@ fn build_shell(
         persistence_id.clone(),
         plugin_runtime.clone(),
     );
-    left.root.set_size_request(MIN_SIDE_PANEL_WIDTH, -1);
+    left.root.set_size_request(density.min_side_panel_width, -1);
     let right = build_group(
         &spec.right_panel,
         state.clone(),
         persistence_id.clone(),
         plugin_runtime.clone(),
     );
-    right.root.set_size_request(MIN_SIDE_PANEL_WIDTH, -1);
+    right.root.set_size_request(density.min_side_panel_width, -1);
     let bottom = build_group(
         &spec.bottom_panel,
         state.clone(),
         persistence_id.clone(),
         plugin_runtime.clone(),
     );
-    bottom.root.set_size_request(-1, MIN_BOTTOM_PANEL_HEIGHT);
+    bottom.root.set_size_request(-1, density.min_bottom_panel_height);
     let workbench = build_workbench_node(
         &spec.workbench,
         state.clone(),

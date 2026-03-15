@@ -26,12 +26,14 @@ pub use spec::{
     PanelContentKind, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, ToolbarItemSpec,
     WorkbenchNodeSpec,
 };
+pub use theme::{ThemeDensity, ThemePalette, ThemeSpec, ThemeStylesheet, ThemeTypography};
 
 #[derive(Clone, Debug)]
 pub struct MaruzzellaConfig {
     pub application_id: String,
     pub persistence_id: String,
     pub product: ProductSpec,
+    pub theme: ThemeSpec,
     pub plugin_paths: Vec<PathBuf>,
 }
 
@@ -47,6 +49,7 @@ impl MaruzzellaConfig {
             application_id: application_id.to_string(),
             persistence_id: "maruzzella".to_string(),
             product: default_product_spec(),
+            theme: ThemeSpec::default(),
             plugin_paths: Vec::new(),
         }
     }
@@ -58,6 +61,11 @@ impl MaruzzellaConfig {
 
     pub fn with_product(mut self, product: ProductSpec) -> Self {
         self.product = product;
+        self
+    }
+
+    pub fn with_theme(mut self, theme: ThemeSpec) -> Self {
+        self.theme = theme;
         self
     }
 

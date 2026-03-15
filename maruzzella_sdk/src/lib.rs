@@ -179,12 +179,12 @@ impl MenuItemSpec {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SurfaceContributionSpec {
     pub plugin_id: &'static str,
     pub surface_id: &'static str,
     pub contribution_id: &'static str,
-    pub payload: &'static [u8],
+    pub payload: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -217,21 +217,38 @@ impl ViewFactorySpec {
 }
 
 impl SurfaceContributionSpec {
-    pub const fn new(
+    pub fn new(
         plugin_id: &'static str,
         surface_id: &'static str,
         contribution_id: &'static str,
-        payload: &'static [u8],
+        payload: impl Into<Vec<u8>>,
     ) -> Self {
         Self {
             plugin_id,
             surface_id,
             contribution_id,
-            payload,
+            payload: payload.into(),
         }
     }
 
-    fn into_ffi(self) -> MzSurfaceContribution {
+    pub fn about_section(
+        plugin_id: &'static str,
+        contribution_id: &'static str,
+        title: impl Into<String>,
+        body: impl Into<String>,
+    ) -> Self {
+        let payload = maruzzella_api::MzAboutSection::new(title, body)
+            .to_bytes()
+            .expect("about sections should serialize");
+        Self::new(
+            plugin_id,
+            "maruzzella.about.sections",
+            contribution_id,
+            payload,
+        )
+    }
+
+    fn as_ffi(&self) -> MzSurfaceContribution {
         MzSurfaceContribution {
             plugin_id: MzStr::from_static(self.plugin_id),
             surface_id: MzStr::from_static(self.surface_id),
@@ -294,7 +311,8 @@ impl<'a> HostApi<'a> {
         let Some(register) = self.raw.register_surface_contribution else {
             return Err(MzStatusCode::NotFound);
         };
-        let status = register(&contribution.into_ffi());
+        let ffi = contribution.as_ffi();
+        let status = register(&ffi);
         if status.is_ok() {
             Ok(())
         } else {

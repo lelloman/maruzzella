@@ -88,13 +88,19 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
         },
     ];
 
+    let about_payload = maruzzella_api::MzAboutSection::new(
+        "Maruzzella",
+        "Core shell services provided by the built-in base plugin.",
+    )
+    .to_bytes()
+    .expect("built-in about section should serialize");
     let about = MzSurfaceContribution {
         plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
         surface_id: MzStr::from_static("maruzzella.about.sections"),
         contribution_id: MzStr::from_static("maruzzella.base.about"),
         payload: MzBytes {
-            ptr: br#"{"title":"Maruzzella","body":"Core shell services provided by the built-in base plugin."}"#.as_ptr(),
-            len: br#"{"title":"Maruzzella","body":"Core shell services provided by the built-in base plugin."}"#.len(),
+            ptr: about_payload.as_ptr(),
+            len: about_payload.len(),
         },
     };
 

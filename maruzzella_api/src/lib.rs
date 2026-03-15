@@ -1,4 +1,5 @@
 use core::ffi::c_void;
+use serde::{Deserialize, Serialize};
 
 pub const MZ_ABI_VERSION_V1: u32 = 1;
 
@@ -185,6 +186,29 @@ pub struct MzViewRequest {
     pub payload: MzBytes,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzAboutSection {
+    pub title: String,
+    pub body: String,
+}
+
+impl MzAboutSection {
+    pub fn new(title: impl Into<String>, body: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            body: body.into(),
+        }
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
 pub type MzCreateViewFn =
     extern "C" fn(host: *const MzHostApi, request: *const MzViewRequest) -> *mut c_void;
 
@@ -272,5 +296,13 @@ mod tests {
     fn ok_status_reports_success() {
         assert!(MzStatus::OK.is_ok());
         assert!(!MzStatus::new(MzStatusCode::InternalError).is_ok());
+    }
+
+    #[test]
+    fn about_section_roundtrips_through_json_bytes() {
+        let section = MzAboutSection::new("Maruzzella", "Core shell services");
+        let bytes = section.to_bytes().expect("about section should serialize");
+        let decoded = MzAboutSection::from_bytes(&bytes).expect("about section should decode");
+        assert_eq!(decoded, section);
     }
 }

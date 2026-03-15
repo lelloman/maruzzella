@@ -51,11 +51,11 @@ impl Plugin for ExamplePlugin {
             "example.hello.show",
         ))?;
 
-        host.register_surface_contribution(SurfaceContributionSpec::new(
+        host.register_surface_contribution(SurfaceContributionSpec::about_section(
             "com.example.hello",
-            "maruzzella.about.sections",
             "com.example.hello.about",
-            br#"{"title":"Example Plugin","body":"Loaded from a dynamic library"}"#,
+            "Example Plugin",
+            "Loaded from a dynamic library",
         ))?;
 
         host.register_view_factory(ViewFactorySpec::new(

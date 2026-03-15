@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{ApplicationWindow, Box as GtkBox, Dialog, Label, Orientation, ResponseType, Separator};
+use maruzzella_api::MzAboutSection;
 
 use crate::plugins::PluginRuntime;
 use crate::spec::{CommandSpec, ShellSpec};
@@ -45,16 +46,9 @@ pub fn shell_registry(
 
     let about_window = window.clone();
     let app_title = spec.title.clone();
+    let runtime_for_about = plugin_runtime.clone();
     registry.register("shell.about", move || {
-        let dialog = gtk::AboutDialog::builder()
-            .transient_for(&about_window)
-            .modal(true)
-            .program_name(&app_title)
-            .comments("Neutral GTK desktop shell host")
-            .website("https://example.invalid/maruzzella")
-            .version(env!("CARGO_PKG_VERSION"))
-            .build();
-        dialog.present();
+        present_about_dialog(&about_window, &app_title, runtime_for_about.as_deref());
     });
 
     let palette_window = window.clone();
@@ -177,4 +171,79 @@ fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRun
         dialog.close();
     });
     dialog.present();
+}
+
+fn present_about_dialog(
+    window: &ApplicationWindow,
+    app_title: &str,
+    runtime: Option<&PluginRuntime>,
+) {
+    let dialog = Dialog::builder()
+        .transient_for(window)
+        .modal(true)
+        .title(format!("About {app_title}"))
+        .default_width(560)
+        .default_height(420)
+        .build();
+    dialog.add_button("Close", ResponseType::Close);
+
+    let body = dialog.content_area();
+    body.set_spacing(12);
+
+    let layout = GtkBox::new(Orientation::Vertical, 12);
+
+    let title = Label::new(Some(app_title));
+    title.set_xalign(0.0);
+    title.add_css_class("section-title");
+    layout.append(&title);
+
+    let version = Label::new(Some(&format!("Version {}", env!("CARGO_PKG_VERSION"))));
+    version.set_xalign(0.0);
+    version.add_css_class("muted");
+    layout.append(&version);
+
+    for section in about_sections(runtime) {
+        layout.append(&Separator::new(Orientation::Horizontal));
+
+        let section_title = Label::new(Some(&section.title));
+        section_title.set_xalign(0.0);
+        section_title.add_css_class("section-title");
+        layout.append(&section_title);
+
+        let section_body = Label::new(Some(&section.body));
+        section_body.set_xalign(0.0);
+        section_body.set_wrap(true);
+        layout.append(&section_body);
+    }
+
+    body.append(&layout);
+    dialog.connect_response(|dialog, _| {
+        dialog.close();
+    });
+    dialog.present();
+}
+
+fn about_sections(runtime: Option<&PluginRuntime>) -> Vec<MzAboutSection> {
+    let mut sections = Vec::new();
+
+    if let Some(runtime) = runtime {
+        for contribution in runtime
+            .surface_contributions()
+            .iter()
+            .filter(|contribution| contribution.surface_id == "maruzzella.about.sections")
+        {
+            if let Ok(section) = MzAboutSection::from_bytes(&contribution.payload) {
+                sections.push(section);
+            }
+        }
+    }
+
+    if sections.is_empty() {
+        sections.push(MzAboutSection::new(
+            "Maruzzella",
+            "Neutral GTK desktop shell host",
+        ));
+    }
+
+    sections
 }

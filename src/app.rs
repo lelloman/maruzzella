@@ -67,7 +67,7 @@ fn build_plugin_runtime(config: &MaruzzellaConfig) -> Option<PluginRuntime> {
         }
     }
 
-    match PluginRuntime::activate(plugins) {
+    match PluginRuntime::activate_with_persistence_id(plugins, &config.persistence_id) {
         Ok(runtime) => Some(runtime),
         Err(error) => {
             eprintln!("failed to activate plugins: {error:?}");

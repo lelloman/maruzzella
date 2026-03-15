@@ -12,6 +12,8 @@ use maruzzella_api::{
     MzSurfaceContribution, MzViewFactorySpec, MZ_ABI_VERSION_V1,
 };
 
+use crate::layout;
+
 const ENTRY_SYMBOL: &[u8] = b"maruzzella_plugin_entry\0";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -148,13 +150,24 @@ pub struct PluginRuntime {
 
 impl PluginRuntime {
     pub fn activate(plugins: Vec<LoadedPlugin>) -> Result<Self, PluginRuntimeError> {
+        Self::activate_with_persistence_id(plugins, "maruzzella")
+    }
+
+    pub fn activate_with_persistence_id(
+        plugins: Vec<LoadedPlugin>,
+        persistence_id: &str,
+    ) -> Result<Self, PluginRuntimeError> {
         let ordered = resolve_load_order(&plugins).map_err(PluginRuntimeError::Resolve)?;
         let activation_order = ordered
             .iter()
             .map(|plugin| plugin.descriptor.id.clone())
             .collect::<Vec<_>>();
 
-        let mut host_state = HostState::default();
+        let mut host_state = HostState {
+            persistence_id: persistence_id.to_string(),
+            plugin_configs: layout::load_plugin_configs(persistence_id),
+            ..HostState::default()
+        };
         for plugin in ordered {
             host_state.current_plugin_id = Some(plugin.descriptor.id.clone());
             let _scope = ActiveHostScope::enter(&mut host_state);
@@ -268,6 +281,8 @@ impl PluginRuntime {
             register_surface_contribution: None,
             register_view_factory: None,
             dispatch_command: Some(runtime_dispatch_command),
+            read_config: None,
+            write_config: None,
         };
         let plugin_id = MzStr {
             ptr: factory.plugin_id.as_ptr(),
@@ -589,6 +604,7 @@ fn dependency_slice<'a>(
 
 #[derive(Default)]
 struct HostState {
+    persistence_id: String,
     current_plugin_id: Option<String>,
     commands: Vec<RegisteredCommand>,
     command_ids: HashSet<String>,
@@ -600,6 +616,8 @@ struct HostState {
     view_factories: Vec<RegisteredViewFactory>,
     view_factory_ids: HashSet<String>,
     logs: Vec<PluginLogEntry>,
+    plugin_configs: layout::PluginConfigs,
+    read_config_buffer: Vec<u8>,
 }
 
 impl HostState {
@@ -613,6 +631,8 @@ impl HostState {
             register_surface_contribution: Some(host_register_surface_contribution),
             register_view_factory: Some(host_register_view_factory),
             dispatch_command: Some(host_dispatch_command),
+            read_config: Some(host_read_config),
+            write_config: Some(host_write_config),
         }
     }
 
@@ -781,6 +801,34 @@ extern "C" fn host_dispatch_command(command_id: MzStr, payload: MzBytes) -> MzSt
         return MzStatus::new(MzStatusCode::NotFound);
     };
     invoke(payload)
+}
+
+extern "C" fn host_read_config() -> MzBytes {
+    let Some(state) = current_host_state() else {
+        return MzBytes::empty();
+    };
+    let plugin_id = state.plugin_id().to_string();
+    state.read_config_buffer = state
+        .plugin_configs
+        .entries
+        .get(&plugin_id)
+        .cloned()
+        .unwrap_or_default();
+    MzBytes {
+        ptr: state.read_config_buffer.as_ptr(),
+        len: state.read_config_buffer.len(),
+    }
+}
+
+extern "C" fn host_write_config(payload: MzBytes) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let plugin_id = state.plugin_id().to_string();
+    let bytes = bytes_to_vec(payload);
+    state.plugin_configs.entries.insert(plugin_id, bytes);
+    layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs);
+    MzStatus::OK
 }
 
 thread_local! {

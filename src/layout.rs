@@ -18,6 +18,11 @@ pub struct PersistedShell {
     pub panes: PanePositions,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PluginConfigs {
+    pub entries: HashMap<String, Vec<u8>>,
+}
+
 impl Default for PersistedShell {
     fn default() -> Self {
         Self {
@@ -55,6 +60,31 @@ pub fn path(persistence_id: &str) -> PathBuf {
     let mut path = config_root();
     path.push(persistence_id);
     path.push("layout.json");
+    path
+}
+
+pub fn load_plugin_configs(persistence_id: &str) -> PluginConfigs {
+    let path = plugin_configs_path(persistence_id);
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return PluginConfigs::default();
+    };
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
+pub fn save_plugin_configs(persistence_id: &str, configs: &PluginConfigs) {
+    let path = plugin_configs_path(persistence_id);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(raw) = serde_json::to_string_pretty(configs) {
+        let _ = fs::write(path, raw);
+    }
+}
+
+fn plugin_configs_path(persistence_id: &str) -> PathBuf {
+    let mut path = config_root();
+    path.push(persistence_id);
+    path.push("plugins.json");
     path
 }
 

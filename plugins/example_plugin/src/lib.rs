@@ -1,12 +1,18 @@
 use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Label, Orientation};
+use serde::{Deserialize, Serialize};
 use maruzzella_sdk::{
     export_plugin, CommandSpec, HostApi, MenuItemSpec, MzStatusCode, Plugin, PluginDependency,
     PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
 };
 
 struct ExamplePlugin;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct ExamplePluginConfig {
+    launches: u32,
+}
 
 extern "C" fn show_example_plugin(payload: maruzzella_sdk::ffi::MzBytes) -> maruzzella_sdk::ffi::MzStatus {
     let _ = payload;
@@ -36,6 +42,16 @@ impl Plugin for ExamplePlugin {
             "Registering example Maruzzella plugin",
         );
 
+        let mut config = host
+            .read_config()
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<ExamplePluginConfig>(&bytes).ok())
+            .unwrap_or_default();
+        config.launches += 1;
+        let config_bytes =
+            serde_json::to_vec(&config).map_err(|_| MzStatusCode::InternalError)?;
+        host.write_config(&config_bytes)?;
+
         host.register_command(CommandSpec::new(
             "com.example.hello",
             "example.hello.show",
@@ -62,7 +78,10 @@ impl Plugin for ExamplePlugin {
             "com.example.hello",
             "com.example.hello.settings.general",
             "Example Plugin Settings",
-            "Placeholder settings page contributed through a typed surface contract.",
+            format!(
+                "This plugin has been registered {} time(s) for the current persistence namespace.",
+                config.launches
+            ),
         ))?;
 
         host.register_view_factory(ViewFactorySpec::new(

@@ -252,6 +252,8 @@ pub type MzRegisterSurfaceContributionFn =
 pub type MzRegisterViewFactoryFn =
     extern "C" fn(factory: *const MzViewFactorySpec) -> MzStatus;
 pub type MzDispatchCommandFn = extern "C" fn(command_id: MzStr, payload: MzBytes) -> MzStatus;
+pub type MzReadConfigFn = extern "C" fn() -> MzBytes;
+pub type MzWriteConfigFn = extern "C" fn(payload: MzBytes) -> MzStatus;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -264,6 +266,8 @@ pub struct MzHostApi {
     pub register_surface_contribution: Option<MzRegisterSurfaceContributionFn>,
     pub register_view_factory: Option<MzRegisterViewFactoryFn>,
     pub dispatch_command: Option<MzDispatchCommandFn>,
+    pub read_config: Option<MzReadConfigFn>,
+    pub write_config: Option<MzWriteConfigFn>,
 }
 
 impl MzHostApi {
@@ -277,6 +281,8 @@ impl MzHostApi {
             register_surface_contribution: None,
             register_view_factory: None,
             dispatch_command: None,
+            read_config: None,
+            write_config: None,
         }
     }
 }

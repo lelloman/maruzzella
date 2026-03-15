@@ -370,6 +370,32 @@ impl<'a> HostApi<'a> {
             Err(status.code)
         }
     }
+
+    pub fn read_config(&self) -> Result<Vec<u8>, MzStatusCode> {
+        let Some(read) = self.raw.read_config else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(Vec::new());
+        }
+        Ok(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) }.to_vec())
+    }
+
+    pub fn write_config(&self, payload: &[u8]) -> Result<(), MzStatusCode> {
+        let Some(write) = self.raw.write_config else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let status = write(MzBytes {
+            ptr: payload.as_ptr(),
+            len: payload.len(),
+        });
+        if status.is_ok() {
+            Ok(())
+        } else {
+            Err(status.code)
+        }
+    }
 }
 
 pub trait Plugin: 'static {

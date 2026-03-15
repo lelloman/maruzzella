@@ -248,6 +248,23 @@ impl SurfaceContributionSpec {
         )
     }
 
+    pub fn settings_page(
+        plugin_id: &'static str,
+        contribution_id: &'static str,
+        title: impl Into<String>,
+        summary: impl Into<String>,
+    ) -> Self {
+        let payload = maruzzella_api::MzSettingsPage::new(title, summary)
+            .to_bytes()
+            .expect("settings pages should serialize");
+        Self::new(
+            plugin_id,
+            "maruzzella.plugins.settings_pages",
+            contribution_id,
+            payload,
+        )
+    }
+
     fn as_ffi(&self) -> MzSurfaceContribution {
         MzSurfaceContribution {
             plugin_id: MzStr::from_static(self.plugin_id),

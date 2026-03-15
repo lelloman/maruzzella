@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{ApplicationWindow, Box as GtkBox, Dialog, Label, Orientation, ResponseType, Separator};
-use maruzzella_api::MzAboutSection;
+use maruzzella_api::{MzAboutSection, MzSettingsPage};
 
 use crate::plugins::PluginRuntime;
 use crate::spec::{CommandSpec, ShellSpec};
@@ -158,6 +158,18 @@ fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRun
                 layout.append(&description);
             }
 
+            for page in settings_pages_for_plugin(runtime, &descriptor.id) {
+                let page_title = Label::new(Some(&format!("Settings: {}", page.title)));
+                page_title.set_xalign(0.0);
+                page_title.add_css_class("section-title");
+                layout.append(&page_title);
+
+                let page_summary = Label::new(Some(&page.summary));
+                page_summary.set_xalign(0.0);
+                page_summary.set_wrap(true);
+                layout.append(&page_summary);
+            }
+
             layout.append(&Separator::new(Orientation::Horizontal));
         }
     } else {
@@ -246,4 +258,23 @@ fn about_sections(runtime: Option<&PluginRuntime>) -> Vec<MzAboutSection> {
     }
 
     sections
+}
+
+fn settings_pages_for_plugin(runtime: &PluginRuntime, plugin_id: &str) -> Vec<MzSettingsPage> {
+    let mut pages = Vec::new();
+
+    for contribution in runtime
+        .surface_contributions()
+        .iter()
+        .filter(|contribution| {
+            contribution.plugin_id == plugin_id
+                && contribution.surface_id == "maruzzella.plugins.settings_pages"
+        })
+    {
+        if let Ok(page) = MzSettingsPage::from_bytes(&contribution.payload) {
+            pages.push(page);
+        }
+    }
+
+    pages
 }

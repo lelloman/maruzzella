@@ -58,6 +58,13 @@ impl Plugin for ExamplePlugin {
             "Loaded from a dynamic library",
         ))?;
 
+        host.register_surface_contribution(SurfaceContributionSpec::settings_page(
+            "com.example.hello",
+            "com.example.hello.settings.general",
+            "Example Plugin Settings",
+            "Placeholder settings page contributed through a typed surface contract.",
+        ))?;
+
         host.register_view_factory(ViewFactorySpec::new(
             "com.example.hello",
             "com.example.hello.welcome",

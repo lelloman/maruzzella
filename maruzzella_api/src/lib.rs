@@ -209,6 +209,29 @@ impl MzAboutSection {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzSettingsPage {
+    pub title: String,
+    pub summary: String,
+}
+
+impl MzSettingsPage {
+    pub fn new(title: impl Into<String>, summary: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            summary: summary.into(),
+        }
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
 pub type MzCreateViewFn =
     extern "C" fn(host: *const MzHostApi, request: *const MzViewRequest) -> *mut c_void;
 
@@ -304,5 +327,13 @@ mod tests {
         let bytes = section.to_bytes().expect("about section should serialize");
         let decoded = MzAboutSection::from_bytes(&bytes).expect("about section should decode");
         assert_eq!(decoded, section);
+    }
+
+    #[test]
+    fn settings_page_roundtrips_through_json_bytes() {
+        let page = MzSettingsPage::new("General", "Example plugin settings");
+        let bytes = page.to_bytes().expect("settings page should serialize");
+        let decoded = MzSettingsPage::from_bytes(&bytes).expect("settings page should decode");
+        assert_eq!(decoded, page);
     }
 }

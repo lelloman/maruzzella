@@ -1,7 +1,7 @@
 use gtk::gio;
 use gtk::prelude::*;
 use gtk::{
-    Align, Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar, Separator,
+    Align, Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar,
 };
 
 use crate::commands::CommandRegistry;
@@ -20,29 +20,42 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     menu_bar.add_css_class("menu-bar");
     root.append(&menu_bar);
 
-    let toolbar = GtkBox::new(Orientation::Horizontal, 8);
+    let toolbar = GtkBox::new(Orientation::Horizontal, 10);
     toolbar.add_css_class("studio-toolbar");
 
+    let primary_group = GtkBox::new(Orientation::Horizontal, 10);
+    primary_group.add_css_class("toolbar-group");
+    primary_group.add_css_class("toolbar-group-primary");
+
+    let title_chip = GtkBox::new(Orientation::Horizontal, 0);
+    title_chip.add_css_class("toolbar-title-chip");
     let title = Label::new(Some(&spec.title));
-    title.add_css_class("toolbar-meta");
-    toolbar.append(&title);
-    toolbar.append(&toolbar_separator());
+    title.add_css_class("toolbar-title");
+    title_chip.append(&title);
+    primary_group.append(&title_chip);
 
     let search = Entry::new();
     search.add_css_class("toolbar-search");
     search.set_placeholder_text(Some(&spec.search_placeholder));
-    toolbar.append(&search);
+    primary_group.append(&search);
+    toolbar.append(&primary_group);
 
     let spacer = GtkBox::new(Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
     toolbar.append(&spacer);
 
+    let actions_group = GtkBox::new(Orientation::Horizontal, 6);
+    actions_group.add_css_class("toolbar-group");
+    actions_group.add_css_class("toolbar-group-actions");
+
     let leading = spec.toolbar_items.iter().filter(|item| !item.secondary);
     for item in leading {
-        toolbar.append(&action_bar_item_button(item));
+        actions_group.append(&action_bar_item_button(item));
     }
+    toolbar.append(&actions_group);
 
     let utility_group = GtkBox::new(Orientation::Horizontal, 4);
+    utility_group.add_css_class("toolbar-group");
     utility_group.add_css_class("toolbar-utility-group");
     for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
         utility_group.append(&action_bar_item_button(item));
@@ -53,7 +66,7 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     status_cluster.set_halign(Align::End);
     status_cluster.add_css_class("toolbar-status-cluster");
     let meta = Label::new(Some(&spec.status_text));
-    meta.add_css_class("toolbar-meta");
+    meta.add_css_class("toolbar-status");
     status_cluster.append(&meta);
     toolbar.append(&status_cluster);
 
@@ -96,12 +109,6 @@ fn icon_button(icon_name: &str, action_name: &str, tooltip: &str) -> Button {
     icon.set_icon_size(gtk::IconSize::Normal);
     button.set_child(Some(&icon));
     button
-}
-
-fn toolbar_separator() -> Separator {
-    let separator = Separator::new(Orientation::Vertical);
-    separator.add_css_class("toolbar-divider");
-    separator
 }
 
 fn build_menu_model(spec: &ShellSpec) -> gio::Menu {

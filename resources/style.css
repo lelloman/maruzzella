@@ -133,41 +133,52 @@ undershoot.left {
 }
 
 .studio-toolbar {
-  min-height: 22px;
-  padding: 5px 10px;
-  background: #24272c;
+  min-height: 40px;
+  padding: 8px 12px;
+  background: #26292e;
   border-top: 0;
   border-bottom: 1px solid #34383e;
 }
 
-.studio-badge,
-.nav-rail-badge {
-  min-width: 14px;
-  min-height: 14px;
-  padding: 0;
-  border-radius: 0;
-  background: #e58a45;
-  color: #fff7ef;
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+.toolbar-group {
+  padding: 3px;
+  border-radius: 10px;
+  background: #2d3137;
+  border: 1px solid #353a42;
 }
 
-.toolbar-meta {
-  color: #7f8895;
+.toolbar-group-primary {
+  spacing: 10px;
+}
+
+.toolbar-group-actions,
+.toolbar-utility-group {
+  background: #2b2f35;
+}
+
+.toolbar-title-chip {
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #22252a;
+  border: 1px solid #353a42;
+}
+
+.toolbar-title {
+  color: #c9d0d8;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.toolbar-meta,
+.toolbar-status {
+  color: #8b93a0;
   font-size: 12px;
 }
 
-.toolbar-status-cluster separator {
-  background: #3a4049;
-  min-width: 1px;
-  margin: 2px 3px;
-}
-
-.toolbar-divider {
-  background: #3a4049;
-  min-width: 1px;
-  margin: 2px 3px;
+.toolbar-status-cluster {
+  padding: 0 2px 0 8px;
 }
 
 .toolbar-button,
@@ -195,6 +206,7 @@ button:active {
 .toolbar-button-label {
   color: #b5bcc7;
   font-size: 13px;
+  font-weight: 500;
 }
 
 .toolbar-chip {
@@ -312,35 +324,36 @@ entry {
 }
 
 .toolbar-search {
-  min-width: 180px;
-  max-width: 250px;
-  background: #303339;
-  border: 0;
-  border-radius: 7px;
-  padding: 0 16px;
+  min-width: 260px;
+  max-width: 340px;
+  background: #202328;
+  border: 1px solid #353a42;
+  border-radius: 8px;
+  padding: 0 14px;
 }
 
 .toolbar-search:focus {
-  border: 0;
+  border: 1px solid #486a9e;
   box-shadow: none;
-  background: #363a40;
+  background: #24282e;
 }
 
 .toolbar-icon-button {
-  min-width: 28px;
-  min-height: 28px;
-  padding: 4px 6px;
-  border-radius: 0;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 4px 7px;
+  border-radius: 8px;
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
 }
 
 .toolbar-icon-button:hover {
-  background: #3d434d;
+  background: #383d45;
+  border-color: #444a54;
 }
 
 .toolbar-utility-group {
-  spacing: 2px;
+  spacing: 4px;
 }
 
 entry selection,

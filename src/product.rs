@@ -107,6 +107,8 @@ pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
             });
         }
     }
+
+    spec.menu_roots.sort_by_key(|root| menu_root_rank(&root.id));
 }
 
 fn root_for_parent_surface(parent_id: &str) -> Option<(&'static str, &'static str)> {
@@ -116,6 +118,17 @@ fn root_for_parent_surface(parent_id: &str) -> Option<(&'static str, &'static st
         "maruzzella.menu.view.items" => Some(("view", "View")),
         _ => None,
     }
+}
+
+fn menu_root_rank(root_id: &str) -> (usize, String) {
+    let rank = match root_id {
+        "file" => 0,
+        "app" => 1,
+        "view" => 2,
+        "help" => 3,
+        _ => 10,
+    };
+    (rank, root_id.to_string())
 }
 
 pub fn default_product_spec() -> ProductSpec {

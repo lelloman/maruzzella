@@ -1,6 +1,6 @@
 use maruzzella::{
-    default_product_spec, run, text_tab, MaruzzellaConfig, SplitAxis, TabGroupSpec,
-    WorkbenchNodeSpec,
+    default_product_spec, run, text_tab, BottomPanelLayout, MaruzzellaConfig, SplitAxis,
+    TabGroupSpec, WorkbenchNodeSpec,
 };
 
 fn main() {
@@ -69,6 +69,7 @@ fn main() {
             ),
         ],
     );
+    product.layout.bottom_panel_layout = BottomPanelLayout::FullWidth;
 
     product.layout.workbench = WorkbenchNodeSpec::Split {
         axis: SplitAxis::Vertical,

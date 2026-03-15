@@ -16,7 +16,9 @@ use crate::plugins::{
 use crate::product;
 use crate::shell::topbar;
 use crate::shell::workbench_custom::{self, BuiltCustomWorkbenchGroup, CustomWorkbenchGroupHandle};
-use crate::spec::{ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec};
+use crate::spec::{
+    BottomPanelLayout, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec,
+};
 use crate::theme;
 
 type ShellState = Rc<RefCell<PersistedShell>>;
@@ -112,36 +114,67 @@ fn build_shell(
         plugin_runtime,
     );
 
-    let horizontal = Paned::new(Orientation::Horizontal);
-    horizontal.set_wide_handle(true);
-    horizontal.set_resize_start_child(true);
-    horizontal.set_resize_end_child(true);
-    horizontal.set_shrink_start_child(false);
-    horizontal.set_start_child(Some(&left.root));
-    horizontal.set_end_child(Some(&workbench));
-    restore_pane_position(&horizontal, &state, "shell.horizontal", 280);
-    persist_pane_position(&horizontal, state.clone(), persistence_id.clone(), "shell.horizontal");
+    let left_center = Paned::new(Orientation::Horizontal);
+    left_center.set_wide_handle(true);
+    left_center.set_resize_start_child(true);
+    left_center.set_resize_end_child(true);
+    left_center.set_shrink_start_child(false);
+    left_center.set_start_child(Some(&left.root));
+    left_center.set_end_child(Some(&workbench));
+    restore_pane_position(&left_center, &state, "shell.horizontal", 280);
+    persist_pane_position(&left_center, state.clone(), persistence_id.clone(), "shell.horizontal");
 
-    let vertical = Paned::new(Orientation::Vertical);
-    vertical.set_wide_handle(true);
-    vertical.set_resize_start_child(true);
-    vertical.set_resize_end_child(true);
-    vertical.set_shrink_end_child(false);
-    vertical.set_start_child(Some(&horizontal));
-    vertical.set_end_child(Some(&bottom.root));
-    restore_pane_position(&vertical, &state, "shell.vertical", 720);
-    persist_pane_position(&vertical, state.clone(), persistence_id.clone(), "shell.vertical");
+    match spec.bottom_panel_layout {
+        BottomPanelLayout::CenterOnly => {
+            let vertical = Paned::new(Orientation::Vertical);
+            vertical.set_wide_handle(true);
+            vertical.set_resize_start_child(true);
+            vertical.set_resize_end_child(true);
+            vertical.set_shrink_end_child(false);
+            vertical.set_start_child(Some(&left_center));
+            vertical.set_end_child(Some(&bottom.root));
+            restore_pane_position(&vertical, &state, "shell.vertical", 720);
+            persist_pane_position(
+                &vertical,
+                state.clone(),
+                persistence_id.clone(),
+                "shell.vertical",
+            );
 
-    let outer = Paned::new(Orientation::Horizontal);
-    outer.set_wide_handle(true);
-    outer.set_resize_start_child(true);
-    outer.set_resize_end_child(true);
-    outer.set_shrink_end_child(false);
-    outer.set_start_child(Some(&vertical));
-    outer.set_end_child(Some(&right.root));
-    restore_pane_position(&outer, &state, "shell.outer", 1260);
-    persist_pane_position(&outer, state, persistence_id, "shell.outer");
-    outer.upcast::<gtk::Widget>()
+            let outer = Paned::new(Orientation::Horizontal);
+            outer.set_wide_handle(true);
+            outer.set_resize_start_child(true);
+            outer.set_resize_end_child(true);
+            outer.set_shrink_end_child(false);
+            outer.set_start_child(Some(&vertical));
+            outer.set_end_child(Some(&right.root));
+            restore_pane_position(&outer, &state, "shell.outer", 1260);
+            persist_pane_position(&outer, state, persistence_id, "shell.outer");
+            outer.upcast::<gtk::Widget>()
+        }
+        BottomPanelLayout::FullWidth => {
+            let upper = Paned::new(Orientation::Horizontal);
+            upper.set_wide_handle(true);
+            upper.set_resize_start_child(true);
+            upper.set_resize_end_child(true);
+            upper.set_shrink_end_child(false);
+            upper.set_start_child(Some(&left_center));
+            upper.set_end_child(Some(&right.root));
+            restore_pane_position(&upper, &state, "shell.outer", 1260);
+            persist_pane_position(&upper, state.clone(), persistence_id.clone(), "shell.outer");
+
+            let vertical = Paned::new(Orientation::Vertical);
+            vertical.set_wide_handle(true);
+            vertical.set_resize_start_child(true);
+            vertical.set_resize_end_child(true);
+            vertical.set_shrink_end_child(false);
+            vertical.set_start_child(Some(&upper));
+            vertical.set_end_child(Some(&bottom.root));
+            restore_pane_position(&vertical, &state, "shell.vertical", 720);
+            persist_pane_position(&vertical, state, persistence_id, "shell.vertical");
+            vertical.upcast::<gtk::Widget>()
+        }
+    }
 }
 
 fn build_group(

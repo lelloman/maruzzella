@@ -15,6 +15,12 @@ pub enum SplitAxis {
     Vertical,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BottomPanelLayout {
+    CenterOnly,
+    FullWidth,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TabSpec {
     pub id: String,
@@ -41,6 +47,7 @@ pub struct ShellSpec {
     pub title: String,
     pub search_placeholder: String,
     pub status_text: String,
+    pub bottom_panel_layout: BottomPanelLayout,
     pub menu_roots: Vec<MenuRootSpec>,
     pub menu_items: Vec<MenuItemSpec>,
     pub commands: Vec<CommandSpec>,

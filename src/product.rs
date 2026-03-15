@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use crate::plugins::PluginRuntime;
 use crate::spec::{
-    text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, ShellSpec, SplitAxis, TabGroupSpec,
-    ToolbarItemSpec, WorkbenchNodeSpec,
+    text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec, ShellSpec, SplitAxis,
+    TabGroupSpec, ToolbarItemSpec, WorkbenchNodeSpec,
 };
 
 #[derive(Clone, Debug)]
@@ -15,6 +15,7 @@ pub struct BrandingSpec {
 
 #[derive(Clone, Debug)]
 pub struct LayoutContribution {
+    pub bottom_panel_layout: BottomPanelLayout,
     pub left_panel: TabGroupSpec,
     pub right_panel: TabGroupSpec,
     pub bottom_panel: TabGroupSpec,
@@ -37,6 +38,7 @@ impl ProductSpec {
             title: self.branding.title.clone(),
             search_placeholder: self.branding.search_placeholder.clone(),
             status_text: self.branding.status_text.clone(),
+            bottom_panel_layout: self.layout.bottom_panel_layout,
             menu_roots: self.menu_roots.clone(),
             menu_items: self.menu_items.clone(),
             commands: self.commands.clone(),
@@ -180,6 +182,7 @@ pub fn default_product_spec() -> ProductSpec {
         },
     ];
     let layout = LayoutContribution {
+        bottom_panel_layout: BottomPanelLayout::CenterOnly,
         left_panel: TabGroupSpec::new(
             "panel-left",
             Some("navigation"),

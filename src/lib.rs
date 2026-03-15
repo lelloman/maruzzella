@@ -22,8 +22,9 @@ pub use plugins::{
     RegisteredSurfaceContribution, RegisteredViewFactory, Version as PluginVersion,
 };
 pub use spec::{
-    plugin_tab, text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, PanelContentKind, ShellSpec,
-    SplitAxis, TabGroupSpec, TabSpec, ToolbarItemSpec, WorkbenchNodeSpec,
+    plugin_tab, text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec,
+    PanelContentKind, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, ToolbarItemSpec,
+    WorkbenchNodeSpec,
 };
 
 #[derive(Clone, Debug)]

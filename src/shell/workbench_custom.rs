@@ -11,6 +11,7 @@ use gtk::{
     StackTransitionType, TextBuffer, Widget,
 };
 
+use crate::plugins::PluginRuntime;
 use crate::spec::TabSpec;
 
 use super::tabbed_panel::{self, BuiltTabPage};
@@ -619,6 +620,7 @@ pub fn build_group(
     group_id: &str,
     tabs: &[TabSpec],
     active_tab_id: Option<&str>,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
 ) -> BuiltCustomWorkbenchGroup {
     let overlay = Overlay::new();
     overlay.set_hexpand(true);
@@ -721,7 +723,7 @@ pub fn build_group(
     let mut labels = HashMap::new();
 
     for tab in tabs {
-        let page = tabbed_panel::build_tab_page("workbench", tab);
+        let page = tabbed_panel::build_tab_page("workbench", tab, plugin_runtime.as_ref());
         tab_labels.insert(page.tab_id.clone(), page.tab_label.clone());
         if let Some(close_button) = page.close_button.clone() {
             close_buttons.insert(page.tab_id.clone(), close_button);

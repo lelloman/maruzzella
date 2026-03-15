@@ -43,7 +43,11 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("app-root");
     root.append(&topbar::build(&spec).root);
-    root.append(&build_shell(state, config.persistence_id.clone()));
+    root.append(&build_shell(
+        state,
+        config.persistence_id.clone(),
+        plugin_runtime.clone(),
+    ));
     window.set_child(Some(&root));
     if let Some(runtime) = plugin_runtime {
         unsafe {
@@ -79,16 +83,36 @@ fn build_plugin_runtime(config: &MaruzzellaConfig) -> Option<PluginRuntime> {
     }
 }
 
-fn build_shell(state: ShellState, persistence_id: String) -> gtk::Widget {
+fn build_shell(
+    state: ShellState,
+    persistence_id: String,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
+) -> gtk::Widget {
     let spec = state.borrow().spec.clone();
-    let left = build_group(&spec.left_panel, state.clone(), persistence_id.clone());
-    let right = build_group(&spec.right_panel, state.clone(), persistence_id.clone());
-    let bottom = build_group(&spec.bottom_panel, state.clone(), persistence_id.clone());
+    let left = build_group(
+        &spec.left_panel,
+        state.clone(),
+        persistence_id.clone(),
+        plugin_runtime.clone(),
+    );
+    let right = build_group(
+        &spec.right_panel,
+        state.clone(),
+        persistence_id.clone(),
+        plugin_runtime.clone(),
+    );
+    let bottom = build_group(
+        &spec.bottom_panel,
+        state.clone(),
+        persistence_id.clone(),
+        plugin_runtime.clone(),
+    );
     let workbench = build_workbench_node(
         &spec.workbench,
         state.clone(),
         persistence_id.clone(),
         "workbench-root",
+        plugin_runtime,
     );
 
     let horizontal = Paned::new(Orientation::Horizontal);
@@ -124,8 +148,14 @@ fn build_group(
     group: &TabGroupSpec,
     state: ShellState,
     persistence_id: String,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
 ) -> BuiltCustomWorkbenchGroup {
-    let built = workbench_custom::build_group(&group.id, &group.tabs, group.active_tab_id.as_deref());
+    let built = workbench_custom::build_group(
+        &group.id,
+        &group.tabs,
+        group.active_tab_id.as_deref(),
+        plugin_runtime,
+    );
     install_group_persistence(&built.handle, state, persistence_id);
     built
 }
@@ -135,10 +165,11 @@ fn build_workbench_node(
     state: ShellState,
     persistence_id: String,
     path: &str,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
 ) -> gtk::Widget {
     match node {
         WorkbenchNodeSpec::Group(group) => {
-            build_group(group, state, persistence_id).root.upcast::<gtk::Widget>()
+            build_group(group, state, persistence_id, plugin_runtime).root.upcast::<gtk::Widget>()
         }
         WorkbenchNodeSpec::Split { axis, children } => {
             let mut child_widgets = children
@@ -150,6 +181,7 @@ fn build_workbench_node(
                         state.clone(),
                         persistence_id.clone(),
                         &format!("{path}:{index}"),
+                        plugin_runtime.clone(),
                     )
                 })
                 .collect::<Vec<_>>();

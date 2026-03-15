@@ -4,6 +4,18 @@ Maruzzella is an original GTK4 desktop shell prototype built in Rust.
 
 It focuses on the shell itself rather than on any specific product domain: custom tabbed workbench areas, side panels, bottom panels, split layouts, lightweight command handling, and persisted workspace state.
 
+## Current Status
+
+Today the project is in an intermediate but coherent state:
+
+- the GTK shell itself is working
+- layout persistence is working
+- the public crate API is usable by downstream apps
+- the first plugin ABI/runtime slice is working for loading plugins, resolving dependencies, merging commands and menus, and dispatching plugin commands
+- the shell UI is still mostly driven by placeholder `ProductSpec` tabs rather than real plugin-owned views
+
+That means the plugin architecture is proven, but plugins do not yet meaningfully inhabit the shell UI.
+
 ## What It Does
 
 - renders a multi-pane desktop shell with left, right, bottom, and central workbench regions
@@ -39,6 +51,13 @@ Run the example app with:
 
 ```bash
 cargo run --example notebook
+```
+
+Run the plugin view demo with:
+
+```bash
+cargo build -p example_plugin
+cargo run --example plugin_view
 ```
 
 ## Public API
@@ -121,3 +140,11 @@ On the host side, `maruzzella` now exposes the first loading and activation prim
 - `PluginRuntime::activate(plugins)`: invoke plugin `register` and `startup` against a host API and collect contributions
 
 Plugin commands are now executable, not just declarative metadata: a plugin can register a command together with an ABI-safe handler function, and Maruzzella will dispatch GTK menu actions back into that plugin.
+
+What is not done yet:
+
+- plugin-provided GTK views are not yet wired into tab construction
+- `maruzzella.base` does not exist yet as a built-in plugin
+- plugin manager UI, plugin settings surfaces, and plugin-owned persistence are still planned work
+
+The next implementation target is [docs/implementation-roadmap.md](/home/lelloman/lelloprojects/maruzzella/docs/implementation-roadmap.md): **Plugin Views**.

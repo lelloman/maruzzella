@@ -2,8 +2,8 @@ pub use maruzzella_api as ffi;
 pub use maruzzella_api::{MzLogLevel, MzStatusCode};
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzPluginDependency,
-    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion,
-    MZ_ABI_VERSION_V1,
+    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution,
+    MzVersion, MzViewFactorySpec, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,6 +187,35 @@ pub struct SurfaceContributionSpec {
     pub payload: &'static [u8],
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ViewFactorySpec {
+    pub plugin_id: &'static str,
+    pub view_id: &'static str,
+    pub create: maruzzella_api::MzCreateViewFn,
+}
+
+impl ViewFactorySpec {
+    pub const fn new(
+        plugin_id: &'static str,
+        view_id: &'static str,
+        create: maruzzella_api::MzCreateViewFn,
+    ) -> Self {
+        Self {
+            plugin_id,
+            view_id,
+            create,
+        }
+    }
+
+    fn into_ffi(self) -> MzViewFactorySpec {
+        MzViewFactorySpec {
+            plugin_id: MzStr::from_static(self.plugin_id),
+            view_id: MzStr::from_static(self.view_id),
+            create: self.create,
+        }
+    }
+}
+
 impl SurfaceContributionSpec {
     pub const fn new(
         plugin_id: &'static str,
@@ -266,6 +295,18 @@ impl<'a> HostApi<'a> {
             return Err(MzStatusCode::NotFound);
         };
         let status = register(&contribution.into_ffi());
+        if status.is_ok() {
+            Ok(())
+        } else {
+            Err(status.code)
+        }
+    }
+
+    pub fn register_view_factory(&self, factory: ViewFactorySpec) -> Result<(), MzStatusCode> {
+        let Some(register) = self.raw.register_view_factory else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let status = register(&factory.into_ffi());
         if status.is_ok() {
             Ok(())
         } else {

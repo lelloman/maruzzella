@@ -9,3 +9,4 @@ path = "src/lib.rs"
 
 [dependencies]
 maruzzella_sdk = { path = "../../maruzzella_sdk" }
+gtk = { package = "gtk4", version = "0.9" }

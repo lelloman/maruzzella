@@ -20,8 +20,8 @@ pub use plugins::{
     RegisteredViewFactory, Version as PluginVersion,
 };
 pub use spec::{
-    text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, PanelContentKind, ShellSpec, SplitAxis,
-    TabGroupSpec, TabSpec, ToolbarItemSpec, WorkbenchNodeSpec,
+    plugin_tab, text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, PanelContentKind, ShellSpec,
+    SplitAxis, TabGroupSpec, TabSpec, ToolbarItemSpec, WorkbenchNodeSpec,
 };
 
 #[derive(Clone, Debug)]

@@ -3,6 +3,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str;
 
+use glib::translate::FromGlibPtrFull;
+use gtk::Widget;
 use libloading::{Library, Symbol};
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzLogLevel, MzMenuItemSpec, MzPluginDependency,
@@ -227,6 +229,61 @@ impl PluginRuntime {
     pub fn logs(&self) -> &[PluginLogEntry] {
         &self.logs
     }
+
+    pub fn create_view(
+        &self,
+        view_id: &str,
+        payload: &[u8],
+    ) -> Result<Widget, PluginViewCreateError> {
+        let Some(factory) = self
+            .view_factories
+            .iter()
+            .find(|factory| factory.view_id == view_id)
+        else {
+            return Err(PluginViewCreateError::NotFound {
+                view_id: view_id.to_string(),
+            });
+        };
+
+        let _scope = ActiveRuntimeScope::enter(self);
+        let host_api = MzHostApi {
+            abi_version: MZ_ABI_VERSION_V1,
+            host_context: std::ptr::null_mut(),
+            log: None,
+            register_command: None,
+            register_menu_item: None,
+            register_surface_contribution: None,
+            register_view_factory: None,
+            dispatch_command: Some(runtime_dispatch_command),
+        };
+        let plugin_id = MzStr {
+            ptr: factory.plugin_id.as_ptr(),
+            len: factory.plugin_id.len(),
+        };
+        let view_id_ffi = MzStr {
+            ptr: factory.view_id.as_ptr(),
+            len: factory.view_id.len(),
+        };
+        let request = maruzzella_api::MzViewRequest {
+            plugin_id,
+            view_id: view_id_ffi,
+            payload: MzBytes {
+                ptr: payload.as_ptr(),
+                len: payload.len(),
+            },
+        };
+
+        let widget_ptr = (factory.create)(&host_api, &request);
+        if widget_ptr.is_null() {
+            return Err(PluginViewCreateError::FactoryReturnedNull {
+                plugin_id: factory.plugin_id.clone(),
+                view_id: factory.view_id.clone(),
+            });
+        }
+
+        let widget = unsafe { Widget::from_glib_full(widget_ptr as *mut gtk::ffi::GtkWidget) };
+        Ok(widget)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -287,6 +344,21 @@ pub enum PluginRuntimeError {
     },
     StartupFailed {
         plugin_id: String,
+        status: MzStatusCode,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PluginViewCreateError {
+    NotFound {
+        view_id: String,
+    },
+    FactoryReturnedNull {
+        plugin_id: String,
+        view_id: String,
+    },
+    CommandDispatchFailed {
+        command_id: String,
         status: MzStatusCode,
     },
 }
@@ -700,6 +772,7 @@ extern "C" fn host_dispatch_command(command_id: MzStr, payload: MzBytes) -> MzSt
 
 thread_local! {
     static ACTIVE_HOST_STATE: std::cell::Cell<*mut HostState> = const { std::cell::Cell::new(std::ptr::null_mut()) };
+    static ACTIVE_RUNTIME: std::cell::Cell<*const PluginRuntime> = const { std::cell::Cell::new(std::ptr::null()) };
 }
 
 fn current_host_state() -> Option<&'static mut HostState> {
@@ -713,7 +786,19 @@ fn current_host_state() -> Option<&'static mut HostState> {
     })
 }
 
+fn current_runtime() -> Option<&'static PluginRuntime> {
+    ACTIVE_RUNTIME.with(|cell| {
+        let ptr = cell.get();
+        if ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { &*ptr })
+        }
+    })
+}
+
 struct ActiveHostScope;
+struct ActiveRuntimeScope;
 
 impl ActiveHostScope {
     fn enter(state: &mut HostState) -> Self {
@@ -725,6 +810,35 @@ impl ActiveHostScope {
 impl Drop for ActiveHostScope {
     fn drop(&mut self) {
         ACTIVE_HOST_STATE.with(|cell| cell.set(std::ptr::null_mut()));
+    }
+}
+
+impl ActiveRuntimeScope {
+    fn enter(runtime: &PluginRuntime) -> Self {
+        ACTIVE_RUNTIME.with(|cell| cell.set(runtime as *const _));
+        Self
+    }
+}
+
+impl Drop for ActiveRuntimeScope {
+    fn drop(&mut self) {
+        ACTIVE_RUNTIME.with(|cell| cell.set(std::ptr::null()));
+    }
+}
+
+extern "C" fn runtime_dispatch_command(command_id: MzStr, payload: MzBytes) -> MzStatus {
+    let Some(runtime) = current_runtime() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(command_id) = decode_runtime_str("dispatch.command_id", command_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    match runtime.dispatch_command(&command_id, unsafe {
+        std::slice::from_raw_parts(payload.ptr, payload.len)
+    }) {
+        Ok(()) => MzStatus::OK,
+        Err(status) => MzStatus::new(status),
     }
 }
 

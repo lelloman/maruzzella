@@ -1,6 +1,9 @@
+use gtk::glib::translate::IntoGlibPtr;
+use gtk::prelude::*;
+use gtk::{Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
     export_plugin, CommandSpec, HostApi, MenuItemSpec, MzStatusCode, Plugin, PluginDependency,
-    PluginDescriptor, SurfaceContributionSpec, Version,
+    PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
 };
 
 struct ExamplePlugin;
@@ -55,8 +58,47 @@ impl Plugin for ExamplePlugin {
             br#"{"title":"Example Plugin","body":"Loaded from a dynamic library"}"#,
         ))?;
 
+        host.register_view_factory(ViewFactorySpec::new(
+            "com.example.hello",
+            "com.example.hello.welcome",
+            create_example_view,
+        ))?;
+
         Ok(())
     }
+}
+
+extern "C" fn create_example_view(
+    _host: *const maruzzella_sdk::ffi::MzHostApi,
+    _request: *const maruzzella_sdk::ffi::MzViewRequest,
+) -> *mut std::ffi::c_void {
+    let root = GtkBox::new(Orientation::Vertical, 12);
+    root.set_margin_top(18);
+    root.set_margin_bottom(18);
+    root.set_margin_start(18);
+    root.set_margin_end(18);
+
+    let title = Label::new(Some("Example plugin view"));
+    title.set_xalign(0.0);
+    title.add_css_class("title-3");
+
+    let body = Label::new(Some(
+        "This widget was created inside plugins/example_plugin and mounted into a Maruzzella tab.",
+    ));
+    body.set_xalign(0.0);
+    body.set_wrap(true);
+
+    let button = Button::with_label("Run Example Command");
+    button.set_halign(gtk::Align::Start);
+    button.connect_clicked(|_| {
+        let _ = show_example_plugin(maruzzella_sdk::ffi::MzBytes::empty());
+    });
+
+    root.append(&title);
+    root.append(&body);
+    root.append(&button);
+
+    root.upcast::<gtk::Widget>().into_glib_ptr() as *mut std::ffi::c_void
 }
 
 export_plugin!(ExamplePlugin);

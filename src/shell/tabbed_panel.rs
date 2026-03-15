@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{
@@ -6,6 +7,7 @@ use gtk::{
     TextView,
 };
 
+use crate::plugins::PluginRuntime;
 use crate::spec::{PanelContentKind, TabSpec};
 
 use super::{bare_pane_container, scrolled, section_title};
@@ -34,7 +36,7 @@ pub struct BuiltNotebook {
     pub labels: HashMap<String, Label>,
 }
 
-pub fn build(css_class: &str, tabs: &[TabSpec]) -> BuiltNotebook {
+pub fn build(css_class: &str, tabs: &[TabSpec], plugin_runtime: Option<Rc<PluginRuntime>>) -> BuiltNotebook {
     let (root, content) = bare_pane_container(css_class);
     let notebook = Notebook::new();
     notebook.add_css_class("workbench-tabs");
@@ -54,7 +56,7 @@ pub fn build(css_class: &str, tabs: &[TabSpec]) -> BuiltNotebook {
 
     for (index, tab) in tabs.iter().enumerate() {
         page_indexes.insert(tab.id.to_string(), index as u32);
-        let page = build_tab_page(css_class, tab);
+        let page = build_tab_page(css_class, tab, plugin_runtime.as_ref());
         page.widget
             .set_widget_name(&format!("tab-page:{}", page.tab_id));
         notebook.append_page(&page.widget, Some(&page.tab_header));
@@ -88,13 +90,20 @@ pub fn build(css_class: &str, tabs: &[TabSpec]) -> BuiltNotebook {
     }
 }
 
-pub fn build_tab_page(css_class: &str, tab: &TabSpec) -> BuiltTabPage {
+pub fn build_tab_page(
+    css_class: &str,
+    tab: &TabSpec,
+    plugin_runtime: Option<&Rc<PluginRuntime>>,
+) -> BuiltTabPage {
     let mut buffer = None;
     let mut list = None;
     let mut entry = None;
     let mut labels = HashMap::new();
     let mut close_button = None;
-    let widget = match tab.content_kind {
+    let widget = if let Some(plugin_view_id) = tab.plugin_view_id.as_deref() {
+        build_plugin_widget(tab, plugin_view_id, plugin_runtime)
+    } else {
+        match tab.content_kind {
         PanelContentKind::NavigationList | PanelContentKind::IdentityList => {
             let built_list = ListBox::new();
             built_list.set_selection_mode(SelectionMode::Single);
@@ -158,6 +167,7 @@ pub fn build_tab_page(css_class: &str, tab: &TabSpec) -> BuiltTabPage {
             buffer = Some(built_buffer);
             scrolled(&view).upcast::<gtk::Widget>()
         }
+        }
     };
     let tab_label = Label::new(Some(&tab.title));
     tab_label.add_css_class("tab-label");
@@ -184,6 +194,42 @@ pub fn build_tab_page(css_class: &str, tab: &TabSpec) -> BuiltTabPage {
         entry,
         labels,
     }
+}
+
+fn build_plugin_widget(
+    tab: &TabSpec,
+    plugin_view_id: &str,
+    plugin_runtime: Option<&Rc<PluginRuntime>>,
+) -> gtk::Widget {
+    let Some(plugin_runtime) = plugin_runtime else {
+        return plugin_fallback_widget(
+            &format!(
+                "Plugin view '{plugin_view_id}' is configured for this tab, but no plugin runtime is active.\n\n{}",
+                tab.placeholder
+            ),
+        );
+    };
+
+    match plugin_runtime.create_view(plugin_view_id, &[]) {
+        Ok(widget) => widget,
+        Err(error) => plugin_fallback_widget(
+            &format!(
+                "Failed to build plugin view '{plugin_view_id}': {error:?}\n\n{}",
+                tab.placeholder
+            ),
+        ),
+    }
+}
+
+fn plugin_fallback_widget(message: &str) -> gtk::Widget {
+    let buffer = TextBuffer::new(None);
+    buffer.set_text(message);
+    let view = TextView::builder()
+        .editable(false)
+        .monospace(true)
+        .buffer(&buffer)
+        .build();
+    scrolled(&view).upcast::<gtk::Widget>()
 }
 
 fn field(label_text: &str, value: &Label) -> GtkBox {

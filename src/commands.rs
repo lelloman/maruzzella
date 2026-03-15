@@ -134,6 +134,16 @@ fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRun
     layout.append(&summary);
 
     if let Some(runtime) = runtime {
+        let activation = Label::new(Some(&format!(
+            "Activation order: {}",
+            runtime.activation_order().join(" -> ")
+        )));
+        activation.set_xalign(0.0);
+        activation.set_wrap(true);
+        activation.add_css_class("muted");
+        layout.append(&activation);
+        layout.append(&Separator::new(Orientation::Horizontal));
+
         for plugin in runtime.plugins() {
             let descriptor = plugin.descriptor();
 
@@ -158,6 +168,39 @@ fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRun
                 layout.append(&description);
             }
 
+            let path = Label::new(Some(&format!("path {}", plugin.path().display())));
+            path.set_xalign(0.0);
+            path.add_css_class("mono");
+            path.add_css_class("muted");
+            path.set_wrap(true);
+            layout.append(&path);
+
+            if descriptor.dependencies.is_empty() {
+                let deps = Label::new(Some("Dependencies: none"));
+                deps.set_xalign(0.0);
+                deps.add_css_class("muted");
+                layout.append(&deps);
+            } else {
+                let deps_title = Label::new(Some("Dependencies"));
+                deps_title.set_xalign(0.0);
+                deps_title.add_css_class("section-title");
+                layout.append(&deps_title);
+
+                for dependency in &descriptor.dependencies {
+                    let deps = Label::new(Some(&format!(
+                        "{} {} [{}..{})",
+                        if dependency.required { "required" } else { "optional" },
+                        dependency.plugin_id,
+                        dependency.min_version,
+                        dependency.max_version_exclusive
+                    )));
+                    deps.set_xalign(0.0);
+                    deps.add_css_class("mono");
+                    deps.set_wrap(true);
+                    layout.append(&deps);
+                }
+            }
+
             for page in settings_pages_for_plugin(runtime, &descriptor.id) {
                 let page_title = Label::new(Some(&format!("Settings: {}", page.title)));
                 page_title.set_xalign(0.0);
@@ -168,6 +211,25 @@ fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRun
                 page_summary.set_xalign(0.0);
                 page_summary.set_wrap(true);
                 layout.append(&page_summary);
+            }
+
+            let plugin_logs = logs_for_plugin(runtime, &descriptor.id);
+            if !plugin_logs.is_empty() {
+                let logs_title = Label::new(Some("Runtime logs"));
+                logs_title.set_xalign(0.0);
+                logs_title.add_css_class("section-title");
+                layout.append(&logs_title);
+
+                for entry in plugin_logs {
+                    let log_line = Label::new(Some(&format!(
+                        "[{:?}] {}",
+                        entry.level, entry.message
+                    )));
+                    log_line.set_xalign(0.0);
+                    log_line.add_css_class("mono");
+                    log_line.set_wrap(true);
+                    layout.append(&log_line);
+                }
             }
 
             layout.append(&Separator::new(Orientation::Horizontal));
@@ -277,4 +339,15 @@ fn settings_pages_for_plugin(runtime: &PluginRuntime, plugin_id: &str) -> Vec<Mz
     }
 
     pages
+}
+
+fn logs_for_plugin<'a>(
+    runtime: &'a PluginRuntime,
+    plugin_id: &str,
+) -> Vec<&'a crate::plugins::PluginLogEntry> {
+    runtime
+        .logs()
+        .iter()
+        .filter(|entry| entry.plugin_id == plugin_id)
+        .collect()
 }

@@ -9,7 +9,10 @@ use crate::base_plugin;
 use crate::MaruzzellaConfig;
 use crate::commands;
 use crate::layout::{self, PersistedShell};
-use crate::plugins::{load_plugin, PluginRuntime};
+use crate::plugins::{
+    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginHost,
+    PluginRuntime,
+};
 use crate::product;
 use crate::shell::topbar;
 use crate::shell::workbench_custom::{self, BuiltCustomWorkbenchGroup, CustomWorkbenchGroupHandle};
@@ -26,8 +29,8 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
         &config.product.shell_spec(),
     )));
     let mut spec = state.borrow().spec.clone();
-    let plugin_runtime = build_plugin_runtime(config).map(Rc::new);
-    if let Some(runtime) = plugin_runtime.as_ref() {
+    let plugin_host = Rc::new(build_plugin_host(config));
+    if let Some(runtime) = plugin_host.runtime() {
         product::merge_plugin_runtime(&mut spec, runtime);
     }
 
@@ -38,40 +41,35 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
         .default_height(980)
         .build();
     window.add_css_class("app-window");
-    let registry = commands::shell_registry(&window, &spec, plugin_runtime.clone());
+    let registry = commands::shell_registry(&window, &spec, Some(plugin_host.clone()));
     topbar::install_actions(&window, &spec, &registry);
 
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("app-root");
     root.append(&topbar::build(&spec).root);
-    root.append(&build_shell(
-        state,
-        config.persistence_id.clone(),
-        plugin_runtime.clone(),
-    ));
+    root.append(&build_shell(state, config.persistence_id.clone(), plugin_host.runtime().cloned()));
     window.set_child(Some(&root));
-    if let Some(runtime) = plugin_runtime {
-        unsafe {
-            window.set_data("maruzzella-plugin-runtime", runtime);
-        }
+    unsafe {
+        window.set_data("maruzzella-plugin-host", plugin_host);
     }
     window.present();
 }
 
-fn build_plugin_runtime(config: &MaruzzellaConfig) -> Option<PluginRuntime> {
+fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
     let mut plugins = vec![base_plugin::load()];
+    let mut diagnostics = Vec::new();
     for path in &config.plugin_paths {
         match load_plugin(path) {
             Ok(plugin) => plugins.push(plugin),
-            Err(error) => eprintln!("failed to load plugin {}: {error:?}", path.display()),
+            Err(error) => diagnostics.push(diagnostic_for_load_error(path, &error)),
         }
     }
 
-    match PluginRuntime::activate_with_persistence_id(plugins, &config.persistence_id) {
-        Ok(runtime) => Some(runtime),
+    match crate::plugins::PluginRuntime::activate_with_persistence_id(plugins, &config.persistence_id) {
+        Ok(runtime) => PluginHost::new(Some(Rc::new(runtime)), diagnostics),
         Err(error) => {
-            eprintln!("failed to activate plugins: {error:?}");
-            None
+            diagnostics.push(diagnostic_for_runtime_error(&error));
+            PluginHost::new(None, diagnostics)
         }
     }
 }

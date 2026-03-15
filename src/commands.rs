@@ -5,7 +5,7 @@ use gtk::prelude::*;
 use gtk::{ApplicationWindow, Box as GtkBox, Dialog, Label, Orientation, ResponseType, Separator};
 use maruzzella_api::{MzAboutSection, MzSettingsPage};
 
-use crate::plugins::PluginRuntime;
+use crate::plugins::PluginHost;
 use crate::spec::{CommandSpec, ShellSpec};
 use crate::theme;
 
@@ -36,7 +36,7 @@ impl CommandRegistry {
 pub fn shell_registry(
     window: &ApplicationWindow,
     spec: &ShellSpec,
-    plugin_runtime: Option<Rc<PluginRuntime>>,
+    plugin_host: Option<Rc<PluginHost>>,
 ) -> CommandRegistry {
     let mut registry = CommandRegistry::new();
 
@@ -46,9 +46,9 @@ pub fn shell_registry(
 
     let about_window = window.clone();
     let app_title = spec.title.clone();
-    let runtime_for_about = plugin_runtime.clone();
+    let host_for_about = plugin_host.clone();
     registry.register("shell.about", move || {
-        present_about_dialog(&about_window, &app_title, runtime_for_about.as_deref());
+        present_about_dialog(&about_window, &app_title, host_for_about.as_deref());
     });
 
     let palette_window = window.clone();
@@ -58,12 +58,15 @@ pub fn shell_registry(
     });
 
     let plugins_window = window.clone();
-    let runtime_for_plugins = plugin_runtime.clone();
+    let host_for_plugins = plugin_host.clone();
     registry.register("shell.plugins", move || {
-        present_plugins_dialog(&plugins_window, runtime_for_plugins.as_deref());
+        present_plugins_dialog(&plugins_window, host_for_plugins.as_deref());
     });
 
-    if let Some(plugin_runtime) = plugin_runtime {
+    if let Some(plugin_host) = plugin_host {
+        let Some(plugin_runtime) = plugin_host.runtime().cloned() else {
+            return registry;
+        };
         for command in &spec.commands {
             if registry.handler_for(&command.id).is_some() {
                 continue;
@@ -114,7 +117,7 @@ fn present_command_palette(window: &ApplicationWindow, commands: &[CommandSpec])
     dialog.present();
 }
 
-fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRuntime>) {
+fn present_plugins_dialog(window: &ApplicationWindow, host: Option<&PluginHost>) {
     let dialog = Dialog::builder()
         .transient_for(window)
         .modal(true)
@@ -133,7 +136,28 @@ fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRun
     summary.add_css_class("section-title");
     layout.append(&summary);
 
-    if let Some(runtime) = runtime {
+    if let Some(host) = host {
+        for diagnostic in host.diagnostics() {
+            let line = Label::new(Some(&format!(
+                "[{:?}] {}{}",
+                diagnostic.level,
+                diagnostic
+                    .plugin_id
+                    .as_deref()
+                    .map(|plugin_id| format!("{plugin_id}: "))
+                    .unwrap_or_default(),
+                diagnostic.message
+            )));
+            line.set_xalign(0.0);
+            line.set_wrap(true);
+            line.add_css_class("mono");
+            layout.append(&line);
+        }
+        if !host.diagnostics().is_empty() {
+            layout.append(&Separator::new(Orientation::Horizontal));
+        }
+
+        if let Some(runtime) = host.runtime() {
         let activation = Label::new(Some(&format!(
             "Activation order: {}",
             runtime.activation_order().join(" -> ")
@@ -234,6 +258,11 @@ fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRun
 
             layout.append(&Separator::new(Orientation::Horizontal));
         }
+        } else {
+            let empty_runtime = Label::new(Some("No active plugin runtime."));
+            empty_runtime.set_xalign(0.0);
+            layout.append(&empty_runtime);
+        }
     } else {
         let empty = Label::new(Some("No plugin runtime is active."));
         empty.set_xalign(0.0);
@@ -250,7 +279,7 @@ fn present_plugins_dialog(window: &ApplicationWindow, runtime: Option<&PluginRun
 fn present_about_dialog(
     window: &ApplicationWindow,
     app_title: &str,
-    runtime: Option<&PluginRuntime>,
+    host: Option<&PluginHost>,
 ) {
     let dialog = Dialog::builder()
         .transient_for(window)
@@ -276,7 +305,7 @@ fn present_about_dialog(
     version.add_css_class("muted");
     layout.append(&version);
 
-    for section in about_sections(runtime) {
+    for section in about_sections(host.and_then(|host| host.runtime().map(|runtime| runtime.as_ref()))) {
         layout.append(&Separator::new(Orientation::Horizontal));
 
         let section_title = Label::new(Some(&section.title));
@@ -297,7 +326,7 @@ fn present_about_dialog(
     dialog.present();
 }
 
-fn about_sections(runtime: Option<&PluginRuntime>) -> Vec<MzAboutSection> {
+fn about_sections(runtime: Option<&crate::plugins::PluginRuntime>) -> Vec<MzAboutSection> {
     let mut sections = Vec::new();
 
     if let Some(runtime) = runtime {
@@ -322,7 +351,10 @@ fn about_sections(runtime: Option<&PluginRuntime>) -> Vec<MzAboutSection> {
     sections
 }
 
-fn settings_pages_for_plugin(runtime: &PluginRuntime, plugin_id: &str) -> Vec<MzSettingsPage> {
+fn settings_pages_for_plugin(
+    runtime: &crate::plugins::PluginRuntime,
+    plugin_id: &str,
+) -> Vec<MzSettingsPage> {
     let mut pages = Vec::new();
 
     for contribution in runtime
@@ -342,7 +374,7 @@ fn settings_pages_for_plugin(runtime: &PluginRuntime, plugin_id: &str) -> Vec<Mz
 }
 
 fn logs_for_plugin<'a>(
-    runtime: &'a PluginRuntime,
+    runtime: &'a crate::plugins::PluginRuntime,
     plugin_id: &str,
 ) -> Vec<&'a crate::plugins::PluginLogEntry> {
     runtime

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::str;
 
 use glib::translate::FromGlibPtrFull;
@@ -135,6 +136,39 @@ pub struct PluginLogEntry {
     pub plugin_id: String,
     pub level: MzLogLevel,
     pub message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PluginDiagnosticLevel {
+    Error,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PluginDiagnostic {
+    pub level: PluginDiagnosticLevel,
+    pub plugin_id: Option<String>,
+    pub path: Option<PathBuf>,
+    pub message: String,
+}
+
+#[derive(Debug, Default)]
+pub struct PluginHost {
+    runtime: Option<Rc<PluginRuntime>>,
+    diagnostics: Vec<PluginDiagnostic>,
+}
+
+impl PluginHost {
+    pub fn new(runtime: Option<Rc<PluginRuntime>>, diagnostics: Vec<PluginDiagnostic>) -> Self {
+        Self { runtime, diagnostics }
+    }
+
+    pub fn runtime(&self) -> Option<&Rc<PluginRuntime>> {
+        self.runtime.as_ref()
+    }
+
+    pub fn diagnostics(&self) -> &[PluginDiagnostic] {
+        &self.diagnostics
+    }
 }
 
 #[derive(Debug)]
@@ -933,6 +967,39 @@ fn current_process_library() -> Library {
         libloading::os::windows::Library::this()
             .expect("current process library should be loadable")
             .into()
+    }
+}
+
+pub fn diagnostic_for_load_error(path: &Path, error: &PluginLoadError) -> PluginDiagnostic {
+    PluginDiagnostic {
+        level: PluginDiagnosticLevel::Error,
+        plugin_id: load_error_plugin_id(error),
+        path: Some(path.to_path_buf()),
+        message: format!("load failed: {error:?}"),
+    }
+}
+
+pub fn diagnostic_for_runtime_error(error: &PluginRuntimeError) -> PluginDiagnostic {
+    PluginDiagnostic {
+        level: PluginDiagnosticLevel::Error,
+        plugin_id: runtime_error_plugin_id(error),
+        path: None,
+        message: format!("activation failed: {error:?}"),
+    }
+}
+
+fn load_error_plugin_id(error: &PluginLoadError) -> Option<String> {
+    match error {
+        PluginLoadError::DescriptorAbiMismatch { plugin_id, .. } => Some(plugin_id.clone()),
+        _ => None,
+    }
+}
+
+fn runtime_error_plugin_id(error: &PluginRuntimeError) -> Option<String> {
+    match error {
+        PluginRuntimeError::Resolve(_) => None,
+        PluginRuntimeError::RegisterFailed { plugin_id, .. } => Some(plugin_id.clone()),
+        PluginRuntimeError::StartupFailed { plugin_id, .. } => Some(plugin_id.clone()),
     }
 }
 

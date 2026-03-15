@@ -15,10 +15,11 @@ use gtk::Application;
 
 pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
 pub use plugins::{
-    load_plugin, resolve_load_order, LoadedPlugin, PluginDependencySpec, PluginDescriptor,
-    PluginLoadError, PluginLogEntry, PluginResolveError, PluginRuntime, PluginRuntimeError,
-    RegisteredCommand, RegisteredMenuItem, RegisteredSurfaceContribution,
-    RegisteredViewFactory, Version as PluginVersion,
+    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, resolve_load_order,
+    LoadedPlugin, PluginDependencySpec, PluginDescriptor, PluginDiagnostic,
+    PluginDiagnosticLevel, PluginHost, PluginLoadError, PluginLogEntry, PluginResolveError,
+    PluginRuntime, PluginRuntimeError, RegisteredCommand, RegisteredMenuItem,
+    RegisteredSurfaceContribution, RegisteredViewFactory, Version as PluginVersion,
 };
 pub use spec::{
     plugin_tab, text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, PanelContentKind, ShellSpec,

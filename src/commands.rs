@@ -744,7 +744,7 @@ fn open_or_focus_plugin_view(
         tab
     };
 
-    let page = tabbed_panel::build_tab_page("workbench", &tab, Some(runtime));
+    let page = tabbed_panel::build_tab_page(pane_css_class(group_id), &tab, Some(runtime));
     handle.append_page(page, true);
     true
 }
@@ -783,15 +783,41 @@ fn target_group_id_for_placement<'a>(
     group_handles: &'a GroupHandles,
 ) -> Option<&'a str> {
     let preferred = match placement {
-        MzViewPlacement::Workbench => "workbench-a",
-        MzViewPlacement::SidePanel => "panel-left",
-        MzViewPlacement::BottomPanel => "panel-bottom",
+        MzViewPlacement::Workbench => ["workbench-a", "workbench-main"],
+        MzViewPlacement::SidePanel => ["panel-left", "panel-right"],
+        MzViewPlacement::BottomPanel => ["panel-bottom", "panel-bottom"],
         MzViewPlacement::Dialog => return None,
     };
-    if group_handles.contains_key(preferred) {
-        Some(preferred)
+
+    preferred
+        .into_iter()
+        .find(|group_id| group_handles.contains_key(*group_id))
+        .or_else(|| {
+            group_handles
+                .keys()
+                .find(|group_id| matches_group_placement(group_id, placement))
+                .map(|group_id| group_id.as_str())
+        })
+}
+
+fn matches_group_placement(group_id: &str, placement: MzViewPlacement) -> bool {
+    match placement {
+        MzViewPlacement::Workbench => group_id.starts_with("workbench"),
+        MzViewPlacement::SidePanel => {
+            group_id.starts_with("panel-left") || group_id.starts_with("panel-right")
+        }
+        MzViewPlacement::BottomPanel => group_id.starts_with("panel-bottom"),
+        MzViewPlacement::Dialog => false,
+    }
+}
+
+fn pane_css_class(group_id: &str) -> &'static str {
+    if group_id.starts_with("panel-bottom") {
+        "console-pane"
+    } else if group_id.starts_with("panel-left") || group_id.starts_with("panel-right") {
+        "tool-window"
     } else {
-        None
+        "workbench"
     }
 }
 

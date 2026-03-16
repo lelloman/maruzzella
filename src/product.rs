@@ -139,6 +139,10 @@ pub fn default_product_spec() -> ProductSpec {
             title: "Command Palette".to_string(),
         },
         CommandSpec {
+            id: "shell.browse_views".to_string(),
+            title: "Browse Views".to_string(),
+        },
+        CommandSpec {
             id: "shell.reload_theme".to_string(),
             title: "Reload Theme".to_string(),
         },
@@ -156,6 +160,13 @@ pub fn default_product_spec() -> ProductSpec {
             icon_name: Some("applications-graphics-symbolic".to_string()),
             label: None,
             command_id: "shell.reload_theme".to_string(),
+            secondary: true,
+        },
+        ToolbarItemSpec {
+            id: "views".to_string(),
+            icon_name: Some("view-grid-symbolic".to_string()),
+            label: None,
+            command_id: "shell.browse_views".to_string(),
             secondary: true,
         },
         ToolbarItemSpec {
@@ -182,6 +193,12 @@ pub fn default_product_spec() -> ProductSpec {
             root_id: "view".to_string(),
             label: "Reload Theme".to_string(),
             command_id: "shell.reload_theme".to_string(),
+        },
+        MenuItemSpec {
+            id: "browse-views".to_string(),
+            root_id: "view".to_string(),
+            label: "Browse Views".to_string(),
+            command_id: "shell.browse_views".to_string(),
         },
     ];
     let layout = LayoutContribution {

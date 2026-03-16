@@ -67,6 +67,12 @@ pub fn shell_registry(
         present_plugins_dialog(&plugins_window, host_for_plugins.as_deref());
     });
 
+    let views_window = window.clone();
+    let host_for_views = plugin_host.clone();
+    registry.register("shell.browse_views", move || {
+        present_views_dialog(&views_window, host_for_views.as_deref());
+    });
+
     if let Some(plugin_host) = plugin_host {
         let Some(plugin_runtime) = plugin_host.runtime().cloned() else {
             return registry;
@@ -347,6 +353,109 @@ fn present_plugins_dialog(window: &ApplicationWindow, host: Option<&PluginHost>)
     dialog.present();
 }
 
+fn present_views_dialog(window: &ApplicationWindow, host: Option<&PluginHost>) {
+    let dialog = Dialog::builder()
+        .transient_for(window)
+        .modal(true)
+        .title("Browse Views")
+        .default_width(560)
+        .default_height(420)
+        .build();
+    dialog.add_button("Close", ResponseType::Close);
+
+    let body = dialog.content_area();
+    body.set_spacing(12);
+
+    let scroller = ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .min_content_height(360)
+        .build();
+    let layout = GtkBox::new(Orientation::Vertical, 14);
+    layout.add_css_class("plugin-detail-root");
+    layout.set_margin_top(16);
+    layout.set_margin_bottom(16);
+    layout.set_margin_start(16);
+    layout.set_margin_end(16);
+
+    let all_views = host
+        .and_then(|host| host.runtime())
+        .map(|runtime| sorted_views(runtime))
+        .unwrap_or_default();
+
+    let hero = GtkBox::new(Orientation::Vertical, 8);
+    hero.add_css_class("plugin-hero");
+
+    let hero_title = Label::new(Some("Registered Views"));
+    hero_title.set_xalign(0.0);
+    hero_title.add_css_class("plugin-detail-name");
+    hero.append(&hero_title);
+
+    let hero_body = Label::new(Some(&format!(
+        "{} view factory(ies) available through the active plugin runtime.",
+        all_views.len()
+    )));
+    hero_body.set_xalign(0.0);
+    hero_body.set_wrap(true);
+    hero_body.add_css_class("plugin-detail-description");
+    hero.append(&hero_body);
+    layout.append(&hero);
+
+    if all_views.is_empty() {
+        let empty = Label::new(Some(
+            "No plugin views are currently registered. Load a plugin or enable the base runtime.",
+        ));
+        empty.set_xalign(0.0);
+        empty.set_wrap(true);
+        layout.append(&empty);
+    } else {
+        for placement in [
+            MzViewPlacement::Workbench,
+            MzViewPlacement::SidePanel,
+            MzViewPlacement::BottomPanel,
+            MzViewPlacement::Dialog,
+        ] {
+            let views = all_views
+                .iter()
+                .filter(|view| view.placement == placement)
+                .collect::<Vec<_>>();
+            if views.is_empty() {
+                continue;
+            }
+
+            let section_title = Label::new(Some(placement.label()));
+            section_title.set_xalign(0.0);
+            section_title.add_css_class("section-title");
+            layout.append(&section_title);
+
+            for view in views {
+                let card = GtkBox::new(Orientation::Vertical, 6);
+
+                let title = Label::new(Some(&view.title));
+                title.set_xalign(0.0);
+                title.add_css_class("plugin-detail-name");
+                card.append(&title);
+
+                let plugin_line =
+                    Label::new(Some(&format!("{}  ({})", view.plugin_id, view.view_id)));
+                plugin_line.set_xalign(0.0);
+                plugin_line.set_wrap(true);
+                plugin_line.add_css_class("mono");
+                card.append(&plugin_line);
+
+                layout.append(&card);
+                layout.append(&Separator::new(Orientation::Horizontal));
+            }
+        }
+    }
+
+    scroller.set_child(Some(&layout));
+    body.append(&scroller);
+    dialog.connect_response(|dialog, _| {
+        dialog.close();
+    });
+    dialog.present();
+}
+
 fn present_about_dialog(window: &ApplicationWindow, app_title: &str, host: Option<&PluginHost>) {
     let dialog = Dialog::builder()
         .transient_for(window)
@@ -468,6 +577,20 @@ fn views_for_plugin<'a>(
         .filter(|view| view.plugin_id == plugin_id)
         .collect::<Vec<_>>();
     views.sort_by_key(|view| view_order_key(view.placement, &view.title));
+    views
+}
+
+fn sorted_views(
+    runtime: &crate::plugins::PluginRuntime,
+) -> Vec<&crate::plugins::RegisteredViewFactory> {
+    let mut views = runtime.view_factories().iter().collect::<Vec<_>>();
+    views.sort_by_key(|view| {
+        (
+            view_order_key(view.placement, &view.title),
+            view.plugin_id.clone(),
+            view.view_id.clone(),
+        )
+    });
     views
 }
 

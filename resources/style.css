@@ -82,33 +82,17 @@ undershoot.left {
 .topbar-masthead {
   min-height: {{window_strip_height}};
   padding: 0 {{space_window_strip_inline}};
-  spacing: {{space_lg}};
+  spacing: 0;
   background: {{color_topbar}};
   border-bottom: {{window_strip_border}};
-}
-
-.brand-block {
-  min-width: 180px;
-}
-
-.brand-title {
-  color: {{color_window_title}};
-  font-size: {{font_size_title}};
-  font-weight: 650;
-  letter-spacing: -0.02em;
-}
-
-.brand-subtitle {
-  color: {{color_window_meta}};
-  font-size: {{font_size_small}};
-  font-weight: 500;
 }
 
 .menu-bar {
   min-height: {{menu_bar_height}};
   background: {{color_menu_bg}};
   border-bottom: 0;
-  padding: 0 {{space_menu_inline}};
+  padding: 0;
+  margin: 0;
 }
 
 .menu-bar > child > button,
@@ -131,15 +115,16 @@ undershoot.left {
 
 .studio-toolbar {
   min-height: {{toolbar_height}};
-  padding: {{space_lg}} {{space_xl}};
+  padding: {{space_md}} {{space_xl}};
   background: {{color_toolbar_bg}};
   border-top: 0;
   border-bottom: {{toolbar_bottom_border}};
-  spacing: {{space_lg}};
+  spacing: {{space_md}};
 }
 
 .toolbar-search-cluster {
   min-width: 320px;
+  margin-right: {{space_md}};
 }
 
 .toolbar-status {
@@ -410,7 +395,7 @@ notebook header tab,
 notebook.workbench-tabs > header tabs tab {
   min-height: {{control_height_medium}};
   padding: {{notebook_tab_padding}};
-  margin: 6px 4px 6px 0;
+  margin: 4px 4px 4px 0;
   border-radius: {{radius_medium}};
   border-right: 0;
   border-top: 0;
@@ -539,7 +524,7 @@ notebook.bottom-tabs > header tabs tab:checked {
 
 .workbench-tab-strip {
   min-height: {{tab_strip_height}};
-  padding: 0 10px;
+  padding: 0 8px;
   spacing: 0;
   background: transparent;
 }
@@ -548,7 +533,7 @@ notebook.bottom-tabs > header tabs tab:checked {
 .drag-preview {
   min-height: {{tab_height}};
   padding: {{workbench_tab_padding}};
-  margin: 8px 6px 8px 0;
+  margin: 4px 4px 4px 0;
   border-top: 0;
   border-left: 0;
   border-right: 0;
@@ -607,7 +592,7 @@ notebook.bottom-tabs > header tabs tab:checked {
 
 .panel-header {
   min-height: {{panel_header_height}};
-  padding: 0 {{space_xl}};
+  padding: 0 {{space_lg}};
   background: alpha(@bg_1, 0.28);
   border-bottom: 1px solid alpha(@border, 0.24);
 }

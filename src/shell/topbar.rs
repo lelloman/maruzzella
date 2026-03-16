@@ -1,6 +1,6 @@
 use gtk::gio;
 use gtk::prelude::*;
-use gtk::{Align, Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar};
+use gtk::{Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar};
 
 use crate::commands::CommandRegistry;
 use crate::spec::{command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarItemSpec};
@@ -16,18 +16,6 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     let masthead = GtkBox::new(Orientation::Horizontal, 12);
     masthead.add_css_class("topbar-masthead");
 
-    let brand = GtkBox::new(Orientation::Vertical, 2);
-    brand.add_css_class("brand-block");
-    let title = Label::new(Some(&spec.title));
-    title.set_xalign(0.0);
-    title.add_css_class("brand-title");
-    let subtitle = Label::new(Some(&spec.status_text));
-    subtitle.set_xalign(0.0);
-    subtitle.add_css_class("brand-subtitle");
-    brand.append(&title);
-    brand.append(&subtitle);
-    masthead.append(&brand);
-
     let menu_model = build_menu_model(spec);
     let menu_bar = PopoverMenuBar::from_model(Some(&menu_model));
     menu_bar.add_css_class("menu-bar");
@@ -36,14 +24,6 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     let masthead_spacer = GtkBox::new(Orientation::Horizontal, 0);
     masthead_spacer.set_hexpand(true);
     masthead.append(&masthead_spacer);
-
-    let status_cluster = GtkBox::new(Orientation::Horizontal, 0);
-    status_cluster.set_halign(Align::End);
-    status_cluster.add_css_class("toolbar-status-cluster");
-    let meta = Label::new(Some(&spec.status_text));
-    meta.add_css_class("toolbar-status");
-    status_cluster.append(&meta);
-    masthead.append(&status_cluster);
     root.append(&masthead);
 
     let toolbar = GtkBox::new(Orientation::Horizontal, 12);
@@ -51,15 +31,13 @@ pub fn build(spec: &ShellSpec) -> TopBar {
 
     let search_cluster = GtkBox::new(Orientation::Horizontal, 0);
     search_cluster.add_css_class("toolbar-search-cluster");
+    search_cluster.set_hexpand(true);
     let search = Entry::new();
     search.add_css_class("toolbar-search");
+    search.set_hexpand(true);
     search.set_placeholder_text(Some(&spec.search_placeholder));
     search_cluster.append(&search);
     toolbar.append(&search_cluster);
-
-    let toolbar_spacer = GtkBox::new(Orientation::Horizontal, 0);
-    toolbar_spacer.set_hexpand(true);
-    toolbar.append(&toolbar_spacer);
 
     let actions_group = GtkBox::new(Orientation::Horizontal, 8);
     actions_group.add_css_class("toolbar-actions");

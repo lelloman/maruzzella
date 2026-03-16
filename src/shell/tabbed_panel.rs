@@ -214,7 +214,7 @@ fn build_plugin_widget(
         );
     };
 
-    match plugin_runtime.create_view(plugin_view_id, &[]) {
+    match plugin_runtime.create_view(plugin_view_id, tab.instance_key.as_deref(), &tab.payload) {
         Ok(widget) => widget,
         Err(error) => plugin_fallback_widget(&format!(
             "Failed to build plugin view '{plugin_view_id}': {error:?}\n\n{}",

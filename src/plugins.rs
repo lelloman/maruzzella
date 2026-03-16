@@ -1,7 +1,8 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::str;
 
 use glib::translate::FromGlibPtrFull;
@@ -9,12 +10,17 @@ use gtk::Widget;
 use libloading::{Library, Symbol};
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzContributionSurface, MzHostApi, MzLogLevel, MzMenuItemSpec,
-    MzMenuSurface, MzPluginDependency, MzPluginDescriptorView, MzPluginVTable, MzStatus,
-    MzStatusCode, MzStr, MzSurfaceContribution, MzViewFactorySpec, MzViewPlacement,
-    MZ_ABI_VERSION_V1,
+    MzMenuSurface, MzOpenViewRequest, MzOpenViewResult, MzPluginDependency, MzPluginDescriptorView,
+    MzPluginVTable, MzStatus, MzStatusCode, MzStr, MzSurfaceContribution, MzViewFactorySpec,
+    MzViewOpenDisposition, MzViewPlacement, MzViewQuery, MzViewQueryResult, MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
+use crate::plugin_tabs::{
+    focus_plugin_view, is_plugin_view_open, open_or_focus_plugin_view, update_plugin_view_title,
+    GroupHandles, OpenPluginViewOutcome, OpenPluginViewRequest as ShellOpenPluginViewRequest,
+    ShellState,
+};
 
 const ENTRY_SYMBOL: &[u8] = b"maruzzella_plugin_entry\0";
 
@@ -156,7 +162,7 @@ pub struct PluginDiagnostic {
     pub message: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct PluginHost {
     runtime: Option<Rc<PluginRuntime>>,
     diagnostics: Vec<PluginDiagnostic>,
@@ -179,7 +185,6 @@ impl PluginHost {
     }
 }
 
-#[derive(Debug)]
 pub struct PluginRuntime {
     pub(crate) plugins: Vec<LoadedPlugin>,
     pub(crate) activation_order: Vec<String>,
@@ -188,6 +193,14 @@ pub struct PluginRuntime {
     pub(crate) surface_contributions: Vec<RegisteredSurfaceContribution>,
     pub(crate) view_factories: Vec<RegisteredViewFactory>,
     pub(crate) logs: Vec<PluginLogEntry>,
+    view_host: RefCell<Option<Rc<PluginShellHost>>>,
+}
+
+struct PluginShellHost {
+    persistence_id: String,
+    shell_state: ShellState,
+    group_handles: GroupHandles,
+    runtime: Weak<PluginRuntime>,
 }
 
 impl PluginRuntime {
@@ -241,7 +254,38 @@ impl PluginRuntime {
             surface_contributions: host_state.surface_contributions,
             view_factories: host_state.view_factories,
             logs: host_state.logs,
+            view_host: RefCell::new(None),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn empty_for_tests() -> Self {
+        Self {
+            plugins: Vec::new(),
+            activation_order: Vec::new(),
+            commands: Vec::new(),
+            menu_items: Vec::new(),
+            surface_contributions: Vec::new(),
+            view_factories: Vec::new(),
+            logs: Vec::new(),
+            view_host: RefCell::new(None),
+        }
+    }
+
+    pub fn attach_shell_host(
+        self: &Rc<Self>,
+        persistence_id: String,
+        shell_state: ShellState,
+        group_handles: GroupHandles,
+    ) {
+        let shell_host = Rc::new(PluginShellHost {
+            persistence_id,
+            shell_state,
+            group_handles,
+            runtime: Rc::downgrade(self),
+        });
+        ACTIVE_SHELL_HOST.with(|cell| cell.set(Rc::as_ptr(&shell_host)));
+        self.view_host.replace(Some(shell_host));
     }
 
     pub fn plugins(&self) -> &[LoadedPlugin] {
@@ -297,6 +341,7 @@ impl PluginRuntime {
     pub fn create_view(
         &self,
         view_id: &str,
+        instance_key: Option<&str>,
         payload: &[u8],
     ) -> Result<Widget, PluginViewCreateError> {
         let Some(factory) = self
@@ -310,15 +355,23 @@ impl PluginRuntime {
         };
 
         let _scope = ActiveRuntimeScope::enter(self);
+        let view_host = self.view_host.borrow().clone();
         let host_api = MzHostApi {
             abi_version: MZ_ABI_VERSION_V1,
-            host_context: std::ptr::null_mut(),
+            host_context: view_host
+                .as_ref()
+                .map(|host| Rc::as_ptr(host) as *mut _)
+                .unwrap_or(std::ptr::null_mut()),
             log: None,
             register_command: None,
             register_menu_item: None,
             register_surface_contribution: None,
             register_view_factory: None,
             dispatch_command: Some(runtime_dispatch_command),
+            open_view: Some(host_open_view),
+            focus_view: Some(host_focus_view),
+            is_view_open: Some(host_is_view_open),
+            update_view_title: Some(host_update_view_title),
             read_config: None,
             write_config: None,
         };
@@ -333,6 +386,7 @@ impl PluginRuntime {
         let request = maruzzella_api::MzViewRequest {
             plugin_id,
             view_id: view_id_ffi,
+            instance_key: encode_optional_str(instance_key),
             payload: MzBytes {
                 ptr: payload.as_ptr(),
                 len: payload.len(),
@@ -662,6 +716,10 @@ impl HostState {
             register_surface_contribution: Some(host_register_surface_contribution),
             register_view_factory: Some(host_register_view_factory),
             dispatch_command: Some(host_dispatch_command),
+            open_view: None,
+            focus_view: None,
+            is_view_open: None,
+            update_view_title: None,
             read_config: Some(host_read_config),
             write_config: Some(host_write_config),
         }
@@ -871,9 +929,173 @@ extern "C" fn host_write_config(payload: MzBytes) -> MzStatus {
     MzStatus::OK
 }
 
+extern "C" fn host_open_view(request: *const MzOpenViewRequest) -> MzOpenViewResult {
+    let Some(shell_host) = current_shell_host() else {
+        return MzOpenViewResult {
+            status: MzStatus::new(MzStatusCode::NotFound),
+            disposition: MzViewOpenDisposition::Opened,
+        };
+    };
+    let Some(request) = (unsafe { request.as_ref() }) else {
+        return MzOpenViewResult {
+            status: MzStatus::new(MzStatusCode::InvalidArgument),
+            disposition: MzViewOpenDisposition::Opened,
+        };
+    };
+
+    let Ok(plugin_id) = decode_runtime_str("open_view.plugin_id", request.plugin_id) else {
+        return invalid_open_view_result();
+    };
+    let Ok(view_id) = decode_runtime_str("open_view.view_id", request.view_id) else {
+        return invalid_open_view_result();
+    };
+    let Ok(instance_key) = decode_runtime_str("open_view.instance_key", request.instance_key)
+    else {
+        return invalid_open_view_result();
+    };
+    let Ok(requested_title) =
+        decode_runtime_str("open_view.requested_title", request.requested_title)
+    else {
+        return invalid_open_view_result();
+    };
+    let Some(runtime) = shell_host.runtime.upgrade() else {
+        return MzOpenViewResult {
+            status: MzStatus::new(MzStatusCode::NotFound),
+            disposition: MzViewOpenDisposition::Opened,
+        };
+    };
+    let result = open_or_focus_plugin_view(
+        &runtime,
+        &shell_host.persistence_id,
+        &shell_host.shell_state,
+        &shell_host.group_handles,
+        &ShellOpenPluginViewRequest {
+            plugin_view_id: resolve_plugin_view_id(&plugin_id, &view_id),
+            placement: request.placement,
+            instance_key: empty_to_none(instance_key),
+            payload: bytes_to_vec(request.payload),
+            requested_title: empty_to_none(requested_title),
+        },
+    );
+
+    match result {
+        Some(OpenPluginViewOutcome::Opened) => MzOpenViewResult {
+            status: MzStatus::OK,
+            disposition: MzViewOpenDisposition::Opened,
+        },
+        Some(OpenPluginViewOutcome::FocusedExisting) => MzOpenViewResult {
+            status: MzStatus::OK,
+            disposition: MzViewOpenDisposition::FocusedExisting,
+        },
+        None => MzOpenViewResult {
+            status: MzStatus::new(MzStatusCode::NotFound),
+            disposition: MzViewOpenDisposition::Opened,
+        },
+    }
+}
+
+extern "C" fn host_focus_view(query: *const MzViewQuery) -> MzStatus {
+    let Some(shell_host) = current_shell_host() else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    let Some(query) = (unsafe { query.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(plugin_id) = decode_runtime_str("focus_view.plugin_id", query.plugin_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(view_id) = decode_runtime_str("focus_view.view_id", query.view_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(instance_key) = decode_runtime_str("focus_view.instance_key", query.instance_key) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    if focus_plugin_view(
+        &shell_host.shell_state,
+        &shell_host.group_handles,
+        &resolve_plugin_view_id(&plugin_id, &view_id),
+        empty_to_none(instance_key).as_deref(),
+    ) {
+        MzStatus::OK
+    } else {
+        MzStatus::new(MzStatusCode::NotFound)
+    }
+}
+
+extern "C" fn host_is_view_open(query: *const MzViewQuery) -> MzViewQueryResult {
+    let Some(shell_host) = current_shell_host() else {
+        return MzViewQueryResult {
+            status: MzStatus::new(MzStatusCode::NotFound),
+            found: false,
+        };
+    };
+    let Some(query) = (unsafe { query.as_ref() }) else {
+        return MzViewQueryResult {
+            status: MzStatus::new(MzStatusCode::InvalidArgument),
+            found: false,
+        };
+    };
+    let Ok(plugin_id) = decode_runtime_str("is_view_open.plugin_id", query.plugin_id) else {
+        return invalid_query_result();
+    };
+    let Ok(view_id) = decode_runtime_str("is_view_open.view_id", query.view_id) else {
+        return invalid_query_result();
+    };
+    let Ok(instance_key) = decode_runtime_str("is_view_open.instance_key", query.instance_key)
+    else {
+        return invalid_query_result();
+    };
+
+    MzViewQueryResult {
+        status: MzStatus::OK,
+        found: is_plugin_view_open(
+            &shell_host.shell_state,
+            &resolve_plugin_view_id(&plugin_id, &view_id),
+            empty_to_none(instance_key).as_deref(),
+        ),
+    }
+}
+
+extern "C" fn host_update_view_title(query: *const MzViewQuery, title: MzStr) -> MzStatus {
+    let Some(shell_host) = current_shell_host() else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    let Some(query) = (unsafe { query.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(plugin_id) = decode_runtime_str("update_view_title.plugin_id", query.plugin_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(view_id) = decode_runtime_str("update_view_title.view_id", query.view_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(instance_key) = decode_runtime_str("update_view_title.instance_key", query.instance_key)
+    else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(title) = decode_runtime_str("update_view_title.title", title) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    if update_plugin_view_title(
+        &shell_host.shell_state,
+        &shell_host.group_handles,
+        &shell_host.persistence_id,
+        &resolve_plugin_view_id(&plugin_id, &view_id),
+        empty_to_none(instance_key).as_deref(),
+        &title,
+    ) {
+        MzStatus::OK
+    } else {
+        MzStatus::new(MzStatusCode::NotFound)
+    }
+}
+
 thread_local! {
     static ACTIVE_HOST_STATE: std::cell::Cell<*mut HostState> = const { std::cell::Cell::new(std::ptr::null_mut()) };
     static ACTIVE_RUNTIME: std::cell::Cell<*const PluginRuntime> = const { std::cell::Cell::new(std::ptr::null()) };
+    static ACTIVE_SHELL_HOST: std::cell::Cell<*const PluginShellHost> = const { std::cell::Cell::new(std::ptr::null()) };
 }
 
 fn current_host_state() -> Option<&'static mut HostState> {
@@ -896,6 +1118,49 @@ fn current_runtime() -> Option<&'static PluginRuntime> {
             Some(unsafe { &*ptr })
         }
     })
+}
+
+fn current_shell_host() -> Option<&'static PluginShellHost> {
+    ACTIVE_SHELL_HOST.with(|cell| {
+        let ptr = cell.get();
+        if ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { &*ptr })
+        }
+    })
+}
+
+fn encode_optional_str(value: Option<&str>) -> MzStr {
+    match value {
+        Some(value) => MzStr {
+            ptr: value.as_ptr(),
+            len: value.len(),
+        },
+        None => MzStr::empty(),
+    }
+}
+
+fn empty_to_none(value: String) -> Option<String> {
+    (!value.is_empty()).then_some(value)
+}
+
+fn resolve_plugin_view_id(_plugin_id: &str, view_id: &str) -> String {
+    view_id.to_string()
+}
+
+fn invalid_open_view_result() -> MzOpenViewResult {
+    MzOpenViewResult {
+        status: MzStatus::new(MzStatusCode::InvalidArgument),
+        disposition: MzViewOpenDisposition::Opened,
+    }
+}
+
+fn invalid_query_result() -> MzViewQueryResult {
+    MzViewQueryResult {
+        status: MzStatus::new(MzStatusCode::InvalidArgument),
+        found: false,
+    }
 }
 
 struct ActiveHostScope;

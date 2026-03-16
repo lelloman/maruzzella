@@ -4,6 +4,7 @@ pub mod app;
 pub mod base_plugin;
 pub mod commands;
 pub mod layout;
+mod plugin_tabs;
 pub mod plugins;
 pub mod product;
 pub mod shell;
@@ -22,8 +23,8 @@ pub use plugins::{
 };
 pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
 pub use spec::{
-    plugin_tab, text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec,
-    PanelContentKind, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, ToolbarItemSpec,
+    plugin_tab, plugin_tab_with_instance, text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec,
+    MenuRootSpec, PanelContentKind, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, ToolbarItemSpec,
     WorkbenchNodeSpec,
 };
 pub use theme::{ThemeDensity, ThemePalette, ThemeSpec, ThemeStylesheet, ThemeTypography};

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -9,14 +8,14 @@ use gtk::{
 };
 use maruzzella_api::{MzAboutSection, MzContributionSurface, MzSettingsPage, MzViewPlacement};
 
-use crate::plugins::{PluginHost, PluginRuntime};
-use crate::shell::{tabbed_panel, workbench_custom::CustomWorkbenchGroupHandle};
-use crate::spec::{plugin_tab, CommandSpec, ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
+use crate::plugin_tabs::{
+    open_or_focus_plugin_view, GroupHandles, OpenPluginViewRequest, ShellState,
+};
+use crate::plugins::PluginHost;
+use crate::spec::{CommandSpec, ShellSpec};
 use crate::theme;
 
 type CommandHandler = Rc<dyn Fn()>;
-type ShellState = Rc<RefCell<crate::layout::PersistedShell>>;
-type GroupHandles = Rc<HashMap<String, CustomWorkbenchGroupHandle>>;
 
 #[derive(Clone, Default)]
 pub struct CommandRegistry {
@@ -473,6 +472,7 @@ fn present_views_dialog(
                 let state = shell_state.cloned();
                 let handles = group_handles.cloned();
                 let dialog_for_focus = dialog.clone();
+                let placement = view.placement;
                 focus_button.connect_clicked(move |_| {
                     if let (Some(runtime), Some(state), Some(handles)) =
                         (runtime.as_ref(), state.as_ref(), handles.as_ref())
@@ -482,8 +482,10 @@ fn present_views_dialog(
                             &persistence_id,
                             state,
                             handles,
-                            &view_id,
-                        ) {
+                            &OpenPluginViewRequest::new(&view_id, placement),
+                        )
+                        .is_some()
+                        {
                             dialog_for_focus.close();
                         }
                     }
@@ -631,8 +633,8 @@ fn views_for_plugin<'a>(
 
 fn sorted_views(
     runtime: &crate::plugins::PluginRuntime,
-) -> Vec<&crate::plugins::RegisteredViewFactory> {
-    let mut views = runtime.view_factories().iter().collect::<Vec<_>>();
+) -> Vec<crate::plugins::RegisteredViewFactory> {
+    let mut views = runtime.view_factories().to_vec();
     views.sort_by_key(|view| {
         (
             view_order_key(view.placement, &view.title),
@@ -680,209 +682,5 @@ fn append_named_list(container: &GtkBox, title_text: &str, rows: Vec<String>, mo
             label.add_css_class("plugin-detail-overview");
         }
         container.append(&label);
-    }
-}
-
-fn focus_plugin_view(
-    shell_state: &ShellState,
-    group_handles: &GroupHandles,
-    plugin_view_id: &str,
-) -> bool {
-    let Some((group_id, tab_id)) = find_plugin_view_tab(&shell_state.borrow().spec, plugin_view_id)
-    else {
-        return false;
-    };
-    let Some(handle) = group_handles.get(&group_id) else {
-        return false;
-    };
-    handle.set_active_tab(&tab_id);
-    true
-}
-
-fn open_or_focus_plugin_view(
-    runtime: &Rc<PluginRuntime>,
-    persistence_id: &str,
-    shell_state: &ShellState,
-    group_handles: &GroupHandles,
-    plugin_view_id: &str,
-) -> bool {
-    if focus_plugin_view(shell_state, group_handles, plugin_view_id) {
-        return true;
-    }
-
-    let Some(view) = runtime
-        .view_factories()
-        .iter()
-        .find(|view| view.view_id == plugin_view_id)
-    else {
-        return false;
-    };
-    let Some(group_id) = target_group_id_for_placement(view.placement, group_handles) else {
-        return false;
-    };
-    let Some(handle) = group_handles.get(group_id) else {
-        return false;
-    };
-
-    let tab = {
-        let mut shell = shell_state.borrow_mut();
-        let tab = plugin_tab(
-            &next_dynamic_tab_id(&shell.spec, &view.view_id),
-            group_id,
-            &view.title,
-            &view.view_id,
-            "Plugin view opened from the shell view browser.",
-            true,
-        );
-        if let Some(group) = find_group_mut(&mut shell.spec, group_id) {
-            group.tabs.push(tab.clone());
-            group.active_tab_id = Some(tab.id.clone());
-        } else {
-            return false;
-        }
-        crate::layout::save(persistence_id, &shell.clone());
-        tab
-    };
-
-    let page = tabbed_panel::build_tab_page(pane_css_class(group_id), &tab, Some(runtime));
-    handle.append_page(page, true);
-    true
-}
-
-fn find_plugin_view_tab(spec: &ShellSpec, plugin_view_id: &str) -> Option<(String, String)> {
-    find_plugin_view_in_group(&spec.left_panel, plugin_view_id)
-        .or_else(|| find_plugin_view_in_group(&spec.right_panel, plugin_view_id))
-        .or_else(|| find_plugin_view_in_group(&spec.bottom_panel, plugin_view_id))
-        .or_else(|| find_plugin_view_in_workbench(&spec.workbench, plugin_view_id))
-}
-
-fn find_plugin_view_in_workbench(
-    node: &WorkbenchNodeSpec,
-    plugin_view_id: &str,
-) -> Option<(String, String)> {
-    match node {
-        WorkbenchNodeSpec::Group(group) => find_plugin_view_in_group(group, plugin_view_id),
-        WorkbenchNodeSpec::Split { children, .. } => children
-            .iter()
-            .find_map(|child| find_plugin_view_in_workbench(child, plugin_view_id)),
-    }
-}
-
-fn find_plugin_view_in_group(
-    group: &TabGroupSpec,
-    plugin_view_id: &str,
-) -> Option<(String, String)> {
-    group.tabs.iter().find_map(|tab| {
-        (tab.plugin_view_id.as_deref() == Some(plugin_view_id))
-            .then(|| (group.id.clone(), tab.id.clone()))
-    })
-}
-
-fn target_group_id_for_placement<'a>(
-    placement: MzViewPlacement,
-    group_handles: &'a GroupHandles,
-) -> Option<&'a str> {
-    let preferred = match placement {
-        MzViewPlacement::Workbench => ["workbench-a", "workbench-main"],
-        MzViewPlacement::SidePanel => ["panel-left", "panel-right"],
-        MzViewPlacement::BottomPanel => ["panel-bottom", "panel-bottom"],
-        MzViewPlacement::Dialog => return None,
-    };
-
-    preferred
-        .into_iter()
-        .find(|group_id| group_handles.contains_key(*group_id))
-        .or_else(|| {
-            group_handles
-                .keys()
-                .find(|group_id| matches_group_placement(group_id, placement))
-                .map(|group_id| group_id.as_str())
-        })
-}
-
-fn matches_group_placement(group_id: &str, placement: MzViewPlacement) -> bool {
-    match placement {
-        MzViewPlacement::Workbench => group_id.starts_with("workbench"),
-        MzViewPlacement::SidePanel => {
-            group_id.starts_with("panel-left") || group_id.starts_with("panel-right")
-        }
-        MzViewPlacement::BottomPanel => group_id.starts_with("panel-bottom"),
-        MzViewPlacement::Dialog => false,
-    }
-}
-
-fn pane_css_class(group_id: &str) -> &'static str {
-    if group_id.starts_with("panel-bottom") {
-        "console-pane"
-    } else if group_id.starts_with("panel-left") || group_id.starts_with("panel-right") {
-        "tool-window"
-    } else {
-        "workbench"
-    }
-}
-
-fn next_dynamic_tab_id(spec: &ShellSpec, view_id: &str) -> String {
-    let base = format!("plugin-{}", view_id.replace('.', "-"));
-    if !tab_id_exists(spec, &base) {
-        return base;
-    }
-    let mut index = 2usize;
-    loop {
-        let candidate = format!("{base}-{index}");
-        if !tab_id_exists(spec, &candidate) {
-            return candidate;
-        }
-        index += 1;
-    }
-}
-
-fn tab_id_exists(spec: &ShellSpec, tab_id: &str) -> bool {
-    all_tabs(spec).any(|tab| tab.id == tab_id)
-}
-
-fn all_tabs<'a>(spec: &'a ShellSpec) -> Box<dyn Iterator<Item = &'a crate::spec::TabSpec> + 'a> {
-    Box::new(
-        spec.left_panel
-            .tabs
-            .iter()
-            .chain(spec.right_panel.tabs.iter())
-            .chain(spec.bottom_panel.tabs.iter())
-            .chain(workbench_tabs(&spec.workbench)),
-    )
-}
-
-fn workbench_tabs<'a>(
-    node: &'a WorkbenchNodeSpec,
-) -> Box<dyn Iterator<Item = &'a crate::spec::TabSpec> + 'a> {
-    match node {
-        WorkbenchNodeSpec::Group(group) => Box::new(group.tabs.iter()),
-        WorkbenchNodeSpec::Split { children, .. } => {
-            Box::new(children.iter().flat_map(|child| workbench_tabs(child)))
-        }
-    }
-}
-
-fn find_group_mut<'a>(spec: &'a mut ShellSpec, group_id: &str) -> Option<&'a mut TabGroupSpec> {
-    if spec.left_panel.id == group_id {
-        return Some(&mut spec.left_panel);
-    }
-    if spec.right_panel.id == group_id {
-        return Some(&mut spec.right_panel);
-    }
-    if spec.bottom_panel.id == group_id {
-        return Some(&mut spec.bottom_panel);
-    }
-    find_group_mut_in_workbench(&mut spec.workbench, group_id)
-}
-
-fn find_group_mut_in_workbench<'a>(
-    node: &'a mut WorkbenchNodeSpec,
-    group_id: &str,
-) -> Option<&'a mut TabGroupSpec> {
-    match node {
-        WorkbenchNodeSpec::Group(group) => (group.id == group_id).then_some(group),
-        WorkbenchNodeSpec::Split { children, .. } => children
-            .iter_mut()
-            .find_map(|child| find_group_mut_in_workbench(child, group_id)),
     }
 }

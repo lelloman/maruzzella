@@ -340,33 +340,29 @@ mod tests {
 
     #[test]
     fn merges_plugin_commands_and_surface_backed_menu_roots() {
-        let runtime = PluginRuntime {
-            plugins: Vec::new(),
-            activation_order: vec!["maruzzella.base".to_string()],
-            commands: vec![RegisteredCommand {
-                plugin_id: "maruzzella.base".to_string(),
-                command_id: "shell.plugins".to_string(),
-                title: "Plugins".to_string(),
-                invoke: None,
-            }],
-            menu_items: vec![RegisteredMenuItem {
-                plugin_id: "maruzzella.base".to_string(),
-                menu_id: "plugins".to_string(),
-                parent_id: "maruzzella.menu.file.items".to_string(),
-                parent_surface: Some(MzMenuSurface::FileItems),
-                title: "Plugins".to_string(),
-                command_id: "shell.plugins".to_string(),
-            }],
-            surface_contributions: vec![RegisteredSurfaceContribution {
-                plugin_id: "maruzzella.base".to_string(),
-                surface_id: "maruzzella.about.sections".to_string(),
-                surface: Some(maruzzella_api::MzContributionSurface::AboutSections),
-                contribution_id: "base.about".to_string(),
-                payload: Vec::new(),
-            }],
-            view_factories: Vec::new(),
-            logs: Vec::new(),
-        };
+        let mut runtime = PluginRuntime::empty_for_tests();
+        runtime.activation_order = vec!["maruzzella.base".to_string()];
+        runtime.commands = vec![RegisteredCommand {
+            plugin_id: "maruzzella.base".to_string(),
+            command_id: "shell.plugins".to_string(),
+            title: "Plugins".to_string(),
+            invoke: None,
+        }];
+        runtime.menu_items = vec![RegisteredMenuItem {
+            plugin_id: "maruzzella.base".to_string(),
+            menu_id: "plugins".to_string(),
+            parent_id: "maruzzella.menu.file.items".to_string(),
+            parent_surface: Some(MzMenuSurface::FileItems),
+            title: "Plugins".to_string(),
+            command_id: "shell.plugins".to_string(),
+        }];
+        runtime.surface_contributions = vec![RegisteredSurfaceContribution {
+            plugin_id: "maruzzella.base".to_string(),
+            surface_id: "maruzzella.about.sections".to_string(),
+            surface: Some(maruzzella_api::MzContributionSurface::AboutSections),
+            contribution_id: "base.about".to_string(),
+            payload: Vec::new(),
+        }];
 
         let mut spec = default_product_spec().shell_spec();
         merge_plugin_runtime(&mut spec, &runtime);

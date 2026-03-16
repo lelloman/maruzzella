@@ -183,6 +183,7 @@ pub struct MzSurfaceContribution {
 pub struct MzViewRequest {
     pub plugin_id: MzStr,
     pub view_id: MzStr,
+    pub instance_key: MzStr,
     pub payload: MzBytes,
 }
 
@@ -333,6 +334,47 @@ pub enum MzViewPlacement {
     Dialog,
 }
 
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MzViewOpenDisposition {
+    #[default]
+    Opened = 0,
+    FocusedExisting = 1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MzOpenViewRequest {
+    pub plugin_id: MzStr,
+    pub view_id: MzStr,
+    pub placement: MzViewPlacement,
+    pub instance_key: MzStr,
+    pub requested_title: MzStr,
+    pub payload: MzBytes,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MzOpenViewResult {
+    pub status: MzStatus,
+    pub disposition: MzViewOpenDisposition,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MzViewQuery {
+    pub plugin_id: MzStr,
+    pub view_id: MzStr,
+    pub instance_key: MzStr,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MzViewQueryResult {
+    pub status: MzStatus,
+    pub found: bool,
+}
+
 impl MzViewPlacement {
     pub const fn label(self) -> &'static str {
         match self {
@@ -341,6 +383,12 @@ impl MzViewPlacement {
             Self::BottomPanel => "Bottom Panel",
             Self::Dialog => "Dialog",
         }
+    }
+}
+
+impl Default for MzViewPlacement {
+    fn default() -> Self {
+        Self::Workbench
     }
 }
 
@@ -365,6 +413,10 @@ pub type MzRegisterSurfaceContributionFn =
     extern "C" fn(contribution: *const MzSurfaceContribution) -> MzStatus;
 pub type MzRegisterViewFactoryFn = extern "C" fn(factory: *const MzViewFactorySpec) -> MzStatus;
 pub type MzDispatchCommandFn = extern "C" fn(command_id: MzStr, payload: MzBytes) -> MzStatus;
+pub type MzOpenViewFn = extern "C" fn(request: *const MzOpenViewRequest) -> MzOpenViewResult;
+pub type MzFocusViewFn = extern "C" fn(query: *const MzViewQuery) -> MzStatus;
+pub type MzIsViewOpenFn = extern "C" fn(query: *const MzViewQuery) -> MzViewQueryResult;
+pub type MzUpdateViewTitleFn = extern "C" fn(query: *const MzViewQuery, title: MzStr) -> MzStatus;
 pub type MzReadConfigFn = extern "C" fn() -> MzBytes;
 pub type MzWriteConfigFn = extern "C" fn(payload: MzBytes) -> MzStatus;
 
@@ -379,6 +431,10 @@ pub struct MzHostApi {
     pub register_surface_contribution: Option<MzRegisterSurfaceContributionFn>,
     pub register_view_factory: Option<MzRegisterViewFactoryFn>,
     pub dispatch_command: Option<MzDispatchCommandFn>,
+    pub open_view: Option<MzOpenViewFn>,
+    pub focus_view: Option<MzFocusViewFn>,
+    pub is_view_open: Option<MzIsViewOpenFn>,
+    pub update_view_title: Option<MzUpdateViewTitleFn>,
     pub read_config: Option<MzReadConfigFn>,
     pub write_config: Option<MzWriteConfigFn>,
 }
@@ -394,6 +450,10 @@ impl MzHostApi {
             register_surface_contribution: None,
             register_view_factory: None,
             dispatch_command: None,
+            open_view: None,
+            focus_view: None,
+            is_view_open: None,
+            update_view_title: None,
             read_config: None,
             write_config: None,
         }

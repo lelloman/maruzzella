@@ -1,12 +1,12 @@
 pub use maruzzella_api as ffi;
 use maruzzella_api::{
-    MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzPluginDependency, MzPluginDescriptorView,
-    MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion, MzViewFactorySpec,
-    MzViewRequest, MZ_ABI_VERSION_V1,
+    MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,
+    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion,
+    MzViewFactorySpec, MzViewQuery, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 pub use maruzzella_api::{
     MzContributionSurface, MzLogLevel, MzMenuSurface, MzSettingsCategory, MzStatusCode,
-    MzViewPlacement,
+    MzViewOpenDisposition, MzViewPlacement,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -292,6 +292,46 @@ pub struct HostApi<'a> {
     raw: &'a MzHostApi,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpenViewRequest<'a> {
+    pub plugin_id: &'a str,
+    pub view_id: &'a str,
+    pub placement: MzViewPlacement,
+    pub instance_key: Option<&'a str>,
+    pub requested_title: Option<&'a str>,
+    pub payload: &'a [u8],
+}
+
+impl<'a> OpenViewRequest<'a> {
+    pub fn new(plugin_id: &'a str, view_id: &'a str, placement: MzViewPlacement) -> Self {
+        Self {
+            plugin_id,
+            view_id,
+            placement,
+            instance_key: None,
+            requested_title: None,
+            payload: &[],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ViewQuery<'a> {
+    pub plugin_id: &'a str,
+    pub view_id: &'a str,
+    pub instance_key: Option<&'a str>,
+}
+
+impl<'a> ViewQuery<'a> {
+    pub fn new(plugin_id: &'a str, view_id: &'a str) -> Self {
+        Self {
+            plugin_id,
+            view_id,
+            instance_key: None,
+        }
+    }
+}
+
 impl<'a> HostApi<'a> {
     pub fn from_raw(raw: &'a MzHostApi) -> Self {
         Self { raw }
@@ -372,6 +412,134 @@ impl<'a> HostApi<'a> {
             MzBytes {
                 ptr: payload.as_ptr(),
                 len: payload.len(),
+            },
+        );
+        if status.is_ok() {
+            Ok(())
+        } else {
+            Err(status.code)
+        }
+    }
+
+    pub fn open_view(
+        &self,
+        request: &OpenViewRequest<'_>,
+    ) -> Result<MzViewOpenDisposition, MzStatusCode> {
+        let Some(open) = self.raw.open_view else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let instance_key = request.instance_key.unwrap_or("");
+        let requested_title = request.requested_title.unwrap_or("");
+        let ffi = MzOpenViewRequest {
+            plugin_id: MzStr {
+                ptr: request.plugin_id.as_ptr(),
+                len: request.plugin_id.len(),
+            },
+            view_id: MzStr {
+                ptr: request.view_id.as_ptr(),
+                len: request.view_id.len(),
+            },
+            placement: request.placement,
+            instance_key: MzStr {
+                ptr: instance_key.as_ptr(),
+                len: instance_key.len(),
+            },
+            requested_title: MzStr {
+                ptr: requested_title.as_ptr(),
+                len: requested_title.len(),
+            },
+            payload: MzBytes {
+                ptr: request.payload.as_ptr(),
+                len: request.payload.len(),
+            },
+        };
+        let result = open(&ffi);
+        if result.status.is_ok() {
+            Ok(result.disposition)
+        } else {
+            Err(result.status.code)
+        }
+    }
+
+    pub fn focus_view(&self, query: &ViewQuery<'_>) -> Result<(), MzStatusCode> {
+        let Some(focus) = self.raw.focus_view else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let instance_key = query.instance_key.unwrap_or("");
+        let status = focus(&MzViewQuery {
+            plugin_id: MzStr {
+                ptr: query.plugin_id.as_ptr(),
+                len: query.plugin_id.len(),
+            },
+            view_id: MzStr {
+                ptr: query.view_id.as_ptr(),
+                len: query.view_id.len(),
+            },
+            instance_key: MzStr {
+                ptr: instance_key.as_ptr(),
+                len: instance_key.len(),
+            },
+        });
+        if status.is_ok() {
+            Ok(())
+        } else {
+            Err(status.code)
+        }
+    }
+
+    pub fn is_view_open(&self, query: &ViewQuery<'_>) -> Result<bool, MzStatusCode> {
+        let Some(is_open) = self.raw.is_view_open else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let instance_key = query.instance_key.unwrap_or("");
+        let result = is_open(&MzViewQuery {
+            plugin_id: MzStr {
+                ptr: query.plugin_id.as_ptr(),
+                len: query.plugin_id.len(),
+            },
+            view_id: MzStr {
+                ptr: query.view_id.as_ptr(),
+                len: query.view_id.len(),
+            },
+            instance_key: MzStr {
+                ptr: instance_key.as_ptr(),
+                len: instance_key.len(),
+            },
+        });
+        if result.status.is_ok() {
+            Ok(result.found)
+        } else {
+            Err(result.status.code)
+        }
+    }
+
+    pub fn update_view_title(
+        &self,
+        query: &ViewQuery<'_>,
+        title: &str,
+    ) -> Result<(), MzStatusCode> {
+        let Some(update) = self.raw.update_view_title else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let instance_key = query.instance_key.unwrap_or("");
+        let status = update(
+            &MzViewQuery {
+                plugin_id: MzStr {
+                    ptr: query.plugin_id.as_ptr(),
+                    len: query.plugin_id.len(),
+                },
+                view_id: MzStr {
+                    ptr: query.view_id.as_ptr(),
+                    len: query.view_id.len(),
+                },
+                instance_key: MzStr {
+                    ptr: instance_key.as_ptr(),
+                    len: instance_key.len(),
+                },
+            },
+            MzStr {
+                ptr: title.as_ptr(),
+                len: title.len(),
             },
         );
         if status.is_ok() {

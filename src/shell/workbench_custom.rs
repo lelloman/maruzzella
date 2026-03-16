@@ -34,6 +34,7 @@ pub struct CustomWorkbenchGroupHandle {
     preview_inner: GtkBox,
     drag_layer: Rc<RefCell<Fixed>>,
     headers: Rc<RefCell<HashMap<String, Widget>>>,
+    tab_labels: Rc<RefCell<HashMap<String, Label>>>,
     page_names: Rc<RefCell<HashMap<String, String>>>,
     order: Rc<RefCell<Vec<String>>>,
     active_tab_id: Rc<RefCell<Option<String>>>,
@@ -155,6 +156,9 @@ impl CustomWorkbenchGroupHandle {
         self.install_header_controllers(&header, &tab_id, &drag_title);
 
         self.headers.borrow_mut().insert(tab_id.clone(), header);
+        self.tab_labels
+            .borrow_mut()
+            .insert(tab_id.clone(), page.tab_label.clone());
         self.page_names
             .borrow_mut()
             .insert(tab_id.clone(), page_name);
@@ -171,6 +175,7 @@ impl CustomWorkbenchGroupHandle {
         if let Some(header) = self.headers.borrow_mut().remove(tab_id) {
             self.tab_strip.remove(&header);
         }
+        self.tab_labels.borrow_mut().remove(tab_id);
         if let Some(page_name) = self.page_names.borrow_mut().remove(tab_id) {
             if let Some(child) = self.stack.child_by_name(&page_name) {
                 self.stack.remove(&child);
@@ -221,6 +226,12 @@ impl CustomWorkbenchGroupHandle {
             }
         }
         self.preview.set_reveal_child(true);
+    }
+
+    pub fn set_tab_title(&self, tab_id: &str, title: &str) {
+        if let Some(label) = self.tab_labels.borrow().get(tab_id) {
+            label.set_text(title);
+        }
     }
 
     pub fn hide_split_preview(&self) {
@@ -700,6 +711,7 @@ pub fn build_group(
         preview_inner,
         drag_layer: Rc::new(RefCell::new(drag_layer)),
         headers: Rc::new(RefCell::new(HashMap::new())),
+        tab_labels: Rc::new(RefCell::new(HashMap::new())),
         page_names: Rc::new(RefCell::new(HashMap::new())),
         order: Rc::new(RefCell::new(Vec::new())),
         active_tab_id: Rc::new(RefCell::new(None)),

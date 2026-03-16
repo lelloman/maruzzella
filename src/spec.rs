@@ -29,6 +29,8 @@ pub struct TabSpec {
     pub view_kind: String,
     pub plugin_view_id: Option<String>,
     pub instance_key: Option<String>,
+    #[serde(default)]
+    pub payload: Vec<u8>,
     pub content_kind: PanelContentKind,
     pub placeholder: String,
     pub closable: bool,
@@ -122,6 +124,7 @@ pub fn text_tab(id: &str, panel_id: &str, title: &str, body: &str, closable: boo
         view_kind: "text".to_string(),
         plugin_view_id: None,
         instance_key: None,
+        payload: Vec::new(),
         content_kind: PanelContentKind::TextBuffer,
         placeholder: body.to_string(),
         closable,
@@ -144,6 +147,32 @@ pub fn plugin_tab(
         view_kind: "plugin".to_string(),
         plugin_view_id: Some(plugin_view_id.to_string()),
         instance_key: None,
+        payload: Vec::new(),
+        content_kind: PanelContentKind::TextBuffer,
+        placeholder: placeholder.to_string(),
+        closable,
+        close_prompt: None,
+    }
+}
+
+pub fn plugin_tab_with_instance(
+    id: &str,
+    panel_id: &str,
+    title: &str,
+    plugin_view_id: &str,
+    instance_key: Option<&str>,
+    payload: impl Into<Vec<u8>>,
+    placeholder: &str,
+    closable: bool,
+) -> TabSpec {
+    TabSpec {
+        id: id.to_string(),
+        panel_id: panel_id.to_string(),
+        title: title.to_string(),
+        view_kind: "plugin".to_string(),
+        plugin_view_id: Some(plugin_view_id.to_string()),
+        instance_key: instance_key.map(str::to_string),
+        payload: payload.into(),
         content_kind: PanelContentKind::TextBuffer,
         placeholder: placeholder.to_string(),
         closable,

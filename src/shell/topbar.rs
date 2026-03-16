@@ -1,8 +1,6 @@
 use gtk::gio;
 use gtk::prelude::*;
-use gtk::{
-    Align, Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar,
-};
+use gtk::{Align, Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar};
 
 use crate::commands::CommandRegistry;
 use crate::spec::{command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarItemSpec};

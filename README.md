@@ -13,9 +13,11 @@ Today the project is in an intermediate but coherent state:
 - the public crate API is usable by downstream apps
 - the first plugin ABI/runtime slice is working for loading plugins, resolving dependencies, merging commands and menus, and dispatching plugin commands
 - a built-in `maruzzella.base` plugin now provides core `About` and `Plugins` shell commands/menu entries
-- plugin-backed GTK views can now be mounted into tabs, but most default shell content is still placeholder `ProductSpec` content
+- plugin-backed GTK views can now be mounted into tabs
+- the default app now boots into a coherent base-plugin-backed shell slice instead of placeholder-first `ProductSpec` text tabs
+- plugin configuration persistence and plugin settings-summary surfaces are wired through the host
 
-That means the plugin architecture is proven and plugins can now inhabit the shell UI, but most shared shell contracts are still not formalized.
+That means the plugin architecture is proven and the shell now exercises it in its default startup experience, but many shared shell contracts are still not formalized.
 
 ## What It Does
 
@@ -24,7 +26,7 @@ That means the plugin architecture is proven and plugins can now inhabit the she
 - supports tab activation, reordering, and workbench split previews
 - persists tab arrangement and pane sizes to a local JSON layout file
 - exposes a small command surface for theme reload and command palette style actions
-- ships with neutral placeholder content so the shell can be adapted to other tools
+- ships with a built-in workspace slice that can be replaced or extended by downstream products
 
 ## Project Structure
 
@@ -191,6 +193,8 @@ Plugin commands are now executable, not just declarative metadata: a plugin can 
 
 What is not done yet:
 
-- plugin manager UI, plugin settings surfaces, and plugin-owned persistence are still planned work
+- contribution surfaces are still relatively small and stringly typed
+- the plugin manager is a useful dialog, but not yet a full shell page
+- plugin configuration exists, but richer settings UI contracts are still planned work
 
-Plugin views are now wired, so the next major targets in [docs/implementation-roadmap.md](/home/lelloman/lelloprojects/maruzzella/docs/implementation-roadmap.md) are deeper contribution surfaces, richer plugin management UI, and plugin-owned configuration/persistence.
+Plugin views are now wired into the default shell slice, so the next major targets in [docs/implementation-roadmap.md](/home/lelloman/lelloprojects/maruzzella/docs/implementation-roadmap.md) are deeper contribution surfaces and richer plugin/settings management UI.

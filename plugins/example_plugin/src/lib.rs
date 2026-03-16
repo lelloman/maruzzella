@@ -1,11 +1,11 @@
 use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Label, Orientation};
-use serde::{Deserialize, Serialize};
 use maruzzella_sdk::{
     export_plugin, CommandSpec, HostApi, MenuItemSpec, MzStatusCode, Plugin, PluginDependency,
     PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
 };
+use serde::{Deserialize, Serialize};
 
 struct ExamplePlugin;
 
@@ -14,7 +14,9 @@ struct ExamplePluginConfig {
     launches: u32,
 }
 
-extern "C" fn show_example_plugin(payload: maruzzella_sdk::ffi::MzBytes) -> maruzzella_sdk::ffi::MzStatus {
+extern "C" fn show_example_plugin(
+    payload: maruzzella_sdk::ffi::MzBytes,
+) -> maruzzella_sdk::ffi::MzStatus {
     let _ = payload;
     maruzzella_sdk::ffi::MzStatus::OK
 }
@@ -48,16 +50,17 @@ impl Plugin for ExamplePlugin {
             .and_then(|bytes| serde_json::from_slice::<ExamplePluginConfig>(&bytes).ok())
             .unwrap_or_default();
         config.launches += 1;
-        let config_bytes =
-            serde_json::to_vec(&config).map_err(|_| MzStatusCode::InternalError)?;
+        let config_bytes = serde_json::to_vec(&config).map_err(|_| MzStatusCode::InternalError)?;
         host.write_config(&config_bytes)?;
 
-        host.register_command(CommandSpec::new(
-            "com.example.hello",
-            "example.hello.show",
-            "Show Example Plugin",
-        )
-        .with_handler(show_example_plugin))?;
+        host.register_command(
+            CommandSpec::new(
+                "com.example.hello",
+                "example.hello.show",
+                "Show Example Plugin",
+            )
+            .with_handler(show_example_plugin),
+        )?;
 
         host.register_menu_item(MenuItemSpec::new(
             "com.example.hello",

@@ -19,6 +19,9 @@ Implemented so far:
 9. plugin command dispatch from GTK actions into plugin handlers
 10. plugin-backed tab views
 11. built-in `maruzzella.base` plugin for `About` and `Plugins` shell contributions
+12. built-in base-plugin-backed default shell slice replacing placeholder-first startup UI
+13. host-side plugin configuration persistence and settings-summary surfaces
+14. in-app plugin manager dialog with dependency, diagnostics, settings, and runtime-log visibility
 
 These pieces are enough to prove the basic architecture:
 
@@ -33,8 +36,9 @@ These pieces are enough to prove the basic architecture:
 
 What is still explicitly not done:
 
-- default UI content is still mostly placeholder `ProductSpec` tabs outside the new plugin-view path
-- plugin manager UI and plugin configuration storage do not exist yet
+- contribution surfaces are still limited and partially stringly typed
+- the plugin manager is a useful dialog, but not yet a full first-class shell page
+- plugin configuration exists as host storage and settings summaries, but not as a rich settings UI contract
 
 ## Guiding Direction
 
@@ -48,48 +52,24 @@ The intended architecture remains:
 
 ## Remaining Phases
 
-### 1. Plugin Views
+### 1. Real Shell Slice
 
 Goal:
 
-- let plugins provide real widgets inside Maruzzella panels and workbench tabs
+- make the default app feel like a credible downstream shell instead of a shell prototype
 
 Work:
 
-- extend the shell spec so a tab can reference a plugin-owned view id
-- wire `PluginRuntime` view factories into shell tab construction
-- let shell panels render plugin widgets instead of only placeholder text content
-- define ownership and error behavior for failed widget creation
-- update the sample plugin to prove the full path with one real view
+- keep the built-in base plugin as the reference shell provider
+- ensure the default startup layout lands in real base-plugin-backed views across the workbench and side panels
+- use this slice to prove shell hierarchy, plugin manager visibility, and shell contribution contracts together
+- avoid reintroducing placeholder-first `ProductSpec` content in prime UI areas
 
 Exit condition:
 
-- a plugin can register a view factory and a downstream app can place that view in the shell
+- a downstream app can launch Maruzzella and immediately see a coherent shell workflow without editing defaults
 
-### 2. Base Plugin
-
-Goal:
-
-- move core shell behavior out of hardcoded host logic and into `maruzzella.base`
-
-Status:
-
-- started
-- `maruzzella.base` now registers built-in `About` and `Plugins` shell commands/menu items
-- host-side dialogs and handlers still exist in core while the command/menu declarations come from the plugin
-
-Work:
-
-- define `maruzzella.base`
-- make top-level menu roots effectively plugin-driven
-- move more shell-owned commands/menu items out of `default_product_spec()`
-- move shell contribution surfaces into the base plugin or shared API as appropriate
-
-Exit condition:
-
-- Maruzzella’s own core shell functionality is demonstrated through the plugin system
-
-### 3. Contribution Surfaces
+### 2. Contribution Surfaces
 
 Goal:
 
@@ -99,34 +79,35 @@ Work:
 
 - formalize shared surface ids
 - define structured contracts for shell-level surfaces
-- start with:
-  - `maruzzella.about.sections`
-  - plugin settings/config pages
-  - menu contribution surfaces
+- expand beyond the current about/settings summaries into:
+  - panel/view contribution categories
+  - settings page contracts
+  - richer menu and toolbar contribution surfaces
+  - status or diagnostics surfaces if they prove useful
 - move common contracts into `maruzzella_api`
 
 Exit condition:
 
 - multiple plugins can contribute to shared shell areas through stable contracts
 
-### 4. Plugin Manager UI
+### 3. Plugin Manager And Settings
 
 Goal:
 
-- expose loaded plugin state inside the shell
+- turn the existing plugin manager and settings summaries into a proper shell experience
 
 Work:
 
-- plugins modal/page
-- list plugin id, version, description, dependency state
-- show activation/runtime errors
-- show plugin-provided settings/config surfaces
+- promote plugin management from dialog-only UI into a first-class shell page or equivalent richer surface
+- list plugin id, version, description, dependency state, and activation/runtime errors
+- render plugin-provided settings/config surfaces through the shared surface model
+- keep About and Plugins flows aligned with the same host-owned contracts
 
 Exit condition:
 
-- users can inspect installed and active plugins from inside Maruzzella
+- users can inspect installed and active plugins from inside Maruzzella without relying on placeholder host UI
 
-### 5. Plugin Configuration And Persistence
+### 4. Plugin Configuration And Persistence
 
 Goal:
 
@@ -134,16 +115,16 @@ Goal:
 
 Work:
 
-- config storage keyed by plugin id
-- plugin read/write config APIs
-- settings UI integration
-- version-aware config migration later if needed
+- build on top of the existing host-side config storage keyed by plugin id
+- expose richer plugin read/write config APIs and stable settings UI contracts
+- make invalid/missing config states visible in the shell UI
+- reserve version-aware config migration hooks
 
 Exit condition:
 
-- plugins can store and retrieve stable configuration through the host
+- plugins can store and retrieve stable configuration through the host and expose it cleanly in-app
 
-### 6. Richer Runtime Services
+### 5. Richer Runtime Services
 
 Goal:
 
@@ -161,7 +142,7 @@ Exit condition:
 
 - plugin interactions are rich enough for real product integrations
 
-### 7. Polish And Packaging
+### 6. Polish And Packaging
 
 Goal:
 
@@ -185,17 +166,17 @@ The next implementation target should be **Contribution Surfaces**.
 
 Reason:
 
-- commands, menus, and plugin-backed views are now live
-- the base plugin exists, but shared shell contracts are still ad hoc
-- structured surfaces are the next step before settings/config pages become clean
-- richer plugin manager UI depends on those surfaces being explicit
+- the real shell slice now exists and proves the product-first direction
+- commands, menus, plugin-backed views, plugin settings summaries, and plugin config persistence are all live
+- shared shell contracts are still ad hoc and stringly typed
+- richer plugin manager and settings UI depend on those surfaces being explicit
 
 ## Notes On Sequencing
 
 The order above is intentional:
 
-- views must come before plugin-hosted shell experiences feel real
-- base plugin should come after the runtime is proven enough to host Maruzzella itself
-- plugin manager and settings become much more valuable once views and contribution surfaces exist
+- the shell must feel real before deeper platform work is worth standardizing
+- contribution surfaces should be derived from working shell flows rather than invented in isolation
+- plugin manager and settings become much more valuable once their shared surfaces are explicit
 
 The exact slice boundaries may still shift, but changes should continue to preserve a clean path toward this roadmap.

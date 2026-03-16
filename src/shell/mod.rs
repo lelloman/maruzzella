@@ -1,5 +1,5 @@
-pub mod topbar;
 pub mod tabbed_panel;
+pub mod topbar;
 pub mod workbench_custom;
 
 use gtk::prelude::*;

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::plugins::PluginRuntime;
 use crate::spec::{
-    text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec, ShellSpec, SplitAxis,
+    plugin_tab, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec, ShellSpec, SplitAxis,
     TabGroupSpec, ToolbarItemSpec, WorkbenchNodeSpec,
 };
 
@@ -137,11 +137,17 @@ pub fn default_product_spec() -> ProductSpec {
     let branding = BrandingSpec {
         title: "Maruzzella".to_string(),
         search_placeholder: "Search Maruzzella".to_string(),
-        status_text: "Neutral GTK desktop shell host".to_string(),
+        status_text: "Plugin-ready GTK workspace shell".to_string(),
     };
     let commands = vec![
-        CommandSpec { id: "shell.open_command_palette".to_string(), title: "Command Palette".to_string() },
-        CommandSpec { id: "shell.reload_theme".to_string(), title: "Reload Theme".to_string() },
+        CommandSpec {
+            id: "shell.open_command_palette".to_string(),
+            title: "Command Palette".to_string(),
+        },
+        CommandSpec {
+            id: "shell.reload_theme".to_string(),
+            title: "Reload Theme".to_string(),
+        },
     ];
     let toolbar_items = vec![
         ToolbarItemSpec {
@@ -166,7 +172,10 @@ pub fn default_product_spec() -> ProductSpec {
             secondary: true,
         },
     ];
-    let menu_roots = vec![MenuRootSpec { id: "view".to_string(), label: "View".to_string() }];
+    let menu_roots = vec![MenuRootSpec {
+        id: "view".to_string(),
+        label: "View".to_string(),
+    }];
     let menu_items = vec![
         MenuItemSpec {
             id: "command-palette".to_string(),
@@ -185,26 +194,68 @@ pub fn default_product_spec() -> ProductSpec {
         bottom_panel_layout: BottomPanelLayout::CenterOnly,
         left_panel: TabGroupSpec::new(
             "panel-left",
-            Some("navigation"),
+            Some("workspace-nav"),
             vec![
-                text_tab("navigation", "panel-left", "Navigation", "Anonymous shell navigation goes here.", false),
-                text_tab("library", "panel-left", "Library", "A product can mount its own content here.", false),
+                plugin_tab(
+                    "workspace-nav",
+                    "panel-left",
+                    "Workspace",
+                    "maruzzella.base.panel.navigator",
+                    "Primary workspace navigation is provided by the built-in base plugin.",
+                    false,
+                ),
+                plugin_tab(
+                    "resource-index",
+                    "panel-left",
+                    "Resources",
+                    "maruzzella.base.panel.resources",
+                    "Reference material and starter assets can live here.",
+                    false,
+                ),
             ],
         ),
         right_panel: TabGroupSpec::new(
             "panel-right",
-            Some("inspector"),
+            Some("selection-inspector"),
             vec![
-                text_tab("inspector", "panel-right", "Inspector", "Selection-aware details live here.", false),
-                text_tab("outline", "panel-right", "Outline", "Structure and metadata panels fit here.", false),
+                plugin_tab(
+                    "selection-inspector",
+                    "panel-right",
+                    "Inspector",
+                    "maruzzella.base.panel.inspector",
+                    "Selection-aware details and shell health live here.",
+                    false,
+                ),
+                plugin_tab(
+                    "delivery-checklist",
+                    "panel-right",
+                    "Release",
+                    "maruzzella.base.panel.delivery",
+                    "Delivery notes and polish checkpoints live here.",
+                    false,
+                ),
             ],
         ),
         bottom_panel: TabGroupSpec::new(
             "panel-bottom",
-            Some("logs"),
+            Some("runtime-activity"),
             vec![
-                text_tab("logs", "panel-bottom", "Logs", "Runtime output, tasks, and traces.", false),
-                text_tab("problems", "panel-bottom", "Problems", "Validation and build output.", false),
+                plugin_tab(
+                    "runtime-activity",
+                    "panel-bottom",
+                    "Activity",
+                    "maruzzella.base.panel.activity",
+                    "Runtime diagnostics and theme workflows live here.",
+                    false,
+                ),
+                plugin_tab(
+                    "extension-health",
+                    "panel-bottom",
+                    "Extensions",
+                    "maruzzella.base.panel.extensions",
+                    "Plugin runtime state and settings surface summaries live here.",
+                    false,
+                ),
             ],
         ),
         workbench: WorkbenchNodeSpec::Split {
@@ -212,19 +263,46 @@ pub fn default_product_spec() -> ProductSpec {
             children: vec![
                 WorkbenchNodeSpec::Group(TabGroupSpec::new(
                     "workbench-a",
-                    Some("overview"),
+                    Some("studio-home"),
                     vec![
-                        text_tab("overview", "workbench-a", "Overview", "Maruzzella is a neutral desktop shell host.", false),
-                        text_tab("notes", "workbench-a", "Notes", "Drop any product-specific editor or view into the center workbench.", true),
-                        text_tab("scratch", "workbench-a", "Scratch", "This area is fully custom and no longer backed by GtkNotebook.", true),
+                        plugin_tab(
+                            "studio-home",
+                            "workbench-a",
+                            "Studio Home",
+                            "maruzzella.base.workspace.home",
+                            "The default shell slice overview lives here.",
+                            false,
+                        ),
+                        plugin_tab(
+                            "work-queue",
+                            "workbench-a",
+                            "Work Queue",
+                            "maruzzella.base.workspace.queue",
+                            "The current roadmap queue lives here.",
+                            true,
+                        ),
                     ],
                 )),
                 WorkbenchNodeSpec::Group(TabGroupSpec::new(
                     "workbench-b",
-                    Some("automation"),
+                    Some("integration-surfaces"),
                     vec![
-                        text_tab("automation", "workbench-b", "Automation", "Tooling and workflows can sit in adjacent workbench groups.", false),
-                        text_tab("chat", "workbench-b", "Chat", "This is placeholder content for the extraction pass.", true),
+                        plugin_tab(
+                            "integration-surfaces",
+                            "workbench-b",
+                            "Contribution Surfaces",
+                            "maruzzella.base.workspace.surfaces",
+                            "Shared plugin contribution surfaces live here.",
+                            false,
+                        ),
+                        plugin_tab(
+                            "system-ops",
+                            "workbench-b",
+                            "System Ops",
+                            "maruzzella.base.workspace.ops",
+                            "System and runtime operations live here.",
+                            true,
+                        ),
                     ],
                 )),
             ],
@@ -279,8 +357,14 @@ mod tests {
         let mut spec = default_product_spec().shell_spec();
         merge_plugin_runtime(&mut spec, &runtime);
 
-        assert!(spec.commands.iter().any(|command| command.id == "shell.plugins"));
+        assert!(spec
+            .commands
+            .iter()
+            .any(|command| command.id == "shell.plugins"));
         assert!(spec.menu_roots.iter().any(|root| root.id == "file"));
-        assert!(spec.menu_items.iter().any(|item| item.id == "plugins" && item.root_id == "file"));
+        assert!(spec
+            .menu_items
+            .iter()
+            .any(|item| item.id == "plugins" && item.root_id == "file"));
     }
 }

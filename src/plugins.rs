@@ -9,8 +9,8 @@ use gtk::Widget;
 use libloading::{Library, Symbol};
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzLogLevel, MzMenuItemSpec, MzPluginDependency,
-    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStatusCode, MzStr,
-    MzSurfaceContribution, MzViewFactorySpec, MZ_ABI_VERSION_V1,
+    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStatusCode, MzStr, MzSurfaceContribution,
+    MzViewFactorySpec, MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -159,7 +159,10 @@ pub struct PluginHost {
 
 impl PluginHost {
     pub fn new(runtime: Option<Rc<PluginRuntime>>, diagnostics: Vec<PluginDiagnostic>) -> Self {
-        Self { runtime, diagnostics }
+        Self {
+            runtime,
+            diagnostics,
+        }
     }
 
     pub fn runtime(&self) -> Option<&Rc<PluginRuntime>> {
@@ -248,11 +251,7 @@ impl PluginRuntime {
         &self.commands
     }
 
-    pub fn dispatch_command(
-        &self,
-        command_id: &str,
-        payload: &[u8],
-    ) -> Result<(), MzStatusCode> {
+    pub fn dispatch_command(&self, command_id: &str, payload: &[u8]) -> Result<(), MzStatusCode> {
         let Some(command) = self
             .commands
             .iter()
@@ -435,9 +434,11 @@ pub fn load_plugin(path: impl AsRef<Path>) -> Result<LoadedPlugin, PluginLoadErr
     })?;
 
     let entry: Symbol<'_, PluginEntryPoint> =
-        unsafe { library.get(ENTRY_SYMBOL) }.map_err(|error| PluginLoadError::MissingEntryPoint {
-            path: path.clone(),
-            message: error.to_string(),
+        unsafe { library.get(ENTRY_SYMBOL) }.map_err(|error| {
+            PluginLoadError::MissingEntryPoint {
+                path: path.clone(),
+                message: error.to_string(),
+            }
         })?;
 
     let vtable = unsafe { entry() };
@@ -475,10 +476,7 @@ pub fn resolve_load_order<'a>(
 ) -> Result<Vec<&'a LoadedPlugin>, PluginResolveError> {
     let mut by_id = HashMap::with_capacity(plugins.len());
     for plugin in plugins {
-        if by_id
-            .insert(plugin.descriptor.id.clone(), plugin)
-            .is_some()
-        {
+        if by_id.insert(plugin.descriptor.id.clone(), plugin).is_some() {
             return Err(PluginResolveError::DuplicatePluginId {
                 plugin_id: plugin.descriptor.id.clone(),
             });
@@ -499,10 +497,7 @@ pub fn resolve_load_order<'a>(
                 });
             };
             let found_version = target.descriptor.version;
-            if !found_version.satisfies(
-                dependency.min_version,
-                dependency.max_version_exclusive,
-            ) {
+            if !found_version.satisfies(dependency.min_version, dependency.max_version_exclusive) {
                 return Err(PluginResolveError::IncompatibleDependencyVersion {
                     plugin_id: plugin.descriptor.id.clone(),
                     dependency_id: dependency.plugin_id.clone(),
@@ -625,10 +620,7 @@ fn decode_str(path: &Path, field: &'static str, value: MzStr) -> Result<String, 
     Ok(value.to_string())
 }
 
-fn dependency_slice<'a>(
-    ptr: *const MzPluginDependency,
-    len: usize,
-) -> &'a [MzPluginDependency] {
+fn dependency_slice<'a>(ptr: *const MzPluginDependency, len: usize) -> &'a [MzPluginDependency] {
     if ptr.is_null() || len == 0 {
         &[]
     } else {
@@ -789,12 +781,14 @@ extern "C" fn host_register_surface_contribution(
     if !state.surface_contribution_ids.insert(key) {
         return MzStatus::new(MzStatusCode::AlreadyExists);
     }
-    state.surface_contributions.push(RegisteredSurfaceContribution {
-        plugin_id,
-        surface_id,
-        contribution_id,
-        payload,
-    });
+    state
+        .surface_contributions
+        .push(RegisteredSurfaceContribution {
+            plugin_id,
+            surface_id,
+            contribution_id,
+            payload,
+        });
     MzStatus::OK
 }
 
@@ -1027,7 +1021,9 @@ mod tests {
 
     extern "C" fn test_shutdown(_: *const maruzzella_api::MzHostApi) {}
 
-    extern "C" fn plugin_a_register(host: *const maruzzella_api::MzHostApi) -> maruzzella_api::MzStatus {
+    extern "C" fn plugin_a_register(
+        host: *const maruzzella_api::MzHostApi,
+    ) -> maruzzella_api::MzStatus {
         REGISTERED_PLUGIN_A.fetch_add(1, Ordering::SeqCst);
         let Some(host) = (unsafe { host.as_ref() }) else {
             return maruzzella_api::MzStatus::new(MzStatusCode::InvalidArgument);
@@ -1062,19 +1058,20 @@ mod tests {
         maruzzella_api::MzStatus::OK
     }
 
-    extern "C" fn plugin_a_startup(host: *const maruzzella_api::MzHostApi) -> maruzzella_api::MzStatus {
+    extern "C" fn plugin_a_startup(
+        host: *const maruzzella_api::MzHostApi,
+    ) -> maruzzella_api::MzStatus {
         STARTED_PLUGIN_A.fetch_add(1, Ordering::SeqCst);
         let Some(host) = (unsafe { host.as_ref() }) else {
             return maruzzella_api::MzStatus::new(MzStatusCode::InvalidArgument);
         };
-        host.log.expect("logger")(
-            MzLogLevel::Info,
-            MzStr::from_static("base plugin started"),
-        );
+        host.log.expect("logger")(MzLogLevel::Info, MzStr::from_static("base plugin started"));
         maruzzella_api::MzStatus::OK
     }
 
-    extern "C" fn plugin_b_register(host: *const maruzzella_api::MzHostApi) -> maruzzella_api::MzStatus {
+    extern "C" fn plugin_b_register(
+        host: *const maruzzella_api::MzHostApi,
+    ) -> maruzzella_api::MzStatus {
         REGISTERED_PLUGIN_B.fetch_add(1, Ordering::SeqCst);
         let Some(host) = (unsafe { host.as_ref() }) else {
             return maruzzella_api::MzStatus::new(MzStatusCode::InvalidArgument);
@@ -1095,11 +1092,7 @@ mod tests {
         maruzzella_api::MzStatus::OK
     }
 
-    fn plugin(
-        id: &str,
-        version: Version,
-        dependencies: Vec<PluginDependencySpec>,
-    ) -> LoadedPlugin {
+    fn plugin(id: &str, version: Version, dependencies: Vec<PluginDependencySpec>) -> LoadedPlugin {
         LoadedPlugin {
             path: PathBuf::from(format!("{id}.so")),
             descriptor: PluginDescriptor {
@@ -1134,14 +1127,34 @@ mod tests {
 
     #[test]
     fn resolver_orders_dependencies_before_dependents() {
-        let base = plugin("maruzzella.base", Version { major: 1, minor: 0, patch: 0 }, vec![]);
+        let base = plugin(
+            "maruzzella.base",
+            Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            vec![],
+        );
         let notes = plugin(
             "com.example.notes",
-            Version { major: 1, minor: 0, patch: 0 },
+            Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             vec![PluginDependencySpec {
                 plugin_id: "maruzzella.base".to_string(),
-                min_version: Version { major: 1, minor: 0, patch: 0 },
-                max_version_exclusive: Version { major: 2, minor: 0, patch: 0 },
+                min_version: Version {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
+                max_version_exclusive: Version {
+                    major: 2,
+                    minor: 0,
+                    patch: 0,
+                },
                 required: true,
             }],
         );
@@ -1159,11 +1172,23 @@ mod tests {
     fn resolver_rejects_missing_required_dependency() {
         let notes = plugin(
             "com.example.notes",
-            Version { major: 1, minor: 0, patch: 0 },
+            Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             vec![PluginDependencySpec {
                 plugin_id: "maruzzella.base".to_string(),
-                min_version: Version { major: 1, minor: 0, patch: 0 },
-                max_version_exclusive: Version { major: 2, minor: 0, patch: 0 },
+                min_version: Version {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
+                max_version_exclusive: Version {
+                    major: 2,
+                    minor: 0,
+                    patch: 0,
+                },
                 required: true,
             }],
         );
@@ -1190,7 +1215,11 @@ mod tests {
             descriptor: PluginDescriptor {
                 id: "maruzzella.base".to_string(),
                 name: "Base".to_string(),
-                version: Version { major: 1, minor: 0, patch: 0 },
+                version: Version {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
                 required_abi_version: MZ_ABI_VERSION_V1,
                 description: String::new(),
                 dependencies: vec![],
@@ -1220,13 +1249,25 @@ mod tests {
             descriptor: PluginDescriptor {
                 id: "com.example.notes".to_string(),
                 name: "Notes".to_string(),
-                version: Version { major: 1, minor: 0, patch: 0 },
+                version: Version {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
                 required_abi_version: MZ_ABI_VERSION_V1,
                 description: String::new(),
                 dependencies: vec![PluginDependencySpec {
                     plugin_id: "maruzzella.base".to_string(),
-                    min_version: Version { major: 1, minor: 0, patch: 0 },
-                    max_version_exclusive: Version { major: 2, minor: 0, patch: 0 },
+                    min_version: Version {
+                        major: 1,
+                        minor: 0,
+                        patch: 0,
+                    },
+                    max_version_exclusive: Version {
+                        major: 2,
+                        minor: 0,
+                        patch: 0,
+                    },
                     required: true,
                 }],
             },
@@ -1254,7 +1295,10 @@ mod tests {
         let runtime = PluginRuntime::activate(vec![notes, base]).expect("runtime should activate");
         assert_eq!(
             runtime.activation_order(),
-            &["maruzzella.base".to_string(), "com.example.notes".to_string()]
+            &[
+                "maruzzella.base".to_string(),
+                "com.example.notes".to_string()
+            ]
         );
         assert_eq!(REGISTERED_PLUGIN_A.load(Ordering::SeqCst), 1);
         assert_eq!(STARTED_PLUGIN_A.load(Ordering::SeqCst), 1);

@@ -1,10 +1,10 @@
 pub use maruzzella_api as ffi;
-pub use maruzzella_api::{MzLogLevel, MzStatusCode};
 use maruzzella_api::{
-    MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzPluginDependency,
-    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution,
-    MzVersion, MzViewFactorySpec, MzViewRequest, MZ_ABI_VERSION_V1,
+    MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzPluginDependency, MzPluginDescriptorView,
+    MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion, MzViewFactorySpec,
+    MzViewRequest, MZ_ABI_VERSION_V1,
 };
+pub use maruzzella_api::{MzLogLevel, MzStatusCode};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Version(pub MzVersion);
@@ -124,10 +124,7 @@ impl CommandSpec {
         }
     }
 
-    pub const fn with_handler(
-        mut self,
-        invoke: maruzzella_api::MzCommandInvokeFn,
-    ) -> Self {
+    pub const fn with_handler(mut self, invoke: maruzzella_api::MzCommandInvokeFn) -> Self {
         self.invoke = Some(invoke);
         self
     }
@@ -526,9 +523,13 @@ mod tests {
                 Version::new(2, 0, 0),
             )];
 
-            PluginDescriptor::new("com.example.plugin", "Example Plugin", Version::new(1, 2, 3))
-                .with_description("Example plugin used by tests")
-                .with_dependencies(DEPS)
+            PluginDescriptor::new(
+                "com.example.plugin",
+                "Example Plugin",
+                Version::new(1, 2, 3),
+            )
+            .with_description("Example plugin used by tests")
+            .with_dependencies(DEPS)
         }
 
         fn register(_host: &HostApi<'_>) -> Result<(), MzStatusCode> {

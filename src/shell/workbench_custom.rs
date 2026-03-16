@@ -114,10 +114,7 @@ impl CustomWorkbenchGroupHandle {
             .and_then(|tracker| *tracker.borrow())
     }
 
-    pub fn set_external_pointer_tracker(
-        &self,
-        tracker: Rc<RefCell<Option<(f64, f64)>>>,
-    ) {
+    pub fn set_external_pointer_tracker(&self, tracker: Rc<RefCell<Option<(f64, f64)>>>) {
         *self.external_pointer_position.borrow_mut() = Some(tracker);
     }
 
@@ -158,7 +155,9 @@ impl CustomWorkbenchGroupHandle {
         self.install_header_controllers(&header, &tab_id, &drag_title);
 
         self.headers.borrow_mut().insert(tab_id.clone(), header);
-        self.page_names.borrow_mut().insert(tab_id.clone(), page_name);
+        self.page_names
+            .borrow_mut()
+            .insert(tab_id.clone(), page_name);
         self.order.borrow_mut().push(tab_id.clone());
 
         if make_active || self.active_tab_id.borrow().is_none() {
@@ -273,11 +272,7 @@ impl CustomWorkbenchGroupHandle {
             self.tab_strip
                 .reorder_child_after(&self.drop_placeholder, None::<&Widget>);
         } else {
-            let previous_id = self
-                .order
-                .borrow()
-                .get(index.saturating_sub(1))
-                .cloned();
+            let previous_id = self.order.borrow().get(index.saturating_sub(1)).cloned();
             if let Some(previous_id) = previous_id {
                 if let Some(previous_header) = self.headers.borrow().get(&previous_id).cloned() {
                     self.tab_strip
@@ -355,7 +350,8 @@ impl CustomWorkbenchGroupHandle {
         let adjustment = self.tab_scroller.hadjustment().value();
         let scroller_allocation = self.tab_scroller.allocation();
         let header_allocation = header.allocation();
-        let origin_left = scroller_allocation.x() as f64 + header_allocation.x() as f64 - adjustment;
+        let origin_left =
+            scroller_allocation.x() as f64 + header_allocation.x() as f64 - adjustment;
         let origin_top = scroller_allocation.y() as f64 + header_allocation.y() as f64;
         let width = header.width().max(120);
         let height = header.height().max(32);
@@ -383,7 +379,16 @@ impl CustomWorkbenchGroupHandle {
     }
 
     fn update_drag(&self, offset_x: f64, offset_y: f64) {
-        let (tab_id, _width, height, pointer_offset_x, pointer_offset_y, origin_left, origin_top, drag_widget) = {
+        let (
+            tab_id,
+            _width,
+            height,
+            pointer_offset_x,
+            pointer_offset_y,
+            origin_left,
+            origin_top,
+            drag_widget,
+        ) = {
             let state_ref = self.drag_state.borrow();
             let Some(state) = state_ref.as_ref() else {
                 return;
@@ -400,36 +405,34 @@ impl CustomWorkbenchGroupHandle {
             )
         };
 
-        let (pointer_x, pointer_y, current_left, current_top, local_x, local_y) = if let (
-            Some((x, y)),
-            Some(target),
-        ) = (
-            self.current_external_pointer_position(),
-            self.external_coordinate_target.borrow().clone(),
-        ) {
-            let Some((group_x, group_y, _, _)) = self.bounds_in(&target) else {
-                return;
+        let (pointer_x, pointer_y, current_left, current_top, local_x, local_y) =
+            if let (Some((x, y)), Some(target)) = (
+                self.current_external_pointer_position(),
+                self.external_coordinate_target.borrow().clone(),
+            ) {
+                let Some((group_x, group_y, _, _)) = self.bounds_in(&target) else {
+                    return;
+                };
+                (
+                    x,
+                    y,
+                    x - pointer_offset_x,
+                    y - pointer_offset_y,
+                    x - group_x,
+                    y - group_y,
+                )
+            } else if let Some((x, y)) = *self.pointer_position.borrow() {
+                (x, y, x - pointer_offset_x, y - pointer_offset_y, x, y)
+            } else {
+                (
+                    origin_left + pointer_offset_x + offset_x,
+                    origin_top + pointer_offset_y + offset_y,
+                    origin_left + offset_x,
+                    origin_top + offset_y,
+                    pointer_offset_x + offset_x,
+                    pointer_offset_y + offset_y,
+                )
             };
-            (
-                x,
-                y,
-                x - pointer_offset_x,
-                y - pointer_offset_y,
-                x - group_x,
-                y - group_y,
-            )
-        } else if let Some((x, y)) = *self.pointer_position.borrow() {
-            (x, y, x - pointer_offset_x, y - pointer_offset_y, x, y)
-        } else {
-            (
-                origin_left + pointer_offset_x + offset_x,
-                origin_top + pointer_offset_y + offset_y,
-                origin_left + offset_x,
-                origin_top + offset_y,
-                pointer_offset_x + offset_x,
-                pointer_offset_y + offset_y,
-            )
-        };
         let target_center = local_x;
         let target_index = self.insertion_index(&tab_id, target_center);
 
@@ -554,11 +557,9 @@ impl CustomWorkbenchGroupHandle {
     }
 
     fn position_drag_widget_at(&self, drag_widget: &Widget, x: f64, y: f64) {
-        self.drag_layer.borrow().move_(
-            drag_widget,
-            x.max(0.0),
-            y.max(0.0),
-        );
+        self.drag_layer
+            .borrow()
+            .move_(drag_widget, x.max(0.0), y.max(0.0));
     }
 
     fn autoscroll_for_x(&self, x: f64) {

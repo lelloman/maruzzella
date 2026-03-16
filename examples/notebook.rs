@@ -17,7 +17,13 @@ fn main() {
         "panel-left",
         Some("spaces"),
         vec![
-            text_tab("spaces", "panel-left", "Spaces", "Personal, Team, Archive", false),
+            text_tab(
+                "spaces",
+                "panel-left",
+                "Spaces",
+                "Personal, Team, Archive",
+                false,
+            ),
             text_tab(
                 "bookmarks",
                 "panel-left",
@@ -163,24 +169,28 @@ fn notebook_theme() -> ThemeSpec {
     theme
         .overrides
         .insert("color_toolbar_group".to_string(), "#f5ecdf".to_string());
-    theme
-        .overrides
-        .insert("color_toolbar_group_subtle".to_string(), "#ede2d2".to_string());
+    theme.overrides.insert(
+        "color_toolbar_group_subtle".to_string(),
+        "#ede2d2".to_string(),
+    );
     theme
         .overrides
         .insert("color_notebook_tab_bg".to_string(), "#eadfce".to_string());
-    theme
-        .overrides
-        .insert("color_notebook_tab_hover".to_string(), "#e1d3be".to_string());
-    theme
-        .overrides
-        .insert("color_notebook_tab_active".to_string(), "#f7f1e7".to_string());
+    theme.overrides.insert(
+        "color_notebook_tab_hover".to_string(),
+        "#e1d3be".to_string(),
+    );
+    theme.overrides.insert(
+        "color_notebook_tab_active".to_string(),
+        "#f7f1e7".to_string(),
+    );
     theme
         .overrides
         .insert("color_workbench_tab_bg".to_string(), "#eee3d3".to_string());
-    theme
-        .overrides
-        .insert("color_workbench_tab_active".to_string(), "#f8f2e8".to_string());
+    theme.overrides.insert(
+        "color_workbench_tab_active".to_string(),
+        "#f8f2e8".to_string(),
+    );
     theme
         .overrides
         .insert("color_status_bar_bg".to_string(), "#e5d7c4".to_string());

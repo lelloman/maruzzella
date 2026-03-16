@@ -99,33 +99,39 @@ fn plugin_demo_theme() -> ThemeSpec {
     theme
         .overrides
         .insert("color_toolbar_group".to_string(), "#18212c".to_string());
-    theme
-        .overrides
-        .insert("color_toolbar_group_subtle".to_string(), "#141b23".to_string());
+    theme.overrides.insert(
+        "color_toolbar_group_subtle".to_string(),
+        "#141b23".to_string(),
+    );
     theme
         .overrides
         .insert("color_accent_action_bg".to_string(), "#1f3940".to_string());
-    theme
-        .overrides
-        .insert("color_accent_action_text".to_string(), "#dffcf6".to_string());
+    theme.overrides.insert(
+        "color_accent_action_text".to_string(),
+        "#dffcf6".to_string(),
+    );
     theme
         .overrides
         .insert("color_notebook_tab_bg".to_string(), "#121922".to_string());
-    theme
-        .overrides
-        .insert("color_notebook_tab_hover".to_string(), "#1a2430".to_string());
-    theme
-        .overrides
-        .insert("color_notebook_tab_active".to_string(), "#1c2733".to_string());
+    theme.overrides.insert(
+        "color_notebook_tab_hover".to_string(),
+        "#1a2430".to_string(),
+    );
+    theme.overrides.insert(
+        "color_notebook_tab_active".to_string(),
+        "#1c2733".to_string(),
+    );
     theme
         .overrides
         .insert("color_workbench_tab_bg".to_string(), "#111821".to_string());
-    theme
-        .overrides
-        .insert("color_workbench_tab_hover".to_string(), "#182330".to_string());
-    theme
-        .overrides
-        .insert("color_workbench_tab_active".to_string(), "#1e2a36".to_string());
+    theme.overrides.insert(
+        "color_workbench_tab_hover".to_string(),
+        "#182330".to_string(),
+    );
+    theme.overrides.insert(
+        "color_workbench_tab_active".to_string(),
+        "#1e2a36".to_string(),
+    );
     theme
         .overrides
         .insert("color_drag_preview_bg".to_string(), "#22303c".to_string());

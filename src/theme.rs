@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -204,8 +204,9 @@ fn load_into_provider(provider: &CssProvider, spec: &ThemeSpec) {
         Ok(stylesheet) => stylesheet,
         Err(error) => {
             eprintln!("theme load failed: {error}");
-            render_template(STYLE_TEMPLATE, &ThemeSpec::default().token_map())
-                .unwrap_or_else(|fallback_error| panic!("default theme render failed: {fallback_error}"))
+            render_template(STYLE_TEMPLATE, &ThemeSpec::default().token_map()).unwrap_or_else(
+                |fallback_error| panic!("default theme render failed: {fallback_error}"),
+            )
         }
     };
 
@@ -252,12 +253,27 @@ impl ThemeSpec {
         let mut tokens = BTreeMap::from([
             ("color_bg_0".to_string(), self.palette.bg_0.clone()),
             ("color_bg_1".to_string(), self.palette.bg_1.clone()),
-            ("color_workbench".to_string(), self.palette.workbench.clone()),
-            ("color_panel_left".to_string(), self.palette.panel_left.clone()),
-            ("color_panel_right".to_string(), self.palette.panel_right.clone()),
-            ("color_panel_bottom".to_string(), self.palette.panel_bottom.clone()),
+            (
+                "color_workbench".to_string(),
+                self.palette.workbench.clone(),
+            ),
+            (
+                "color_panel_left".to_string(),
+                self.palette.panel_left.clone(),
+            ),
+            (
+                "color_panel_right".to_string(),
+                self.palette.panel_right.clone(),
+            ),
+            (
+                "color_panel_bottom".to_string(),
+                self.palette.panel_bottom.clone(),
+            ),
             ("color_border".to_string(), self.palette.border.clone()),
-            ("color_border_strong".to_string(), self.palette.border_strong.clone()),
+            (
+                "color_border_strong".to_string(),
+                self.palette.border_strong.clone(),
+            ),
             ("color_text_0".to_string(), self.palette.text_0.clone()),
             ("color_text_1".to_string(), self.palette.text_1.clone()),
             ("color_text_2".to_string(), self.palette.text_2.clone()),
@@ -266,7 +282,10 @@ impl ThemeSpec {
                 "color_accent_strong".to_string(),
                 self.palette.accent_strong.clone(),
             ),
-            ("font_family_base".to_string(), self.typography.font_family.clone()),
+            (
+                "font_family_base".to_string(),
+                self.typography.font_family.clone(),
+            ),
             (
                 "font_family_mono".to_string(),
                 self.typography.mono_font_family.clone(),
@@ -311,11 +330,26 @@ impl ThemeSpec {
                 "radius_pill".to_string(),
                 format!("{}px", self.density.radius_pill),
             ),
-            ("space_xs".to_string(), format!("{}px", self.density.space_xs)),
-            ("space_sm".to_string(), format!("{}px", self.density.space_sm)),
-            ("space_md".to_string(), format!("{}px", self.density.space_md)),
-            ("space_lg".to_string(), format!("{}px", self.density.space_lg)),
-            ("space_xl".to_string(), format!("{}px", self.density.space_xl)),
+            (
+                "space_xs".to_string(),
+                format!("{}px", self.density.space_xs),
+            ),
+            (
+                "space_sm".to_string(),
+                format!("{}px", self.density.space_sm),
+            ),
+            (
+                "space_md".to_string(),
+                format!("{}px", self.density.space_md),
+            ),
+            (
+                "space_lg".to_string(),
+                format!("{}px", self.density.space_lg),
+            ),
+            (
+                "space_xl".to_string(),
+                format!("{}px", self.density.space_xl),
+            ),
             (
                 "control_height_small".to_string(),
                 format!("{}px", self.density.control_height_small),
@@ -336,7 +370,10 @@ impl ThemeSpec {
                 "tab_height".to_string(),
                 format!("{}px", self.density.tab_height),
             ),
-            ("icon_size".to_string(), format!("{}px", self.density.icon_size)),
+            (
+                "icon_size".to_string(),
+                format!("{}px", self.density.icon_size),
+            ),
             (
                 "search_width_min".to_string(),
                 format!("{}px", self.density.search_width_min),
@@ -383,8 +420,14 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_topbar".to_string(), "#1b1e24".to_string()),
         ("color_topbar_border".to_string(), "#2d3440".to_string()),
         ("topbar_border".to_string(), "1px solid #2d3440".to_string()),
-        ("color_window_strip_border".to_string(), "#252b34".to_string()),
-        ("window_strip_border".to_string(), "1px solid #252b34".to_string()),
+        (
+            "color_window_strip_border".to_string(),
+            "#252b34".to_string(),
+        ),
+        (
+            "window_strip_border".to_string(),
+            "1px solid #252b34".to_string(),
+        ),
         ("color_window_meta".to_string(), "#8e98a7".to_string()),
         ("color_window_title".to_string(), "#eef3fb".to_string()),
         ("color_window_branch_bg".to_string(), "#242a33".to_string()),
@@ -399,18 +442,39 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_menu_hover".to_string(), "#2a313d".to_string()),
         ("space_menu_button_inline".to_string(), "12px".to_string()),
         ("color_toolbar_bg".to_string(), "#161a20".to_string()),
-        ("toolbar_bottom_border".to_string(), "1px solid #252b34".to_string()),
+        (
+            "toolbar_bottom_border".to_string(),
+            "1px solid #252b34".to_string(),
+        ),
         ("color_toolbar_group".to_string(), "transparent".to_string()),
-        ("color_toolbar_group_border".to_string(), "#2f3744".to_string()),
-        ("toolbar_group_border".to_string(), "1px solid #2f3744".to_string()),
+        (
+            "color_toolbar_group_border".to_string(),
+            "#2f3744".to_string(),
+        ),
+        (
+            "toolbar_group_border".to_string(),
+            "1px solid #2f3744".to_string(),
+        ),
         ("space_toolbar_group".to_string(), "4px".to_string()),
-        ("space_toolbar_group_primary".to_string(), "12px".to_string()),
-        ("color_toolbar_group_subtle".to_string(), "transparent".to_string()),
-        ("color_toolbar_title_chip".to_string(), "#20252d".to_string()),
+        (
+            "space_toolbar_group_primary".to_string(),
+            "12px".to_string(),
+        ),
+        (
+            "color_toolbar_group_subtle".to_string(),
+            "transparent".to_string(),
+        ),
+        (
+            "color_toolbar_title_chip".to_string(),
+            "#20252d".to_string(),
+        ),
         ("color_toolbar_title".to_string(), "#f1f5fb".to_string()),
         ("color_toolbar_meta".to_string(), "#8e98a7".to_string()),
         ("toolbar_title_tracking".to_string(), "0.01em".to_string()),
-        ("padding_toolbar_status_cluster".to_string(), "0".to_string()),
+        (
+            "padding_toolbar_status_cluster".to_string(),
+            "0".to_string(),
+        ),
         ("control_height_button".to_string(), "34px".to_string()),
         ("space_button_inline".to_string(), "14px".to_string()),
         ("color_button_text".to_string(), "#c2ccd8".to_string()),
@@ -418,16 +482,28 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_button_active".to_string(), "#2b3340".to_string()),
         ("context_chip_icon_opacity".to_string(), "0.78".to_string()),
         ("color_muted_action_text".to_string(), "#a5b1c0".to_string()),
-        ("color_muted_action_hover".to_string(), "#212833".to_string()),
-        ("color_muted_action_active".to_string(), "#28313d".to_string()),
+        (
+            "color_muted_action_hover".to_string(),
+            "#212833".to_string(),
+        ),
+        (
+            "color_muted_action_active".to_string(),
+            "#28313d".to_string(),
+        ),
         ("space_project_chip_inline".to_string(), "12px".to_string()),
         ("flat_chip_height".to_string(), "28px".to_string()),
         ("flat_chip_padding".to_string(), "0 12px".to_string()),
         ("flat_control_height".to_string(), "30px".to_string()),
         ("flat_control_padding".to_string(), "0 14px".to_string()),
         ("color_accent_action_bg".to_string(), "#25426d".to_string()),
-        ("color_accent_action_text".to_string(), "#f4f8ff".to_string()),
-        ("color_accent_action_hover".to_string(), "#305488".to_string()),
+        (
+            "color_accent_action_text".to_string(),
+            "#f4f8ff".to_string(),
+        ),
+        (
+            "color_accent_action_hover".to_string(),
+            "#305488".to_string(),
+        ),
         ("nav_rail_width".to_string(), "44px".to_string()),
         ("nav_rail_padding".to_string(), "12px 0".to_string()),
         ("color_nav_rail_bg".to_string(), "#181c22".to_string()),
@@ -445,15 +521,27 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_search_border".to_string(), "#313844".to_string()),
         ("search_border".to_string(), "1px solid #313844".to_string()),
         ("space_search_inline".to_string(), "16px".to_string()),
-        ("color_search_focus_border".to_string(), "#568ae0".to_string()),
-        ("search_focus_border".to_string(), "1px solid #568ae0".to_string()),
+        (
+            "color_search_focus_border".to_string(),
+            "#568ae0".to_string(),
+        ),
+        (
+            "search_focus_border".to_string(),
+            "1px solid #568ae0".to_string(),
+        ),
         ("color_search_focus_bg".to_string(), "#232932".to_string()),
         ("icon_button_width".to_string(), "34px".to_string()),
         ("icon_button_height".to_string(), "34px".to_string()),
         ("icon_button_padding".to_string(), "7px".to_string()),
-        ("icon_button_border".to_string(), "1px solid transparent".to_string()),
+        (
+            "icon_button_border".to_string(),
+            "1px solid transparent".to_string(),
+        ),
         ("color_icon_button_hover".to_string(), "#252c36".to_string()),
-        ("color_icon_button_hover_border".to_string(), "#3b4554".to_string()),
+        (
+            "color_icon_button_hover_border".to_string(),
+            "#3b4554".to_string(),
+        ),
         ("space_utility_group".to_string(), "6px".to_string()),
         ("color_selection_bg".to_string(), "#365b96".to_string()),
         ("color_selection_text".to_string(), "#f6f9ff".to_string()),
@@ -468,19 +556,46 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("drop_zone_fill_alpha".to_string(), "0.18".to_string()),
         ("color_drop_zone_border".to_string(), "#9ec4ff".to_string()),
         ("drop_zone_border_alpha".to_string(), "0.48".to_string()),
-        ("drop_zone_border".to_string(), "1px solid alpha(#9ec4ff, 0.48)".to_string()),
+        (
+            "drop_zone_border".to_string(),
+            "1px solid alpha(#9ec4ff, 0.48)".to_string(),
+        ),
         ("notebook_tab_padding".to_string(), "0 14px".to_string()),
         ("notebook_tab_border_width".to_string(), "1px".to_string()),
         ("color_notebook_tab_bg".to_string(), "#20242c".to_string()),
         ("color_notebook_tab_text".to_string(), "#8a96a6".to_string()),
-        ("color_notebook_tab_hover".to_string(), "#272d37".to_string()),
-        ("color_notebook_tab_hover_border".to_string(), "#3c4654".to_string()),
-        ("color_notebook_tab_hover_text".to_string(), "#c8d1dc".to_string()),
-        ("color_notebook_tab_active".to_string(), "#2a313b".to_string()),
-        ("notebook_tab_active_border_width".to_string(), "1px".to_string()),
-        ("color_notebook_tab_active_border".to_string(), "#4d5a6b".to_string()),
-        ("color_notebook_tab_drop_border".to_string(), "#6286bb".to_string()),
-        ("notebook_tab_drop_shadow".to_string(), "inset 0 -2px #6286bb".to_string()),
+        (
+            "color_notebook_tab_hover".to_string(),
+            "#272d37".to_string(),
+        ),
+        (
+            "color_notebook_tab_hover_border".to_string(),
+            "#3c4654".to_string(),
+        ),
+        (
+            "color_notebook_tab_hover_text".to_string(),
+            "#c8d1dc".to_string(),
+        ),
+        (
+            "color_notebook_tab_active".to_string(),
+            "#2a313b".to_string(),
+        ),
+        (
+            "notebook_tab_active_border_width".to_string(),
+            "1px".to_string(),
+        ),
+        (
+            "color_notebook_tab_active_border".to_string(),
+            "#4d5a6b".to_string(),
+        ),
+        (
+            "color_notebook_tab_drop_border".to_string(),
+            "#6286bb".to_string(),
+        ),
+        (
+            "notebook_tab_drop_shadow".to_string(),
+            "inset 0 -2px #6286bb".to_string(),
+        ),
         ("color_editor_tab_bg".to_string(), "#1d222a".to_string()),
         ("color_editor_tab_active".to_string(), "#252b34".to_string()),
         ("tool_tab_height".to_string(), "30px".to_string()),
@@ -493,32 +608,74 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_preview_bg".to_string(), "#181a1f".to_string()),
         ("color_preview_border".to_string(), "#8b96a8".to_string()),
         ("preview_border_alpha".to_string(), "0.18".to_string()),
-        ("preview_top_border".to_string(), "1px solid alpha(#8b96a8, 0.14)".to_string()),
+        (
+            "preview_top_border".to_string(),
+            "1px solid alpha(#8b96a8, 0.14)".to_string(),
+        ),
         ("color_preview_header_bg".to_string(), "#1a1f26".to_string()),
-        ("color_tab_strip_scroller_bg".to_string(), "#171b21".to_string()),
+        (
+            "color_tab_strip_scroller_bg".to_string(),
+            "#171b21".to_string(),
+        ),
         ("tab_strip_border_alpha".to_string(), "0.12".to_string()),
-        ("tab_strip_scroller_border".to_string(), "1px solid alpha(#8b96a8, 0.12)".to_string()),
+        (
+            "tab_strip_scroller_border".to_string(),
+            "1px solid alpha(#8b96a8, 0.12)".to_string(),
+        ),
         ("tab_strip_height".to_string(), "42px".to_string()),
         ("color_workbench_tab_bg".to_string(), "#1f252d".to_string()),
-        ("color_workbench_tab_text".to_string(), "#92a0b2".to_string()),
-        ("color_workbench_tab_hover".to_string(), "#28303a".to_string()),
-        ("color_workbench_tab_hover_text".to_string(), "#d1d8e2".to_string()),
-        ("color_workbench_tab_active".to_string(), "#303846".to_string()),
+        (
+            "color_workbench_tab_text".to_string(),
+            "#92a0b2".to_string(),
+        ),
+        (
+            "color_workbench_tab_hover".to_string(),
+            "#28303a".to_string(),
+        ),
+        (
+            "color_workbench_tab_hover_text".to_string(),
+            "#d1d8e2".to_string(),
+        ),
+        (
+            "color_workbench_tab_active".to_string(),
+            "#303846".to_string(),
+        ),
         ("workbench_tab_padding".to_string(), "0 16px".to_string()),
         ("workbench_tab_border_width".to_string(), "1px".to_string()),
         ("color_drag_preview_bg".to_string(), "#303846".to_string()),
-        ("color_drag_preview_border".to_string(), "#7f8ca0".to_string()),
-        ("drag_preview_shadow".to_string(), "0 16px 32px alpha(black, 0.32)".to_string()),
+        (
+            "color_drag_preview_border".to_string(),
+            "#7f8ca0".to_string(),
+        ),
+        (
+            "drag_preview_shadow".to_string(),
+            "0 16px 32px alpha(black, 0.32)".to_string(),
+        ),
         ("drag_preview_opacity".to_string(), "0.96".to_string()),
         ("tab_drag_gap_width".to_string(), "56px".to_string()),
         ("tab_drag_gap_height".to_string(), "34px".to_string()),
-        ("tab_drag_gap_border".to_string(), "1px dashed alpha(#8ea4c5, 0.58)".to_string()),
-        ("tab_drag_gap_bg".to_string(), "alpha(#8ea4c5, 0.1)".to_string()),
+        (
+            "tab_drag_gap_border".to_string(),
+            "1px dashed alpha(#8ea4c5, 0.58)".to_string(),
+        ),
+        (
+            "tab_drag_gap_bg".to_string(),
+            "alpha(#8ea4c5, 0.1)".to_string(),
+        ),
         ("workbench_split_margin".to_string(), "10px".to_string()),
-        ("workbench_split_fill".to_string(), "alpha(#6d88af, 0.18)".to_string()),
-        ("workbench_split_border".to_string(), "1px solid alpha(#8ea4c5, 0.42)".to_string()),
+        (
+            "workbench_split_fill".to_string(),
+            "alpha(#6d88af, 0.18)".to_string(),
+        ),
+        (
+            "workbench_split_border".to_string(),
+            "1px solid alpha(#8ea4c5, 0.42)".to_string(),
+        ),
         ("split_preview_side_width".to_string(), "120px".to_string()),
-        ("split_preview_bottom_height".to_string(), "96px".to_string()),
+        (
+            "split_preview_bottom_height".to_string(),
+            "96px".to_string(),
+        ),
         ("panel_title_tracking".to_string(), "0.04em".to_string()),
         ("panel_title_color".to_string(), "#93a0b2".to_string()),
         ("section_title_tracking".to_string(), "0.08em".to_string()),
@@ -526,7 +683,10 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("dense_row_height".to_string(), "36px".to_string()),
         ("dense_row_selected_bg".to_string(), "#2b3441".to_string()),
         ("dense_row_selected_text".to_string(), "#f2f6fc".to_string()),
-        ("dense_row_hover_bg".to_string(), "alpha(#4a5566, 0.22)".to_string()),
+        (
+            "dense_row_hover_bg".to_string(),
+            "alpha(#4a5566, 0.22)".to_string(),
+        ),
         ("list_row_padding".to_string(), "10px 14px".to_string()),
         ("inspector_value_color".to_string(), "#dce8fb".to_string()),
         ("status_badge_padding".to_string(), "4px 8px".to_string()),
@@ -535,39 +695,87 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_status_idle_bg".to_string(), "#2b313a".to_string()),
         ("color_status_idle_text".to_string(), "#aeb8c9".to_string()),
         ("color_status_loaded_bg".to_string(), "#3d3322".to_string()),
-        ("color_status_loaded_text".to_string(), "#f0cf7c".to_string()),
+        (
+            "color_status_loaded_text".to_string(),
+            "#f0cf7c".to_string(),
+        ),
         ("color_status_running_bg".to_string(), "#1f3a30".to_string()),
-        ("color_status_running_text".to_string(), "#83d0ae".to_string()),
+        (
+            "color_status_running_text".to_string(),
+            "#83d0ae".to_string(),
+        ),
         ("color_textview_text".to_string(), "#d7dce5".to_string()),
-        ("color_tool_window_surface".to_string(), "#20252d".to_string()),
+        (
+            "color_tool_window_surface".to_string(),
+            "#20252d".to_string(),
+        ),
         ("color_scrollbar_trough".to_string(), "#171b21".to_string()),
         ("scrollbar_slider_size".to_string(), "8px".to_string()),
         ("color_scrollbar_slider".to_string(), "#4c5767".to_string()),
-        ("color_scrollbar_slider_hover".to_string(), "#617085".to_string()),
+        (
+            "color_scrollbar_slider_hover".to_string(),
+            "#617085".to_string(),
+        ),
         ("status_bar_height".to_string(), "32px".to_string()),
         ("color_status_bar_bg".to_string(), "#14181e".to_string()),
         ("color_status_item".to_string(), "#9aa6b7".to_string()),
-        ("color_status_item_strong".to_string(), "#dfe4eb".to_string()),
+        (
+            "color_status_item_strong".to_string(),
+            "#dfe4eb".to_string(),
+        ),
         ("plugin_search_margin_bottom".to_string(), "2px".to_string()),
-        ("plugin_list_row_border".to_string(), "1px solid alpha(#353c48, 0.35)".to_string()),
-        ("plugin_list_row_padding".to_string(), "10px 12px".to_string()),
-        ("color_plugin_source_badge_bg".to_string(), "#243245".to_string()),
-        ("color_plugin_source_badge_text".to_string(), "#b8d2ef".to_string()),
+        (
+            "plugin_list_row_border".to_string(),
+            "1px solid alpha(#353c48, 0.35)".to_string(),
+        ),
+        (
+            "plugin_list_row_padding".to_string(),
+            "10px 12px".to_string(),
+        ),
+        (
+            "color_plugin_source_badge_bg".to_string(),
+            "#243245".to_string(),
+        ),
+        (
+            "color_plugin_source_badge_text".to_string(),
+            "#b8d2ef".to_string(),
+        ),
         ("color_plugin_hero_bg".to_string(), "#242933".to_string()),
         ("plugin_hero_padding".to_string(), "14px".to_string()),
         ("color_plugin_name".to_string(), "#f3f7fd".to_string()),
-        ("color_plugin_description".to_string(), "#cfd7e4".to_string()),
+        (
+            "color_plugin_description".to_string(),
+            "#cfd7e4".to_string(),
+        ),
         ("color_plugin_overview".to_string(), "#aab6c9".to_string()),
-        ("plugin_footer_padding".to_string(), "8px 4px 4px 0".to_string()),
+        (
+            "plugin_footer_padding".to_string(),
+            "8px 4px 4px 0".to_string(),
+        ),
         ("color_popover_bg".to_string(), "#1e232a".to_string()),
-        ("popover_border".to_string(), "1px solid alpha(#3f4756, 0.7)".to_string()),
+        (
+            "popover_border".to_string(),
+            "1px solid alpha(#3f4756, 0.7)".to_string(),
+        ),
         ("popover_content_padding".to_string(), "4px".to_string()),
         ("popover_button_height".to_string(), "25px".to_string()),
         ("popover_button_padding".to_string(), "3px 12px".to_string()),
-        ("color_popover_button_text".to_string(), "#dce4f1".to_string()),
-        ("color_popover_button_hover".to_string(), "#2e425e".to_string()),
-        ("color_popover_button_hover_text".to_string(), "#f7fbff".to_string()),
-        ("color_popover_button_disabled".to_string(), "#7d8796".to_string()),
+        (
+            "color_popover_button_text".to_string(),
+            "#dce4f1".to_string(),
+        ),
+        (
+            "color_popover_button_hover".to_string(),
+            "#2e425e".to_string(),
+        ),
+        (
+            "color_popover_button_hover_text".to_string(),
+            "#f7fbff".to_string(),
+        ),
+        (
+            "color_popover_button_disabled".to_string(),
+            "#7d8796".to_string(),
+        ),
         ("color_popover_separator".to_string(), "#343b47".to_string()),
         ("popover_separator_margin".to_string(), "4px 0".to_string()),
     ])

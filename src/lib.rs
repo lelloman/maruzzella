@@ -13,14 +13,14 @@ pub mod theme;
 use gtk::prelude::*;
 use gtk::Application;
 
-pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
 pub use plugins::{
     diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, resolve_load_order,
-    LoadedPlugin, PluginDependencySpec, PluginDescriptor, PluginDiagnostic,
-    PluginDiagnosticLevel, PluginHost, PluginLoadError, PluginLogEntry, PluginResolveError,
-    PluginRuntime, PluginRuntimeError, RegisteredCommand, RegisteredMenuItem,
-    RegisteredSurfaceContribution, RegisteredViewFactory, Version as PluginVersion,
+    LoadedPlugin, PluginDependencySpec, PluginDescriptor, PluginDiagnostic, PluginDiagnosticLevel,
+    PluginHost, PluginLoadError, PluginLogEntry, PluginResolveError, PluginRuntime,
+    PluginRuntimeError, RegisteredCommand, RegisteredMenuItem, RegisteredSurfaceContribution,
+    RegisteredViewFactory, Version as PluginVersion,
 };
+pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
 pub use spec::{
     plugin_tab, text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec,
     PanelContentKind, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, ToolbarItemSpec,

@@ -6,12 +6,10 @@ use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
 
 use crate::base_plugin;
-use crate::MaruzzellaConfig;
 use crate::commands;
 use crate::layout::{self, PersistedShell};
 use crate::plugins::{
-    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginHost,
-    PluginRuntime,
+    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginHost, PluginRuntime,
 };
 use crate::product;
 use crate::shell::topbar;
@@ -20,6 +18,7 @@ use crate::spec::{
     BottomPanelLayout, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec,
 };
 use crate::theme;
+use crate::MaruzzellaConfig;
 
 type ShellState = Rc<RefCell<PersistedShell>>;
 
@@ -73,7 +72,10 @@ fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
         }
     }
 
-    match crate::plugins::PluginRuntime::activate_with_persistence_id(plugins, &config.persistence_id) {
+    match crate::plugins::PluginRuntime::activate_with_persistence_id(
+        plugins,
+        &config.persistence_id,
+    ) {
         Ok(runtime) => PluginHost::new(Some(Rc::new(runtime)), diagnostics),
         Err(error) => {
             diagnostics.push(diagnostic_for_runtime_error(&error));
@@ -102,14 +104,18 @@ fn build_shell(
         persistence_id.clone(),
         plugin_runtime.clone(),
     );
-    right.root.set_size_request(density.min_side_panel_width, -1);
+    right
+        .root
+        .set_size_request(density.min_side_panel_width, -1);
     let bottom = build_group(
         &spec.bottom_panel,
         state.clone(),
         persistence_id.clone(),
         plugin_runtime.clone(),
     );
-    bottom.root.set_size_request(-1, density.min_bottom_panel_height);
+    bottom
+        .root
+        .set_size_request(-1, density.min_bottom_panel_height);
     let workbench = build_workbench_node(
         &spec.workbench,
         state.clone(),
@@ -126,7 +132,12 @@ fn build_shell(
     left_center.set_start_child(Some(&left.root));
     left_center.set_end_child(Some(&workbench));
     restore_pane_position(&left_center, &state, "shell.horizontal", 280);
-    persist_pane_position(&left_center, state.clone(), persistence_id.clone(), "shell.horizontal");
+    persist_pane_position(
+        &left_center,
+        state.clone(),
+        persistence_id.clone(),
+        "shell.horizontal",
+    );
 
     match spec.bottom_panel_layout {
         BottomPanelLayout::CenterOnly => {
@@ -206,7 +217,9 @@ fn build_workbench_node(
 ) -> gtk::Widget {
     match node {
         WorkbenchNodeSpec::Group(group) => {
-            build_group(group, state, persistence_id, plugin_runtime).root.upcast::<gtk::Widget>()
+            build_group(group, state, persistence_id, plugin_runtime)
+                .root
+                .upcast::<gtk::Widget>()
         }
         WorkbenchNodeSpec::Split { axis, children } => {
             let mut child_widgets = children
@@ -253,7 +266,11 @@ fn install_group_persistence(
     let state_for_active = state.clone();
     let persistence_id_for_active = persistence_id.clone();
     handle.set_active_changed_handler(move |_| {
-        sync_group_into_state(&state_for_active, &handle_for_active, &persistence_id_for_active);
+        sync_group_into_state(
+            &state_for_active,
+            &handle_for_active,
+            &persistence_id_for_active,
+        );
     });
 
     let handle_for_drag = handle.clone();
@@ -275,12 +292,7 @@ fn sync_group_into_state(
 
     {
         let mut shell = state.borrow_mut();
-        if !sync_group_spec(
-            &mut shell.spec,
-            &group_id,
-            &tab_ids,
-            active_tab_id.as_ref(),
-        ) {
+        if !sync_group_spec(&mut shell.spec, &group_id, &tab_ids, active_tab_id.as_ref()) {
             return;
         }
     }
@@ -294,10 +306,27 @@ fn sync_group_spec(
     ordered_tab_ids: &[String],
     active_tab_id: Option<&String>,
 ) -> bool {
-    sync_single_group(&mut spec.left_panel, group_id, ordered_tab_ids, active_tab_id)
-        || sync_single_group(&mut spec.right_panel, group_id, ordered_tab_ids, active_tab_id)
-        || sync_single_group(&mut spec.bottom_panel, group_id, ordered_tab_ids, active_tab_id)
-        || sync_workbench_node(&mut spec.workbench, group_id, ordered_tab_ids, active_tab_id)
+    sync_single_group(
+        &mut spec.left_panel,
+        group_id,
+        ordered_tab_ids,
+        active_tab_id,
+    ) || sync_single_group(
+        &mut spec.right_panel,
+        group_id,
+        ordered_tab_ids,
+        active_tab_id,
+    ) || sync_single_group(
+        &mut spec.bottom_panel,
+        group_id,
+        ordered_tab_ids,
+        active_tab_id,
+    ) || sync_workbench_node(
+        &mut spec.workbench,
+        group_id,
+        ordered_tab_ids,
+        active_tab_id,
+    )
 }
 
 fn sync_workbench_node(
@@ -355,12 +384,7 @@ fn restore_pane_position(paned: &Paned, state: &ShellState, pane_id: &str, defau
     paned.set_position(position);
 }
 
-fn persist_pane_position(
-    paned: &Paned,
-    state: ShellState,
-    persistence_id: String,
-    pane_id: &str,
-) {
+fn persist_pane_position(paned: &Paned, state: ShellState, persistence_id: String, pane_id: &str) {
     let pane_id = pane_id.to_string();
     paned.connect_position_notify(move |paned| {
         state

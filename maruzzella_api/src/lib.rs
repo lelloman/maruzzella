@@ -249,8 +249,7 @@ pub type MzRegisterCommandFn = extern "C" fn(command: *const MzCommandSpec) -> M
 pub type MzRegisterMenuItemFn = extern "C" fn(item: *const MzMenuItemSpec) -> MzStatus;
 pub type MzRegisterSurfaceContributionFn =
     extern "C" fn(contribution: *const MzSurfaceContribution) -> MzStatus;
-pub type MzRegisterViewFactoryFn =
-    extern "C" fn(factory: *const MzViewFactorySpec) -> MzStatus;
+pub type MzRegisterViewFactoryFn = extern "C" fn(factory: *const MzViewFactorySpec) -> MzStatus;
 pub type MzDispatchCommandFn = extern "C" fn(command_id: MzStr, payload: MzBytes) -> MzStatus;
 pub type MzReadConfigFn = extern "C" fn() -> MzBytes;
 pub type MzWriteConfigFn = extern "C" fn(payload: MzBytes) -> MzStatus;

@@ -36,7 +36,11 @@ pub struct BuiltNotebook {
     pub labels: HashMap<String, Label>,
 }
 
-pub fn build(css_class: &str, tabs: &[TabSpec], plugin_runtime: Option<Rc<PluginRuntime>>) -> BuiltNotebook {
+pub fn build(
+    css_class: &str,
+    tabs: &[TabSpec],
+    plugin_runtime: Option<Rc<PluginRuntime>>,
+) -> BuiltNotebook {
     let (root, content) = bare_pane_container(css_class);
     let notebook = Notebook::new();
     notebook.add_css_class("workbench-tabs");
@@ -104,69 +108,69 @@ pub fn build_tab_page(
         build_plugin_widget(tab, plugin_view_id, plugin_runtime)
     } else {
         match tab.content_kind {
-        PanelContentKind::NavigationList | PanelContentKind::IdentityList => {
-            let built_list = ListBox::new();
-            built_list.set_selection_mode(SelectionMode::Single);
-            built_list.add_css_class("dense-list");
-            list = Some(built_list.clone());
-            scrolled(&built_list).upcast::<gtk::Widget>()
-        }
-        PanelContentKind::InspectorDetails => {
-            let inspector_box = GtkBox::new(Orientation::Vertical, 10);
-            inspector_box.add_css_class("inspector-content");
-
-            let summary_title = section_title("Selection");
-            let summary = value_label("No identity selected");
-            let identifiers_title = section_title("Identifiers");
-            let identity_hash = value_label("-");
-            let destination = value_label("-");
-            let runtime_title = section_title("Runtime");
-            let status = value_label("Idle");
-
-            labels.insert("selection.summary".to_string(), summary.clone());
-            labels.insert("selection.identity_hash".to_string(), identity_hash.clone());
-            labels.insert("selection.destination".to_string(), destination.clone());
-            labels.insert("selection.status".to_string(), status.clone());
-
-            inspector_box.append(&summary_title);
-            inspector_box.append(&summary);
-            inspector_box.append(&identifiers_title);
-            inspector_box.append(&field("Identity hash", &identity_hash));
-            inspector_box.append(&field("Destination", &destination));
-            inspector_box.append(&runtime_title);
-            inspector_box.append(&field("Status", &status));
-
-            scrolled(&inspector_box).upcast::<gtk::Widget>()
-        }
-        PanelContentKind::CommandList => {
-            let box_ = GtkBox::new(Orientation::Vertical, 8);
-            box_.add_css_class("inspector-content");
-            let search = Entry::new();
-            search.set_placeholder_text(Some("Filter commands"));
-            search.add_css_class("command-entry");
-            let built_list = ListBox::new();
-            built_list.set_selection_mode(SelectionMode::None);
-            built_list.add_css_class("dense-list");
-            entry = Some(search.clone());
-            list = Some(built_list.clone());
-            box_.append(&search);
-            box_.append(&scrolled(&built_list));
-            box_.upcast::<gtk::Widget>()
-        }
-        PanelContentKind::TextBuffer => {
-            let built_buffer = TextBuffer::new(None);
-            built_buffer.set_text(&tab.placeholder);
-            let view = TextView::builder()
-                .editable(false)
-                .monospace(true)
-                .buffer(&built_buffer)
-                .build();
-            if css_class == "console-pane" {
-                view.add_css_class("console-view");
+            PanelContentKind::NavigationList | PanelContentKind::IdentityList => {
+                let built_list = ListBox::new();
+                built_list.set_selection_mode(SelectionMode::Single);
+                built_list.add_css_class("dense-list");
+                list = Some(built_list.clone());
+                scrolled(&built_list).upcast::<gtk::Widget>()
             }
-            buffer = Some(built_buffer);
-            scrolled(&view).upcast::<gtk::Widget>()
-        }
+            PanelContentKind::InspectorDetails => {
+                let inspector_box = GtkBox::new(Orientation::Vertical, 10);
+                inspector_box.add_css_class("inspector-content");
+
+                let summary_title = section_title("Selection");
+                let summary = value_label("No identity selected");
+                let identifiers_title = section_title("Identifiers");
+                let identity_hash = value_label("-");
+                let destination = value_label("-");
+                let runtime_title = section_title("Runtime");
+                let status = value_label("Idle");
+
+                labels.insert("selection.summary".to_string(), summary.clone());
+                labels.insert("selection.identity_hash".to_string(), identity_hash.clone());
+                labels.insert("selection.destination".to_string(), destination.clone());
+                labels.insert("selection.status".to_string(), status.clone());
+
+                inspector_box.append(&summary_title);
+                inspector_box.append(&summary);
+                inspector_box.append(&identifiers_title);
+                inspector_box.append(&field("Identity hash", &identity_hash));
+                inspector_box.append(&field("Destination", &destination));
+                inspector_box.append(&runtime_title);
+                inspector_box.append(&field("Status", &status));
+
+                scrolled(&inspector_box).upcast::<gtk::Widget>()
+            }
+            PanelContentKind::CommandList => {
+                let box_ = GtkBox::new(Orientation::Vertical, 8);
+                box_.add_css_class("inspector-content");
+                let search = Entry::new();
+                search.set_placeholder_text(Some("Filter commands"));
+                search.add_css_class("command-entry");
+                let built_list = ListBox::new();
+                built_list.set_selection_mode(SelectionMode::None);
+                built_list.add_css_class("dense-list");
+                entry = Some(search.clone());
+                list = Some(built_list.clone());
+                box_.append(&search);
+                box_.append(&scrolled(&built_list));
+                box_.upcast::<gtk::Widget>()
+            }
+            PanelContentKind::TextBuffer => {
+                let built_buffer = TextBuffer::new(None);
+                built_buffer.set_text(&tab.placeholder);
+                let view = TextView::builder()
+                    .editable(false)
+                    .monospace(true)
+                    .buffer(&built_buffer)
+                    .build();
+                if css_class == "console-pane" {
+                    view.add_css_class("console-view");
+                }
+                buffer = Some(built_buffer);
+                scrolled(&view).upcast::<gtk::Widget>()
+            }
         }
     };
     let tab_label = Label::new(Some(&tab.title));
@@ -212,12 +216,10 @@ fn build_plugin_widget(
 
     match plugin_runtime.create_view(plugin_view_id, &[]) {
         Ok(widget) => widget,
-        Err(error) => plugin_fallback_widget(
-            &format!(
-                "Failed to build plugin view '{plugin_view_id}': {error:?}\n\n{}",
-                tab.placeholder
-            ),
-        ),
+        Err(error) => plugin_fallback_widget(&format!(
+            "Failed to build plugin view '{plugin_view_id}': {error:?}\n\n{}",
+            tab.placeholder
+        )),
     }
 }
 

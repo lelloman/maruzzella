@@ -8,3 +8,4 @@ path = "src/lib.rs"
 
 [dependencies]
 maruzzella_api = { path = "../maruzzella_api" }
+serde_json = "1"

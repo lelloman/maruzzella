@@ -26,6 +26,7 @@ type ShellState = Rc<RefCell<PersistedShell>>;
 pub fn build(application: &Application, config: &MaruzzellaConfig) {
     theme::install(config.theme.clone());
     let density = &config.theme.density;
+    let has_persisted_layout = layout::path(&config.persistence_id).exists();
 
     let state = Rc::new(RefCell::new(layout::load(
         &config.persistence_id,
@@ -35,6 +36,10 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
     let plugin_host = Rc::new(build_plugin_host(config));
     if let Some(runtime) = plugin_host.runtime() {
         product::merge_plugin_runtime(&mut spec, runtime);
+        if !has_persisted_layout {
+            product::merge_runtime_startup_tabs(&mut spec, runtime);
+        }
+        state.borrow_mut().spec = spec.clone();
     }
     let group_handles = Rc::new(RefCell::new(HashMap::new()));
     if let Some(runtime) = plugin_host.runtime() {
@@ -94,7 +99,10 @@ fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
         plugins,
         &config.persistence_id,
     ) {
-        Ok(runtime) => PluginHost::new(Some(Rc::new(runtime)), diagnostics),
+        Ok(mut runtime) => {
+            runtime.diagnostics = diagnostics.clone();
+            PluginHost::new(Some(Rc::new(runtime)), diagnostics)
+        }
         Err(error) => {
             diagnostics.push(diagnostic_for_runtime_error(&error));
             PluginHost::new(None, diagnostics)

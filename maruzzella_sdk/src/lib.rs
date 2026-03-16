@@ -5,8 +5,9 @@ use maruzzella_api::{
     MzViewFactorySpec, MzViewQuery, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 pub use maruzzella_api::{
-    MzContributionSurface, MzLogLevel, MzMenuSurface, MzSettingsCategory, MzStatusCode,
-    MzViewOpenDisposition, MzViewPlacement,
+    MzCommandSummary, MzContributionSurface, MzLogLevel, MzMenuSurface, MzPluginSnapshot,
+    MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarItem, MzViewOpenDisposition,
+    MzViewPlacement, MzViewSummary,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -270,6 +271,34 @@ impl SurfaceContributionSpec {
         Self::new(
             plugin_id,
             MzContributionSurface::PluginSettingsPages,
+            contribution_id,
+            payload,
+        )
+    }
+
+    pub fn toolbar_item(
+        plugin_id: &'static str,
+        contribution_id: &'static str,
+        item: MzToolbarItem,
+    ) -> Self {
+        let payload = item.to_bytes().expect("toolbar items should serialize");
+        Self::new(
+            plugin_id,
+            MzContributionSurface::ToolbarItems,
+            contribution_id,
+            payload,
+        )
+    }
+
+    pub fn startup_tab(
+        plugin_id: &'static str,
+        contribution_id: &'static str,
+        tab: MzStartupTab,
+    ) -> Self {
+        let payload = tab.to_bytes().expect("startup tabs should serialize");
+        Self::new(
+            plugin_id,
+            MzContributionSurface::StartupTabs,
             contribution_id,
             payload,
         )
@@ -547,6 +576,54 @@ impl<'a> HostApi<'a> {
         } else {
             Err(status.code)
         }
+    }
+
+    pub fn read_command_snapshot(&self) -> Result<Vec<MzCommandSummary>, MzStatusCode> {
+        let Some(read) = self.raw.read_command_snapshot else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(Vec::new());
+        }
+        serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn read_view_snapshot(&self) -> Result<Vec<MzViewSummary>, MzStatusCode> {
+        let Some(read) = self.raw.read_view_snapshot else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(Vec::new());
+        }
+        serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn read_plugin_snapshot(&self) -> Result<MzPluginSnapshot, MzStatusCode> {
+        let Some(read) = self.raw.read_plugin_snapshot else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Err(MzStatusCode::NotFound);
+        }
+        serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn read_about_snapshot(&self) -> Result<Vec<maruzzella_api::MzAboutSection>, MzStatusCode> {
+        let Some(read) = self.raw.read_about_snapshot else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(Vec::new());
+        }
+        serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .map_err(|_| MzStatusCode::InternalError)
     }
 
     pub fn read_config(&self) -> Result<Vec<u8>, MzStatusCode> {

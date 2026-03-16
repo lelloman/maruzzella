@@ -141,13 +141,19 @@ impl MzPluginDescriptorView {
 }
 
 #[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MzLogLevel {
     Error = 1,
     Warn = 2,
     Info = 3,
     Debug = 4,
     Trace = 5,
+}
+
+impl Default for MzLogLevel {
+    fn default() -> Self {
+        Self::Info
+    }
 }
 
 #[repr(C)]
@@ -216,6 +222,129 @@ pub struct MzSettingsPage {
     pub title: String,
     pub summary: String,
     pub category: MzSettingsCategory,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzToolbarItem {
+    pub item_id: String,
+    pub icon_name: Option<String>,
+    pub label: Option<String>,
+    pub command_id: String,
+    pub secondary: bool,
+}
+
+impl MzToolbarItem {
+    pub fn new(
+        item_id: impl Into<String>,
+        icon_name: Option<String>,
+        label: Option<String>,
+        command_id: impl Into<String>,
+        secondary: bool,
+    ) -> Self {
+        Self {
+            item_id: item_id.into(),
+            icon_name,
+            label,
+            command_id: command_id.into(),
+            secondary,
+        }
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzStartupTab {
+    pub group_id: String,
+    pub tab_id: String,
+    pub title: String,
+    pub plugin_view_id: String,
+    pub instance_key: Option<String>,
+    pub payload: Vec<u8>,
+    pub placeholder: String,
+    pub closable: bool,
+    pub active: bool,
+}
+
+impl MzStartupTab {
+    pub fn new(
+        group_id: impl Into<String>,
+        tab_id: impl Into<String>,
+        title: impl Into<String>,
+        plugin_view_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            group_id: group_id.into(),
+            tab_id: tab_id.into(),
+            title: title.into(),
+            plugin_view_id: plugin_view_id.into(),
+            instance_key: None,
+            payload: Vec::new(),
+            placeholder: String::new(),
+            closable: true,
+            active: false,
+        }
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzCommandSummary {
+    pub command_id: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzViewSummary {
+    pub plugin_id: String,
+    pub view_id: String,
+    pub title: String,
+    pub placement: MzViewPlacement,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzPluginDiagnosticSummary {
+    pub level: String,
+    pub plugin_id: Option<String>,
+    pub path: Option<String>,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzPluginLogSummary {
+    pub level: MzLogLevel,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzPluginSummary {
+    pub plugin_id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub views: Vec<MzViewSummary>,
+    pub settings_pages: Vec<MzSettingsPage>,
+    pub logs: Vec<MzPluginLogSummary>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzPluginSnapshot {
+    pub activation_order: Vec<String>,
+    pub diagnostics: Vec<MzPluginDiagnosticSummary>,
+    pub plugins: Vec<MzPluginSummary>,
 }
 
 impl MzSettingsPage {
@@ -307,6 +436,8 @@ impl MzMenuSurface {
 pub enum MzContributionSurface {
     AboutSections,
     PluginSettingsPages,
+    ToolbarItems,
+    StartupTabs,
 }
 
 impl MzContributionSurface {
@@ -314,6 +445,8 @@ impl MzContributionSurface {
         match self {
             Self::AboutSections => "maruzzella.about.sections",
             Self::PluginSettingsPages => "maruzzella.plugins.settings_pages",
+            Self::ToolbarItems => "maruzzella.toolbar.items",
+            Self::StartupTabs => "maruzzella.startup.tabs",
         }
     }
 
@@ -321,12 +454,14 @@ impl MzContributionSurface {
         match value {
             "maruzzella.about.sections" => Some(Self::AboutSections),
             "maruzzella.plugins.settings_pages" => Some(Self::PluginSettingsPages),
+            "maruzzella.toolbar.items" => Some(Self::ToolbarItems),
+            "maruzzella.startup.tabs" => Some(Self::StartupTabs),
             _ => None,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MzViewPlacement {
     Workbench,
     SidePanel,
@@ -417,6 +552,10 @@ pub type MzOpenViewFn = extern "C" fn(request: *const MzOpenViewRequest) -> MzOp
 pub type MzFocusViewFn = extern "C" fn(query: *const MzViewQuery) -> MzStatus;
 pub type MzIsViewOpenFn = extern "C" fn(query: *const MzViewQuery) -> MzViewQueryResult;
 pub type MzUpdateViewTitleFn = extern "C" fn(query: *const MzViewQuery, title: MzStr) -> MzStatus;
+pub type MzReadCommandSnapshotFn = extern "C" fn() -> MzBytes;
+pub type MzReadViewSnapshotFn = extern "C" fn() -> MzBytes;
+pub type MzReadPluginSnapshotFn = extern "C" fn() -> MzBytes;
+pub type MzReadAboutSnapshotFn = extern "C" fn() -> MzBytes;
 pub type MzReadConfigFn = extern "C" fn() -> MzBytes;
 pub type MzWriteConfigFn = extern "C" fn(payload: MzBytes) -> MzStatus;
 
@@ -435,6 +574,10 @@ pub struct MzHostApi {
     pub focus_view: Option<MzFocusViewFn>,
     pub is_view_open: Option<MzIsViewOpenFn>,
     pub update_view_title: Option<MzUpdateViewTitleFn>,
+    pub read_command_snapshot: Option<MzReadCommandSnapshotFn>,
+    pub read_view_snapshot: Option<MzReadViewSnapshotFn>,
+    pub read_plugin_snapshot: Option<MzReadPluginSnapshotFn>,
+    pub read_about_snapshot: Option<MzReadAboutSnapshotFn>,
     pub read_config: Option<MzReadConfigFn>,
     pub write_config: Option<MzWriteConfigFn>,
 }
@@ -454,6 +597,10 @@ impl MzHostApi {
             focus_view: None,
             is_view_open: None,
             update_view_title: None,
+            read_command_snapshot: None,
+            read_view_snapshot: None,
+            read_plugin_snapshot: None,
+            read_about_snapshot: None,
             read_config: None,
             write_config: None,
         }

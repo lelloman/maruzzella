@@ -1,9 +1,11 @@
 use std::collections::HashSet;
 
+use maruzzella_api::{MzContributionSurface, MzStartupTab, MzToolbarItem};
+
 use crate::plugins::PluginRuntime;
 use crate::spec::{
-    plugin_tab, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec, ShellSpec, SplitAxis,
-    TabGroupSpec, ToolbarItemSpec, WorkbenchNodeSpec,
+    plugin_tab_with_instance, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec,
+    ShellSpec, SplitAxis, TabGroupSpec, ToolbarItemSpec, WorkbenchNodeSpec,
 };
 
 #[derive(Clone, Debug)]
@@ -52,6 +54,43 @@ impl ProductSpec {
 }
 
 pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
+    merge_runtime_commands(spec, runtime);
+    merge_runtime_menus(spec, runtime);
+    merge_runtime_toolbar(spec, runtime);
+}
+
+pub fn merge_runtime_startup_tabs(spec: &mut ShellSpec, runtime: &PluginRuntime) {
+    for contribution in runtime
+        .surface_contributions()
+        .iter()
+        .filter(|contribution| contribution.surface == Some(MzContributionSurface::StartupTabs))
+    {
+        let Ok(tab) = MzStartupTab::from_bytes(&contribution.payload) else {
+            continue;
+        };
+        let Some(group) = find_group_mut(spec, &tab.group_id) else {
+            continue;
+        };
+        if group.tabs.iter().any(|existing| existing.id == tab.tab_id) {
+            continue;
+        }
+        group.tabs.push(plugin_tab_with_instance(
+            &tab.tab_id,
+            &tab.group_id,
+            &tab.title,
+            &tab.plugin_view_id,
+            tab.instance_key.as_deref(),
+            tab.payload,
+            &tab.placeholder,
+            tab.closable,
+        ));
+        if tab.active {
+            group.active_tab_id = Some(tab.tab_id);
+        }
+    }
+}
+
+fn merge_runtime_commands(spec: &mut ShellSpec, runtime: &PluginRuntime) {
     let mut known_command_ids = spec
         .commands
         .iter()
@@ -65,7 +104,9 @@ pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
             });
         }
     }
+}
 
+fn merge_runtime_menus(spec: &mut ShellSpec, runtime: &PluginRuntime) {
     let mut known_root_ids = spec
         .menu_roots
         .iter()
@@ -116,6 +157,33 @@ pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
     spec.menu_roots.sort_by_key(|root| menu_root_rank(&root.id));
 }
 
+fn merge_runtime_toolbar(spec: &mut ShellSpec, runtime: &PluginRuntime) {
+    let mut known_toolbar_ids = spec
+        .toolbar_items
+        .iter()
+        .map(|item| item.id.clone())
+        .collect::<HashSet<_>>();
+
+    for contribution in runtime
+        .surface_contributions()
+        .iter()
+        .filter(|contribution| contribution.surface == Some(MzContributionSurface::ToolbarItems))
+    {
+        let Ok(item) = MzToolbarItem::from_bytes(&contribution.payload) else {
+            continue;
+        };
+        if known_toolbar_ids.insert(item.item_id.clone()) {
+            spec.toolbar_items.push(ToolbarItemSpec {
+                id: item.item_id,
+                icon_name: item.icon_name,
+                label: item.label,
+                command_id: item.command_id,
+                secondary: item.secondary,
+            });
+        }
+    }
+}
+
 fn menu_root_rank(root_id: &str) -> (usize, String) {
     let rank = match root_id {
         "file" => 0,
@@ -131,190 +199,28 @@ pub fn default_product_spec() -> ProductSpec {
     let branding = BrandingSpec {
         title: "Maruzzella".to_string(),
         search_placeholder: "Search Maruzzella".to_string(),
-        status_text: "Plugin-ready GTK workspace shell".to_string(),
+        status_text: "Neutral GTK workspace shell".to_string(),
     };
-    let commands = vec![
-        CommandSpec {
-            id: "shell.open_command_palette".to_string(),
-            title: "Command Palette".to_string(),
-        },
-        CommandSpec {
-            id: "shell.browse_views".to_string(),
-            title: "Browse Views".to_string(),
-        },
-        CommandSpec {
-            id: "shell.reload_theme".to_string(),
-            title: "Reload Theme".to_string(),
-        },
-    ];
-    let toolbar_items = vec![
-        ToolbarItemSpec {
-            id: "palette".to_string(),
-            icon_name: Some("system-search-symbolic".to_string()),
-            label: Some("Palette".to_string()),
-            command_id: "shell.open_command_palette".to_string(),
-            secondary: false,
-        },
-        ToolbarItemSpec {
-            id: "theme".to_string(),
-            icon_name: Some("applications-graphics-symbolic".to_string()),
-            label: None,
-            command_id: "shell.reload_theme".to_string(),
-            secondary: true,
-        },
-        ToolbarItemSpec {
-            id: "views".to_string(),
-            icon_name: Some("view-grid-symbolic".to_string()),
-            label: None,
-            command_id: "shell.browse_views".to_string(),
-            secondary: true,
-        },
-        ToolbarItemSpec {
-            id: "about".to_string(),
-            icon_name: Some("help-about-symbolic".to_string()),
-            label: None,
-            command_id: "shell.about".to_string(),
-            secondary: true,
-        },
-    ];
-    let menu_roots = vec![MenuRootSpec {
-        id: "view".to_string(),
-        label: "View".to_string(),
+    let commands = vec![CommandSpec {
+        id: "shell.reload_theme".to_string(),
+        title: "Reload Theme".to_string(),
     }];
-    let menu_items = vec![
-        MenuItemSpec {
-            id: "command-palette".to_string(),
-            root_id: "view".to_string(),
-            label: "Command Palette".to_string(),
-            command_id: "shell.open_command_palette".to_string(),
-        },
-        MenuItemSpec {
-            id: "reload-theme".to_string(),
-            root_id: "view".to_string(),
-            label: "Reload Theme".to_string(),
-            command_id: "shell.reload_theme".to_string(),
-        },
-        MenuItemSpec {
-            id: "browse-views".to_string(),
-            root_id: "view".to_string(),
-            label: "Browse Views".to_string(),
-            command_id: "shell.browse_views".to_string(),
-        },
-    ];
+    let toolbar_items = Vec::new();
+    let menu_roots = Vec::new();
+    let menu_items = Vec::new();
     let layout = LayoutContribution {
         bottom_panel_layout: BottomPanelLayout::CenterOnly,
-        left_panel: TabGroupSpec::new(
-            "panel-left",
-            Some("workspace-nav"),
-            vec![
-                plugin_tab(
-                    "workspace-nav",
-                    "panel-left",
-                    "Workspace",
-                    "maruzzella.base.panel.navigator",
-                    "Primary workspace navigation is provided by the built-in base plugin.",
-                    false,
-                ),
-                plugin_tab(
-                    "resource-index",
-                    "panel-left",
-                    "Resources",
-                    "maruzzella.base.panel.resources",
-                    "Reference material and starter assets can live here.",
-                    false,
-                ),
-            ],
-        ),
-        right_panel: TabGroupSpec::new(
-            "panel-right",
-            Some("selection-inspector"),
-            vec![
-                plugin_tab(
-                    "selection-inspector",
-                    "panel-right",
-                    "Inspector",
-                    "maruzzella.base.panel.inspector",
-                    "Selection-aware details and shell health live here.",
-                    false,
-                ),
-                plugin_tab(
-                    "delivery-checklist",
-                    "panel-right",
-                    "Release",
-                    "maruzzella.base.panel.delivery",
-                    "Delivery notes and polish checkpoints live here.",
-                    false,
-                ),
-            ],
-        ),
-        bottom_panel: TabGroupSpec::new(
-            "panel-bottom",
-            Some("runtime-activity"),
-            vec![
-                plugin_tab(
-                    "runtime-activity",
-                    "panel-bottom",
-                    "Activity",
-                    "maruzzella.base.panel.activity",
-                    "Runtime diagnostics and theme workflows live here.",
-                    false,
-                ),
-                plugin_tab(
-                    "extension-health",
-                    "panel-bottom",
-                    "Extensions",
-                    "maruzzella.base.panel.extensions",
-                    "Plugin runtime state and settings surface summaries live here.",
-                    false,
-                ),
-            ],
-        ),
+        left_panel: TabGroupSpec::new("panel-left", None, Vec::new()),
+        right_panel: TabGroupSpec::new("panel-right", None, Vec::new()),
+        bottom_panel: TabGroupSpec::new("panel-bottom", None, Vec::new()),
         workbench: WorkbenchNodeSpec::Split {
             axis: SplitAxis::Horizontal,
             children: vec![
+                WorkbenchNodeSpec::Group(TabGroupSpec::new("workbench-main", None, Vec::new())),
                 WorkbenchNodeSpec::Group(TabGroupSpec::new(
-                    "workbench-a",
-                    Some("studio-home"),
-                    vec![
-                        plugin_tab(
-                            "studio-home",
-                            "workbench-a",
-                            "Studio Home",
-                            "maruzzella.base.workspace.home",
-                            "The default shell slice overview lives here.",
-                            false,
-                        ),
-                        plugin_tab(
-                            "work-queue",
-                            "workbench-a",
-                            "Work Queue",
-                            "maruzzella.base.workspace.queue",
-                            "The current roadmap queue lives here.",
-                            true,
-                        ),
-                    ],
-                )),
-                WorkbenchNodeSpec::Group(TabGroupSpec::new(
-                    "workbench-b",
-                    Some("integration-surfaces"),
-                    vec![
-                        plugin_tab(
-                            "integration-surfaces",
-                            "workbench-b",
-                            "Contribution Surfaces",
-                            "maruzzella.base.workspace.surfaces",
-                            "Shared plugin contribution surfaces live here.",
-                            false,
-                        ),
-                        plugin_tab(
-                            "system-ops",
-                            "workbench-b",
-                            "System Ops",
-                            "maruzzella.base.workspace.ops",
-                            "System and runtime operations live here.",
-                            true,
-                        ),
-                    ],
+                    "workbench-secondary",
+                    None,
+                    Vec::new(),
                 )),
             ],
         },
@@ -327,6 +233,31 @@ pub fn default_product_spec() -> ProductSpec {
         commands,
         toolbar_items,
         layout,
+    }
+}
+
+fn find_group_mut<'a>(spec: &'a mut ShellSpec, group_id: &str) -> Option<&'a mut TabGroupSpec> {
+    if spec.left_panel.id == group_id {
+        return Some(&mut spec.left_panel);
+    }
+    if spec.right_panel.id == group_id {
+        return Some(&mut spec.right_panel);
+    }
+    if spec.bottom_panel.id == group_id {
+        return Some(&mut spec.bottom_panel);
+    }
+    find_group_mut_in_workbench(&mut spec.workbench, group_id)
+}
+
+fn find_group_mut_in_workbench<'a>(
+    node: &'a mut WorkbenchNodeSpec,
+    group_id: &str,
+) -> Option<&'a mut TabGroupSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => (group.id == group_id).then_some(group),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter_mut()
+            .find_map(|child| find_group_mut_in_workbench(child, group_id)),
     }
 }
 

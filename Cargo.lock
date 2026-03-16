@@ -458,6 +458,7 @@ name = "maruzzella_sdk"
 version = "0.1.0"
 dependencies = [
  "maruzzella_api",
+ "serde_json",
 ]
 
 [[package]]

@@ -5,10 +5,11 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Label, Orientation, Separator};
 use maruzzella_api::{
-    MzAboutSection, MzBytes, MzCommandSpec, MzContributionSurface, MzHostApi, MzLogLevel,
-    MzMenuItemSpec, MzMenuSurface, MzPluginDescriptorView, MzPluginVTable, MzSettingsCategory,
-    MzSettingsPage, MzStatus, MzStr, MzSurfaceContribution, MzVersion, MzViewFactorySpec,
-    MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
+    MzAboutSection, MzBytes, MzCommandSpec, MzCommandSummary, MzContributionSurface, MzHostApi,
+    MzLogLevel, MzMenuItemSpec, MzMenuSurface, MzPluginDescriptorView, MzPluginSnapshot,
+    MzPluginVTable, MzSettingsCategory, MzSettingsPage, MzStartupTab, MzStatus, MzStr,
+    MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewFactorySpec, MzViewPlacement,
+    MzViewRequest, MzViewSummary, MZ_ABI_VERSION_V1,
 };
 
 use crate::plugins::{LoadedPlugin, PluginDescriptor, Version};
@@ -19,6 +20,10 @@ const VIEW_WORKSPACE_HOME: &str = "maruzzella.base.workspace.home";
 const VIEW_WORKSPACE_QUEUE: &str = "maruzzella.base.workspace.queue";
 const VIEW_WORKSPACE_SURFACES: &str = "maruzzella.base.workspace.surfaces";
 const VIEW_WORKSPACE_OPS: &str = "maruzzella.base.workspace.ops";
+const VIEW_WORKSPACE_COMMANDS: &str = "maruzzella.base.workspace.commands";
+const VIEW_WORKSPACE_REGISTERED_VIEWS: &str = "maruzzella.base.workspace.registered_views";
+const VIEW_WORKSPACE_PLUGINS: &str = "maruzzella.base.workspace.plugins";
+const VIEW_WORKSPACE_ABOUT: &str = "maruzzella.base.workspace.about";
 const VIEW_PANEL_NAVIGATOR: &str = "maruzzella.base.panel.navigator";
 const VIEW_PANEL_RESOURCES: &str = "maruzzella.base.panel.resources";
 const VIEW_PANEL_INSPECTOR: &str = "maruzzella.base.panel.inspector";
@@ -76,6 +81,24 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
     let commands = [
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            command_id: MzStr::from_static("shell.open_command_palette"),
+            title: MzStr::from_static("Command Palette"),
+            invoke: None,
+        },
+        MzCommandSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            command_id: MzStr::from_static("shell.browse_views"),
+            title: MzStr::from_static("Browse Views"),
+            invoke: None,
+        },
+        MzCommandSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            command_id: MzStr::from_static("shell.reload_theme"),
+            title: MzStr::from_static("Reload Theme"),
+            invoke: None,
+        },
+        MzCommandSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static("shell.about"),
             title: MzStr::from_static("About Maruzzella"),
             invoke: None,
@@ -89,6 +112,27 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
     ];
 
     let menu_items = [
+        MzMenuItemSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            menu_id: MzStr::from_static("command-palette"),
+            parent_id: MzStr::from_static(MzMenuSurface::ViewItems.as_str()),
+            title: MzStr::from_static("Command Palette"),
+            command_id: MzStr::from_static("shell.open_command_palette"),
+        },
+        MzMenuItemSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            menu_id: MzStr::from_static("reload-theme"),
+            parent_id: MzStr::from_static(MzMenuSurface::ViewItems.as_str()),
+            title: MzStr::from_static("Reload Theme"),
+            command_id: MzStr::from_static("shell.reload_theme"),
+        },
+        MzMenuItemSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            menu_id: MzStr::from_static("browse-views"),
+            parent_id: MzStr::from_static(MzMenuSurface::ViewItems.as_str()),
+            title: MzStr::from_static("Browse Views"),
+            command_id: MzStr::from_static("shell.browse_views"),
+        },
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             menu_id: MzStr::from_static("plugins"),
@@ -137,11 +181,169 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             len: settings_payload.len(),
         },
     };
+    let toolbar_payloads = [
+        (
+            "palette",
+            toolbar_item_payload(
+                "palette",
+                Some("system-search-symbolic"),
+                Some("Palette"),
+                "shell.open_command_palette",
+                false,
+            ),
+        ),
+        (
+            "theme",
+            toolbar_item_payload(
+                "theme",
+                Some("applications-graphics-symbolic"),
+                None,
+                "shell.reload_theme",
+                true,
+            ),
+        ),
+        (
+            "views",
+            toolbar_item_payload(
+                "views",
+                Some("view-grid-symbolic"),
+                None,
+                "shell.browse_views",
+                true,
+            ),
+        ),
+        (
+            "about",
+            toolbar_item_payload(
+                "about",
+                Some("help-about-symbolic"),
+                None,
+                "shell.about",
+                true,
+            ),
+        ),
+    ];
+    let startup_tab_payloads = [
+        (
+            "workspace-nav",
+            startup_tab_payload(
+                "panel-left",
+                "workspace-nav",
+                "Workspace",
+                VIEW_PANEL_NAVIGATOR,
+                false,
+                true,
+            ),
+        ),
+        (
+            "resource-index",
+            startup_tab_payload(
+                "panel-left",
+                "resource-index",
+                "Resources",
+                VIEW_PANEL_RESOURCES,
+                false,
+                false,
+            ),
+        ),
+        (
+            "selection-inspector",
+            startup_tab_payload(
+                "panel-right",
+                "selection-inspector",
+                "Inspector",
+                VIEW_PANEL_INSPECTOR,
+                false,
+                true,
+            ),
+        ),
+        (
+            "delivery-checklist",
+            startup_tab_payload(
+                "panel-right",
+                "delivery-checklist",
+                "Release",
+                VIEW_PANEL_DELIVERY,
+                false,
+                false,
+            ),
+        ),
+        (
+            "runtime-activity",
+            startup_tab_payload(
+                "panel-bottom",
+                "runtime-activity",
+                "Activity",
+                VIEW_PANEL_ACTIVITY,
+                false,
+                true,
+            ),
+        ),
+        (
+            "extension-health",
+            startup_tab_payload(
+                "panel-bottom",
+                "extension-health",
+                "Extensions",
+                VIEW_PANEL_EXTENSIONS,
+                false,
+                false,
+            ),
+        ),
+        (
+            "studio-home",
+            startup_tab_payload(
+                "workbench-main",
+                "studio-home",
+                "Studio Home",
+                VIEW_WORKSPACE_HOME,
+                false,
+                true,
+            ),
+        ),
+        (
+            "work-queue",
+            startup_tab_payload(
+                "workbench-main",
+                "work-queue",
+                "Work Queue",
+                VIEW_WORKSPACE_QUEUE,
+                true,
+                false,
+            ),
+        ),
+        (
+            "integration-surfaces",
+            startup_tab_payload(
+                "workbench-secondary",
+                "integration-surfaces",
+                "Contribution Surfaces",
+                VIEW_WORKSPACE_SURFACES,
+                false,
+                true,
+            ),
+        ),
+        (
+            "system-ops",
+            startup_tab_payload(
+                "workbench-secondary",
+                "system-ops",
+                "System Ops",
+                VIEW_WORKSPACE_OPS,
+                true,
+                false,
+            ),
+        ),
+    ];
     let view_factories = [
         view_factory(VIEW_WORKSPACE_HOME),
         view_factory(VIEW_WORKSPACE_QUEUE),
         view_factory(VIEW_WORKSPACE_SURFACES),
         view_factory(VIEW_WORKSPACE_OPS),
+        view_factory(VIEW_WORKSPACE_COMMANDS),
+        view_factory(VIEW_WORKSPACE_REGISTERED_VIEWS),
+        view_factory(VIEW_WORKSPACE_PLUGINS),
+        view_factory(VIEW_WORKSPACE_ABOUT),
         view_factory(VIEW_PANEL_NAVIGATOR),
         view_factory(VIEW_PANEL_RESOURCES),
         view_factory(VIEW_PANEL_INSPECTOR),
@@ -178,6 +380,48 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
         return status;
     }
 
+    for (contribution_id, payload) in &toolbar_payloads {
+        let contribution = MzSurfaceContribution {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            surface_id: MzStr::from_static(MzContributionSurface::ToolbarItems.as_str()),
+            contribution_id: MzStr {
+                ptr: contribution_id.as_ptr(),
+                len: contribution_id.len(),
+            },
+            payload: MzBytes {
+                ptr: payload.as_ptr(),
+                len: payload.len(),
+            },
+        };
+        let status = host
+            .register_surface_contribution
+            .expect("surface registrar")(&contribution);
+        if !status.is_ok() {
+            return status;
+        }
+    }
+
+    for (contribution_id, payload) in &startup_tab_payloads {
+        let contribution = MzSurfaceContribution {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            surface_id: MzStr::from_static(MzContributionSurface::StartupTabs.as_str()),
+            contribution_id: MzStr {
+                ptr: contribution_id.as_ptr(),
+                len: contribution_id.len(),
+            },
+            payload: MzBytes {
+                ptr: payload.as_ptr(),
+                len: payload.len(),
+            },
+        };
+        let status = host
+            .register_surface_contribution
+            .expect("surface registrar")(&contribution);
+        if !status.is_ok() {
+            return status;
+        }
+    }
+
     for factory in view_factories {
         let status = host.register_view_factory.expect("view registrar")(&factory);
         if !status.is_ok() {
@@ -209,6 +453,10 @@ fn view_factory(view_id: &'static str) -> MzViewFactorySpec {
         VIEW_WORKSPACE_QUEUE => ("Work Queue", MzViewPlacement::Workbench),
         VIEW_WORKSPACE_SURFACES => ("Contribution Surfaces", MzViewPlacement::Workbench),
         VIEW_WORKSPACE_OPS => ("System Ops", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_COMMANDS => ("Command Palette", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_REGISTERED_VIEWS => ("Registered Views", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_PLUGINS => ("Plugins", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_ABOUT => ("About", MzViewPlacement::Workbench),
         VIEW_PANEL_NAVIGATOR => ("Workspace", MzViewPlacement::SidePanel),
         VIEW_PANEL_RESOURCES => ("Resources", MzViewPlacement::SidePanel),
         VIEW_PANEL_INSPECTOR => ("Inspector", MzViewPlacement::SidePanel),
@@ -228,9 +476,12 @@ fn view_factory(view_id: &'static str) -> MzViewFactorySpec {
 }
 
 extern "C" fn create_base_view(
-    _host: *const MzHostApi,
+    host: *const MzHostApi,
     request: *const MzViewRequest,
 ) -> *mut c_void {
+    let Some(host) = (unsafe { host.as_ref() }) else {
+        return std::ptr::null_mut();
+    };
     let Some(request) = (unsafe { request.as_ref() }) else {
         return std::ptr::null_mut();
     };
@@ -243,6 +494,10 @@ extern "C" fn create_base_view(
         VIEW_WORKSPACE_QUEUE => workspace_queue_view(),
         VIEW_WORKSPACE_SURFACES => workspace_surfaces_view(),
         VIEW_WORKSPACE_OPS => workspace_ops_view(),
+        VIEW_WORKSPACE_COMMANDS => commands_view(host),
+        VIEW_WORKSPACE_REGISTERED_VIEWS => registered_views_view(host),
+        VIEW_WORKSPACE_PLUGINS => plugins_view(host),
+        VIEW_WORKSPACE_ABOUT => about_view(host),
         VIEW_PANEL_NAVIGATOR => navigator_view(),
         VIEW_PANEL_RESOURCES => resources_view(),
         VIEW_PANEL_INSPECTOR => inspector_view(),
@@ -370,6 +625,7 @@ fn workspace_ops_view() -> gtk::Widget {
         &[
             "shell.open_command_palette",
             "shell.reload_theme",
+            "shell.browse_views",
             "shell.about",
             "shell.plugins",
         ],
@@ -517,6 +773,175 @@ fn extensions_view() -> gtk::Widget {
     root.upcast()
 }
 
+fn commands_view(host: &MzHostApi) -> gtk::Widget {
+    let root = view_root();
+    let commands = read_command_snapshot(host);
+    root.append(&hero(
+        "Command Palette",
+        "The base plugin now owns the visible command browser while the host keeps the underlying shell capabilities.",
+        Some(("Base-owned", "status-loaded")),
+    ));
+    if commands.is_empty() {
+        root.append(&section(
+            "Commands",
+            &["No commands are currently registered."],
+        ));
+    } else {
+        root.append(&summary_list(
+            &commands
+                .iter()
+                .map(|command| format!("{}  ({})", command.title, command.command_id))
+                .collect::<Vec<_>>(),
+            true,
+        ));
+    }
+    root.upcast()
+}
+
+fn registered_views_view(host: &MzHostApi) -> gtk::Widget {
+    let root = view_root();
+    let views = read_view_snapshot(host);
+    root.append(&hero(
+        "Registered Views",
+        "This page is contributed by the base plugin and rendered from host-provided view metadata.",
+        Some(("Host query", "status-loaded")),
+    ));
+    if views.is_empty() {
+        root.append(&section(
+            "Views",
+            &["No plugin views are currently registered."],
+        ));
+    } else {
+        root.append(&summary_list(
+            &views
+                .iter()
+                .map(|view| {
+                    format!(
+                        "{}  ({}, {})",
+                        view.title,
+                        view.plugin_id,
+                        view.placement.label()
+                    )
+                })
+                .collect::<Vec<_>>(),
+            false,
+        ));
+    }
+    root.upcast()
+}
+
+fn plugins_view(host: &MzHostApi) -> gtk::Widget {
+    let root = view_root();
+    let snapshot = read_plugin_snapshot(host);
+    root.append(&hero(
+        "Plugins",
+        "The default plugin manager page is now provided by the base plugin using host runtime snapshot data.",
+        Some(("Base-owned", "status-running")),
+    ));
+
+    if !snapshot.activation_order.is_empty() {
+        root.append(&section(
+            "Activation Order",
+            &snapshot
+                .activation_order
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        ));
+    }
+
+    if !snapshot.diagnostics.is_empty() {
+        root.append(&summary_list(
+            &snapshot
+                .diagnostics
+                .iter()
+                .map(|diagnostic| {
+                    format!(
+                        "[{}] {}{}",
+                        diagnostic.level,
+                        diagnostic
+                            .plugin_id
+                            .as_deref()
+                            .map(|plugin_id| format!("{plugin_id}: "))
+                            .unwrap_or_default(),
+                        diagnostic.message
+                    )
+                })
+                .collect::<Vec<_>>(),
+            true,
+        ));
+    }
+
+    for plugin in snapshot.plugins {
+        let card = GtkBox::new(Orientation::Vertical, 8);
+        card.append(&hero(
+            &plugin.name,
+            &format!("{} ({})", plugin.version, plugin.plugin_id),
+            Some(("Loaded", "status-loaded")),
+        ));
+
+        if !plugin.description.is_empty() {
+            card.append(&section("Description", &[plugin.description.as_str()]));
+        }
+
+        if !plugin.views.is_empty() {
+            card.append(&summary_list(
+                &plugin
+                    .views
+                    .iter()
+                    .map(|view| format!("{}  ({})", view.title, view.view_id))
+                    .collect::<Vec<_>>(),
+                true,
+            ));
+        }
+
+        if !plugin.settings_pages.is_empty() {
+            card.append(&summary_list(
+                &plugin
+                    .settings_pages
+                    .iter()
+                    .map(|page| format!("{}  [{}]", page.title, page.category.label()))
+                    .collect::<Vec<_>>(),
+                false,
+            ));
+        }
+
+        if !plugin.logs.is_empty() {
+            card.append(&summary_list(
+                &plugin
+                    .logs
+                    .iter()
+                    .map(|entry| format!("[{:?}] {}", entry.level, entry.message))
+                    .collect::<Vec<_>>(),
+                true,
+            ));
+        }
+
+        root.append(&card);
+        root.append(&Separator::new(Orientation::Horizontal));
+    }
+
+    root.upcast()
+}
+
+fn about_view(host: &MzHostApi) -> gtk::Widget {
+    let root = view_root();
+    let sections = read_about_snapshot(host);
+    root.append(&hero(
+        "About Maruzzella",
+        "The base plugin now owns the default About page and renders aggregated about sections from host contributions.",
+        Some(("Base-owned", "status-loaded")),
+    ));
+    if sections.is_empty() {
+        root.append(&section("About", &["Neutral GTK desktop shell host"]));
+    } else {
+        for section_data in sections {
+            root.append(&section(&section_data.title, &[section_data.body.as_str()]));
+        }
+    }
+    root.upcast()
+}
+
 fn fallback_view(message: &str) -> gtk::Widget {
     let root = view_root();
     root.append(&hero(
@@ -631,6 +1056,93 @@ fn surface_list(rows: &[(&str, &str)]) -> GtkBox {
         box_.append(&surface);
     }
     box_
+}
+
+fn summary_list(rows: &[String], mono: bool) -> GtkBox {
+    let box_ = GtkBox::new(Orientation::Vertical, 8);
+    for row in rows {
+        let label = Label::new(Some(row));
+        label.set_xalign(0.0);
+        label.set_wrap(true);
+        if mono {
+            label.add_css_class("mono");
+        }
+        box_.append(&label);
+        box_.append(&Separator::new(Orientation::Horizontal));
+    }
+    box_
+}
+
+fn toolbar_item_payload(
+    item_id: &'static str,
+    icon_name: Option<&'static str>,
+    label: Option<&'static str>,
+    command_id: &'static str,
+    secondary: bool,
+) -> Vec<u8> {
+    MzToolbarItem::new(
+        item_id,
+        icon_name.map(str::to_string),
+        label.map(str::to_string),
+        command_id,
+        secondary,
+    )
+    .to_bytes()
+    .expect("toolbar item should serialize")
+}
+
+fn startup_tab_payload(
+    group_id: &'static str,
+    tab_id: &'static str,
+    title: &'static str,
+    view_id: &'static str,
+    closable: bool,
+    active: bool,
+) -> Vec<u8> {
+    let mut tab = MzStartupTab::new(group_id, tab_id, title, view_id);
+    tab.closable = closable;
+    tab.active = active;
+    tab.to_bytes().expect("startup tab should serialize")
+}
+
+fn read_command_snapshot(host: &MzHostApi) -> Vec<MzCommandSummary> {
+    let Some(read) = host.read_command_snapshot else {
+        return Vec::new();
+    };
+    decode_snapshot(read())
+}
+
+fn read_view_snapshot(host: &MzHostApi) -> Vec<MzViewSummary> {
+    let Some(read) = host.read_view_snapshot else {
+        return Vec::new();
+    };
+    decode_snapshot(read())
+}
+
+fn read_plugin_snapshot(host: &MzHostApi) -> MzPluginSnapshot {
+    let Some(read) = host.read_plugin_snapshot else {
+        return MzPluginSnapshot {
+            activation_order: Vec::new(),
+            diagnostics: Vec::new(),
+            plugins: Vec::new(),
+        };
+    };
+    decode_snapshot(read())
+}
+
+fn decode_snapshot<T: serde::de::DeserializeOwned + Default>(bytes: MzBytes) -> T {
+    if bytes.ptr.is_null() || bytes.len == 0 {
+        return T::default();
+    }
+    serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        .unwrap_or_default()
+}
+
+fn read_about_snapshot(host: &MzHostApi) -> Vec<MzAboutSection> {
+    let Some(read) = host.read_about_snapshot else {
+        return Vec::new();
+    };
+    decode_snapshot(read())
 }
 
 #[cfg(test)]

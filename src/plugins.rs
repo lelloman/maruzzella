@@ -9,10 +9,12 @@ use glib::translate::FromGlibPtrFull;
 use gtk::Widget;
 use libloading::{Library, Symbol};
 use maruzzella_api::{
-    MzBytes, MzCommandSpec, MzContributionSurface, MzHostApi, MzLogLevel, MzMenuItemSpec,
-    MzMenuSurface, MzOpenViewRequest, MzOpenViewResult, MzPluginDependency, MzPluginDescriptorView,
-    MzPluginVTable, MzStatus, MzStatusCode, MzStr, MzSurfaceContribution, MzViewFactorySpec,
-    MzViewOpenDisposition, MzViewPlacement, MzViewQuery, MzViewQueryResult, MZ_ABI_VERSION_V1,
+    MzAboutSection, MzBytes, MzCommandSpec, MzCommandSummary, MzContributionSurface, MzHostApi,
+    MzLogLevel, MzMenuItemSpec, MzMenuSurface, MzOpenViewRequest, MzOpenViewResult,
+    MzPluginDependency, MzPluginDescriptorView, MzPluginDiagnosticSummary, MzPluginLogSummary,
+    MzPluginSnapshot, MzPluginSummary, MzPluginVTable, MzSettingsPage, MzStatus, MzStatusCode,
+    MzStr, MzSurfaceContribution, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement,
+    MzViewQuery, MzViewQueryResult, MzViewSummary, MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -193,6 +195,7 @@ pub struct PluginRuntime {
     pub(crate) surface_contributions: Vec<RegisteredSurfaceContribution>,
     pub(crate) view_factories: Vec<RegisteredViewFactory>,
     pub(crate) logs: Vec<PluginLogEntry>,
+    pub(crate) diagnostics: Vec<PluginDiagnostic>,
     view_host: RefCell<Option<Rc<PluginShellHost>>>,
 }
 
@@ -201,6 +204,10 @@ struct PluginShellHost {
     shell_state: ShellState,
     group_handles: GroupHandles,
     runtime: Weak<PluginRuntime>,
+    command_snapshot_buffer: RefCell<Vec<u8>>,
+    view_snapshot_buffer: RefCell<Vec<u8>>,
+    plugin_snapshot_buffer: RefCell<Vec<u8>>,
+    about_snapshot_buffer: RefCell<Vec<u8>>,
 }
 
 impl PluginRuntime {
@@ -254,6 +261,7 @@ impl PluginRuntime {
             surface_contributions: host_state.surface_contributions,
             view_factories: host_state.view_factories,
             logs: host_state.logs,
+            diagnostics: Vec::new(),
             view_host: RefCell::new(None),
         })
     }
@@ -268,6 +276,7 @@ impl PluginRuntime {
             surface_contributions: Vec::new(),
             view_factories: Vec::new(),
             logs: Vec::new(),
+            diagnostics: Vec::new(),
             view_host: RefCell::new(None),
         }
     }
@@ -283,6 +292,10 @@ impl PluginRuntime {
             shell_state,
             group_handles,
             runtime: Rc::downgrade(self),
+            command_snapshot_buffer: RefCell::new(Vec::new()),
+            view_snapshot_buffer: RefCell::new(Vec::new()),
+            plugin_snapshot_buffer: RefCell::new(Vec::new()),
+            about_snapshot_buffer: RefCell::new(Vec::new()),
         });
         ACTIVE_SHELL_HOST.with(|cell| cell.set(Rc::as_ptr(&shell_host)));
         self.view_host.replace(Some(shell_host));
@@ -372,6 +385,10 @@ impl PluginRuntime {
             focus_view: Some(host_focus_view),
             is_view_open: Some(host_is_view_open),
             update_view_title: Some(host_update_view_title),
+            read_command_snapshot: Some(host_read_command_snapshot),
+            read_view_snapshot: Some(host_read_view_snapshot),
+            read_plugin_snapshot: Some(host_read_plugin_snapshot),
+            read_about_snapshot: Some(host_read_about_snapshot),
             read_config: None,
             write_config: None,
         };
@@ -720,6 +737,10 @@ impl HostState {
             focus_view: None,
             is_view_open: None,
             update_view_title: None,
+            read_command_snapshot: None,
+            read_view_snapshot: None,
+            read_plugin_snapshot: None,
+            read_about_snapshot: None,
             read_config: Some(host_read_config),
             write_config: Some(host_write_config),
         }
@@ -1092,6 +1113,137 @@ extern "C" fn host_update_view_title(query: *const MzViewQuery, title: MzStr) ->
     }
 }
 
+extern "C" fn host_read_command_snapshot() -> MzBytes {
+    let Some(shell_host) = current_shell_host() else {
+        return MzBytes::empty();
+    };
+    let commands = shell_host
+        .shell_state
+        .borrow()
+        .spec
+        .commands
+        .iter()
+        .map(|command| MzCommandSummary {
+            command_id: command.id.clone(),
+            title: command.title.clone(),
+        })
+        .collect::<Vec<_>>();
+    snapshot_bytes(&shell_host.command_snapshot_buffer, &commands)
+}
+
+extern "C" fn host_read_view_snapshot() -> MzBytes {
+    let Some(shell_host) = current_shell_host() else {
+        return MzBytes::empty();
+    };
+    let Some(runtime) = shell_host.runtime.upgrade() else {
+        return MzBytes::empty();
+    };
+    let views = runtime
+        .view_factories()
+        .iter()
+        .map(|view| MzViewSummary {
+            plugin_id: view.plugin_id.clone(),
+            view_id: view.view_id.clone(),
+            title: view.title.clone(),
+            placement: view.placement,
+        })
+        .collect::<Vec<_>>();
+    snapshot_bytes(&shell_host.view_snapshot_buffer, &views)
+}
+
+extern "C" fn host_read_plugin_snapshot() -> MzBytes {
+    let Some(shell_host) = current_shell_host() else {
+        return MzBytes::empty();
+    };
+    let Some(runtime) = shell_host.runtime.upgrade() else {
+        return MzBytes::empty();
+    };
+
+    let plugins = runtime
+        .plugins()
+        .iter()
+        .map(|plugin| {
+            let descriptor = plugin.descriptor();
+            let settings_pages = runtime
+                .surface_contributions()
+                .iter()
+                .filter(|contribution| {
+                    contribution.plugin_id == descriptor.id
+                        && contribution.surface == Some(MzContributionSurface::PluginSettingsPages)
+                })
+                .filter_map(|contribution| MzSettingsPage::from_bytes(&contribution.payload).ok())
+                .collect::<Vec<_>>();
+            let views = runtime
+                .view_factories()
+                .iter()
+                .filter(|view| view.plugin_id == descriptor.id)
+                .map(|view| MzViewSummary {
+                    plugin_id: view.plugin_id.clone(),
+                    view_id: view.view_id.clone(),
+                    title: view.title.clone(),
+                    placement: view.placement,
+                })
+                .collect::<Vec<_>>();
+            let logs = runtime
+                .logs()
+                .iter()
+                .filter(|entry| entry.plugin_id == descriptor.id)
+                .map(|entry| MzPluginLogSummary {
+                    level: entry.level,
+                    message: entry.message.clone(),
+                })
+                .collect::<Vec<_>>();
+
+            MzPluginSummary {
+                plugin_id: descriptor.id.clone(),
+                name: descriptor.name.clone(),
+                version: descriptor.version.to_string(),
+                description: descriptor.description.clone(),
+                views,
+                settings_pages,
+                logs,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let diagnostics = runtime
+        .diagnostics
+        .iter()
+        .map(|diagnostic| MzPluginDiagnosticSummary {
+            level: format!("{:?}", diagnostic.level),
+            plugin_id: diagnostic.plugin_id.clone(),
+            path: diagnostic
+                .path
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            message: diagnostic.message.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let snapshot = MzPluginSnapshot {
+        activation_order: runtime.activation_order().to_vec(),
+        diagnostics,
+        plugins,
+    };
+    snapshot_bytes(&shell_host.plugin_snapshot_buffer, &snapshot)
+}
+
+extern "C" fn host_read_about_snapshot() -> MzBytes {
+    let Some(shell_host) = current_shell_host() else {
+        return MzBytes::empty();
+    };
+    let Some(runtime) = shell_host.runtime.upgrade() else {
+        return MzBytes::empty();
+    };
+    let sections = runtime
+        .surface_contributions()
+        .iter()
+        .filter(|contribution| contribution.surface == Some(MzContributionSurface::AboutSections))
+        .filter_map(|contribution| MzAboutSection::from_bytes(&contribution.payload).ok())
+        .collect::<Vec<_>>();
+    snapshot_bytes(&shell_host.about_snapshot_buffer, &sections)
+}
+
 thread_local! {
     static ACTIVE_HOST_STATE: std::cell::Cell<*mut HostState> = const { std::cell::Cell::new(std::ptr::null_mut()) };
     static ACTIVE_RUNTIME: std::cell::Cell<*const PluginRuntime> = const { std::cell::Cell::new(std::ptr::null()) };
@@ -1160,6 +1312,15 @@ fn invalid_query_result() -> MzViewQueryResult {
     MzViewQueryResult {
         status: MzStatus::new(MzStatusCode::InvalidArgument),
         found: false,
+    }
+}
+
+fn snapshot_bytes<T: serde::Serialize>(buffer: &RefCell<Vec<u8>>, value: &T) -> MzBytes {
+    let mut buffer = buffer.borrow_mut();
+    *buffer = serde_json::to_vec(value).unwrap_or_default();
+    MzBytes {
+        ptr: buffer.as_ptr(),
+        len: buffer.len(),
     }
 }
 

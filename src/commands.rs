@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -9,10 +10,13 @@ use gtk::{
 use maruzzella_api::{MzAboutSection, MzContributionSurface, MzSettingsPage, MzViewPlacement};
 
 use crate::plugins::PluginHost;
-use crate::spec::{CommandSpec, ShellSpec};
+use crate::shell::workbench_custom::CustomWorkbenchGroupHandle;
+use crate::spec::{CommandSpec, ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
 use crate::theme;
 
 type CommandHandler = Rc<dyn Fn()>;
+type ShellState = Rc<RefCell<crate::layout::PersistedShell>>;
+type GroupHandles = Rc<HashMap<String, CustomWorkbenchGroupHandle>>;
 
 #[derive(Clone, Default)]
 pub struct CommandRegistry {
@@ -41,6 +45,8 @@ pub fn shell_registry(
     window: &ApplicationWindow,
     spec: &ShellSpec,
     plugin_host: Option<Rc<PluginHost>>,
+    shell_state: Option<ShellState>,
+    group_handles: Option<GroupHandles>,
 ) -> CommandRegistry {
     let mut registry = CommandRegistry::new();
 
@@ -69,8 +75,15 @@ pub fn shell_registry(
 
     let views_window = window.clone();
     let host_for_views = plugin_host.clone();
+    let state_for_views = shell_state.clone();
+    let handles_for_views = group_handles.clone();
     registry.register("shell.browse_views", move || {
-        present_views_dialog(&views_window, host_for_views.as_deref());
+        present_views_dialog(
+            &views_window,
+            host_for_views.as_deref(),
+            state_for_views.as_ref(),
+            handles_for_views.as_ref(),
+        );
     });
 
     if let Some(plugin_host) = plugin_host {
@@ -353,7 +366,12 @@ fn present_plugins_dialog(window: &ApplicationWindow, host: Option<&PluginHost>)
     dialog.present();
 }
 
-fn present_views_dialog(window: &ApplicationWindow, host: Option<&PluginHost>) {
+fn present_views_dialog(
+    window: &ApplicationWindow,
+    host: Option<&PluginHost>,
+    shell_state: Option<&ShellState>,
+    group_handles: Option<&GroupHandles>,
+) {
     let dialog = Dialog::builder()
         .transient_for(window)
         .modal(true)
@@ -441,6 +459,27 @@ fn present_views_dialog(window: &ApplicationWindow, host: Option<&PluginHost>) {
                 plugin_line.set_wrap(true);
                 plugin_line.add_css_class("mono");
                 card.append(&plugin_line);
+
+                let focus_button = gtk::Button::with_label("Focus");
+                focus_button.set_halign(Align::Start);
+                focus_button.add_css_class("toolbar-button");
+                let view_id = view.view_id.clone();
+                let state = shell_state.cloned();
+                let handles = group_handles.cloned();
+                let dialog_for_focus = dialog.clone();
+                focus_button.connect_clicked(move |_| {
+                    if let (Some(state), Some(handles)) = (state.as_ref(), handles.as_ref()) {
+                        if focus_plugin_view(state, handles, &view_id) {
+                            dialog_for_focus.close();
+                        }
+                    }
+                });
+                let can_focus = shell_state
+                    .and_then(|state| find_plugin_view_tab(&state.borrow().spec, &view.view_id))
+                    .is_some()
+                    && group_handles.is_some();
+                focus_button.set_sensitive(can_focus);
+                card.append(&focus_button);
 
                 layout.append(&card);
                 layout.append(&Separator::new(Orientation::Horizontal));
@@ -632,4 +671,49 @@ fn append_named_list(container: &GtkBox, title_text: &str, rows: Vec<String>, mo
         }
         container.append(&label);
     }
+}
+
+fn focus_plugin_view(
+    shell_state: &ShellState,
+    group_handles: &GroupHandles,
+    plugin_view_id: &str,
+) -> bool {
+    let Some((group_id, tab_id)) = find_plugin_view_tab(&shell_state.borrow().spec, plugin_view_id)
+    else {
+        return false;
+    };
+    let Some(handle) = group_handles.get(&group_id) else {
+        return false;
+    };
+    handle.set_active_tab(&tab_id);
+    true
+}
+
+fn find_plugin_view_tab(spec: &ShellSpec, plugin_view_id: &str) -> Option<(String, String)> {
+    find_plugin_view_in_group(&spec.left_panel, plugin_view_id)
+        .or_else(|| find_plugin_view_in_group(&spec.right_panel, plugin_view_id))
+        .or_else(|| find_plugin_view_in_group(&spec.bottom_panel, plugin_view_id))
+        .or_else(|| find_plugin_view_in_workbench(&spec.workbench, plugin_view_id))
+}
+
+fn find_plugin_view_in_workbench(
+    node: &WorkbenchNodeSpec,
+    plugin_view_id: &str,
+) -> Option<(String, String)> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => find_plugin_view_in_group(group, plugin_view_id),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter()
+            .find_map(|child| find_plugin_view_in_workbench(child, plugin_view_id)),
+    }
+}
+
+fn find_plugin_view_in_group(
+    group: &TabGroupSpec,
+    plugin_view_id: &str,
+) -> Option<(String, String)> {
+    group.tabs.iter().find_map(|tab| {
+        (tab.plugin_view_id.as_deref() == Some(plugin_view_id))
+            .then(|| (group.id.clone(), tab.id.clone()))
+    })
 }

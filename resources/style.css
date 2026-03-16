@@ -79,33 +79,29 @@ undershoot.left {
   border-bottom: {{topbar_border}};
 }
 
-.window-strip {
+.topbar-masthead {
   min-height: {{window_strip_height}};
   padding: 0 {{space_window_strip_inline}};
+  spacing: {{space_lg}};
   background: {{color_topbar}};
   border-bottom: {{window_strip_border}};
 }
 
-.window-title,
-.window-branch,
-.window-target {
-  font-size: {{font_size_ui}};
-  color: {{color_window_meta}};
+.brand-block {
+  min-width: 180px;
 }
 
-.window-title {
+.brand-title {
   color: {{color_window_title}};
+  font-size: {{font_size_title}};
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
-.window-branch {
-  padding: {{window_branch_padding}};
-  border-radius: 0;
-  background: {{color_window_branch_bg}};
-  border: 0;
-}
-
-.window-controls {
-  spacing: {{window_controls_spacing}};
+.brand-subtitle {
+  color: {{color_window_meta}};
+  font-size: {{font_size_small}};
+  font-weight: 500;
 }
 
 .menu-bar {
@@ -119,11 +115,12 @@ undershoot.left {
 .menu-bar button {
   min-height: {{control_height_small}};
   padding: 0 {{space_menu_button_inline}};
-  border-radius: {{radius_none}};
+  border-radius: {{radius_small}};
   background: transparent;
   border: 0;
   color: {{color_menu_text}};
-  font-size: {{font_size_ui}};
+  font-size: {{font_size_small}};
+  font-weight: 600;
 }
 
 .menu-bar > child > button:hover,
@@ -138,59 +135,40 @@ undershoot.left {
   background: {{color_toolbar_bg}};
   border-top: 0;
   border-bottom: {{toolbar_bottom_border}};
+  spacing: {{space_lg}};
 }
 
-.toolbar-group {
-  padding: {{space_toolbar_group}};
-  border-radius: {{radius_large}};
-  background: {{color_toolbar_group}};
-  border: {{toolbar_group_border}};
+.toolbar-search-cluster {
+  min-width: 320px;
 }
 
-.toolbar-group-primary {
-  spacing: {{space_toolbar_group_primary}};
-}
-
-.toolbar-group-actions,
-.toolbar-utility-group {
-  background: {{color_toolbar_group_subtle}};
-}
-
-.toolbar-title-chip {
-  min-height: {{control_height_large}};
-  padding: 0 {{space_xl}};
-  border-radius: {{radius_medium}};
-  background: {{color_toolbar_title_chip}};
-  border: {{toolbar_group_border}};
-}
-
-.toolbar-title {
-  color: {{color_toolbar_title}};
-  font-size: {{font_size_small}};
-  font-weight: 600;
-  letter-spacing: {{toolbar_title_tracking}};
-}
-
-.toolbar-meta,
 .toolbar-status {
   color: {{color_toolbar_meta}};
   font-size: {{font_size_small}};
+  font-weight: 600;
 }
 
 .toolbar-status-cluster {
   padding: {{padding_toolbar_status_cluster}};
+  min-height: {{control_height_button}};
+  padding-left: {{space_button_inline}};
+  padding-right: {{space_button_inline}};
+  border-radius: {{radius_pill}};
+  background: {{color_toolbar_title_chip}};
+  border: {{toolbar_group_border}};
 }
 
 .toolbar-button,
 button {
   min-height: {{control_height_button}};
   padding: 0 {{space_button_inline}};
-  border-radius: {{radius_none}};
+  border-radius: {{radius_medium}};
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
   color: {{color_button_text}};
   box-shadow: none;
   font-size: {{font_size_ui}};
+  font-weight: 600;
 }
 
 .toolbar-button:hover,
@@ -203,68 +181,28 @@ button:active {
   background: {{color_button_active}};
 }
 
-.toolbar-button-label {
-  color: {{color_button_text}};
-  font-size: {{font_size_ui}};
-  font-weight: 500;
+.toolbar-actions,
+.toolbar-utility-group {
+  spacing: {{space_sm}};
 }
 
-.toolbar-chip {
-  background: transparent;
-}
-
-.context-chip {
-  background: transparent;
-}
-
-.context-chip .toolbar-button-label {
-  color: {{color_menu_text}};
-  font-size: {{font_size_small}};
-}
-
-.context-chip image {
-  opacity: {{context_chip_icon_opacity}};
-}
-
-.project-chip {
-  padding-left: {{space_project_chip_inline}};
-  padding-right: {{space_project_chip_inline}};
-}
-
-.flat-chip {
-  min-height: {{flat_chip_height}};
-  padding: {{flat_chip_padding}};
-  background: transparent;
-}
-
-.flat-control {
-  min-height: {{flat_control_height}};
-  padding: {{flat_control_padding}};
-}
-
-.muted-action {
-  background: transparent;
-}
-
-.muted-action .toolbar-button-label {
-  color: {{color_muted_action_text}};
-}
-
-.muted-action:hover {
-  background: {{color_muted_action_hover}};
-}
-
-.muted-action:active {
-  background: {{color_muted_action_active}};
-}
-
-.accent-action {
+.toolbar-actions .toolbar-button {
   background: {{color_accent_action_bg}};
   color: {{color_accent_action_text}};
 }
 
-.accent-action:hover {
+.toolbar-actions .toolbar-button:hover {
   background: {{color_accent_action_hover}};
+}
+
+.toolbar-actions .toolbar-button-label {
+  color: {{color_accent_action_text}};
+}
+
+.toolbar-button-label {
+  color: {{color_button_text}};
+  font-size: {{font_size_ui}};
+  font-weight: 500;
 }
 
 .nav-rail {
@@ -288,7 +226,7 @@ button:active {
   min-width: {{nav_button_width}};
   min-height: {{nav_button_height}};
   padding: {{nav_button_padding}};
-  border-radius: {{radius_none}};
+  border-radius: {{radius_medium}};
   background: transparent;
   border: 0;
   color: {{color_nav_button_text}};
@@ -318,8 +256,8 @@ entry {
   padding: 0 {{space_entry_inline}};
   background: {{color_entry_bg}};
   color: @text_0;
-  border: 0;
-  border-radius: {{radius_none}};
+  border: {{search_border}};
+  border-radius: {{radius_medium}};
   font-size: {{font_size_ui}};
 }
 
@@ -328,7 +266,7 @@ entry {
   max-width: {{search_width_max}};
   background: {{color_search_bg}};
   border: {{search_border}};
-  border-radius: {{radius_medium}};
+  border-radius: {{radius_large}};
   padding: 0 {{space_search_inline}};
 }
 
@@ -381,6 +319,7 @@ separator {
 
 .workspace-pane {
   background: @panel_left;
+  border-right: 1px solid alpha(@border, 0.32);
 }
 
 .workspace-pane.tool-window,
@@ -389,7 +328,7 @@ separator {
 }
 
 .workspace-pane.console-pane {
-  border-top: 0;
+  border-top: 1px solid alpha(@border, 0.28);
 }
 
 .workspace-pane.workbench {
@@ -471,8 +410,8 @@ notebook header tab,
 notebook.workbench-tabs > header tabs tab {
   min-height: {{control_height_medium}};
   padding: {{notebook_tab_padding}};
-  margin: 0;
-  border-radius: {{radius_none}};
+  margin: 6px 4px 6px 0;
+  border-radius: {{radius_medium}};
   border-right: 0;
   border-top: 0;
   border-bottom: {{notebook_tab_border_width}} solid transparent;
@@ -565,7 +504,7 @@ notebook.bottom-tabs > header tabs tab:checked {
   min-height: {{tab_close_height}};
   padding: {{tab_close_padding}};
   border: 0;
-  border-radius: {{radius_none}};
+  border-radius: {{radius_small}};
   background: transparent;
   color: {{color_tab_close_text}};
 }
@@ -600,7 +539,7 @@ notebook.bottom-tabs > header tabs tab:checked {
 
 .workbench-tab-strip {
   min-height: {{tab_strip_height}};
-  padding: 0;
+  padding: 0 10px;
   spacing: 0;
   background: transparent;
 }
@@ -609,11 +548,12 @@ notebook.bottom-tabs > header tabs tab:checked {
 .drag-preview {
   min-height: {{tab_height}};
   padding: {{workbench_tab_padding}};
-  margin: 0;
+  margin: 8px 6px 8px 0;
   border-top: 0;
   border-left: 0;
   border-right: 0;
   border-bottom: {{workbench_tab_border_width}} solid transparent;
+  border-radius: {{radius_medium}};
   background: {{color_workbench_tab_bg}};
   color: {{color_workbench_tab_text}};
 }
@@ -667,9 +607,9 @@ notebook.bottom-tabs > header tabs tab:checked {
 
 .panel-header {
   min-height: {{panel_header_height}};
-  padding: 0 {{space_md}};
-  background: transparent;
-  border-bottom: 0;
+  padding: 0 {{space_xl}};
+  background: alpha(@bg_1, 0.28);
+  border-bottom: 1px solid alpha(@border, 0.24);
 }
 
 .panel-title {
@@ -677,6 +617,7 @@ notebook.bottom-tabs > header tabs tab:checked {
   font-weight: 600;
   letter-spacing: {{panel_title_tracking}};
   color: {{panel_title_color}};
+  text-transform: uppercase;
 }
 
 .section-title {
@@ -715,7 +656,7 @@ row {
 .dense-row {
   min-height: {{dense_row_height}};
   padding: 0;
-  margin: 0;
+  margin: 2px 0;
   border-bottom: 0;
   background: transparent;
 }
@@ -736,6 +677,7 @@ row:hover {
 
 .list-row-box {
   padding: {{list_row_padding}};
+  border-radius: {{radius_small}};
 }
 
 .row-title {

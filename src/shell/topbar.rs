@@ -15,60 +15,67 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("topbar-shell");
 
+    let masthead = GtkBox::new(Orientation::Horizontal, 12);
+    masthead.add_css_class("topbar-masthead");
+
+    let brand = GtkBox::new(Orientation::Vertical, 2);
+    brand.add_css_class("brand-block");
+    let title = Label::new(Some(&spec.title));
+    title.set_xalign(0.0);
+    title.add_css_class("brand-title");
+    let subtitle = Label::new(Some(&spec.status_text));
+    subtitle.set_xalign(0.0);
+    subtitle.add_css_class("brand-subtitle");
+    brand.append(&title);
+    brand.append(&subtitle);
+    masthead.append(&brand);
+
     let menu_model = build_menu_model(spec);
     let menu_bar = PopoverMenuBar::from_model(Some(&menu_model));
     menu_bar.add_css_class("menu-bar");
-    root.append(&menu_bar);
+    masthead.append(&menu_bar);
 
-    let toolbar = GtkBox::new(Orientation::Horizontal, 10);
-    toolbar.add_css_class("studio-toolbar");
+    let masthead_spacer = GtkBox::new(Orientation::Horizontal, 0);
+    masthead_spacer.set_hexpand(true);
+    masthead.append(&masthead_spacer);
 
-    let primary_group = GtkBox::new(Orientation::Horizontal, 10);
-    primary_group.add_css_class("toolbar-group");
-    primary_group.add_css_class("toolbar-group-primary");
-
-    let title_chip = GtkBox::new(Orientation::Horizontal, 0);
-    title_chip.add_css_class("toolbar-title-chip");
-    let title = Label::new(Some(&spec.title));
-    title.add_css_class("toolbar-title");
-    title_chip.append(&title);
-    primary_group.append(&title_chip);
-
-    let search = Entry::new();
-    search.add_css_class("toolbar-search");
-    search.set_placeholder_text(Some(&spec.search_placeholder));
-    primary_group.append(&search);
-    toolbar.append(&primary_group);
-
-    let spacer = GtkBox::new(Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    toolbar.append(&spacer);
-
-    let actions_group = GtkBox::new(Orientation::Horizontal, 6);
-    actions_group.add_css_class("toolbar-group");
-    actions_group.add_css_class("toolbar-group-actions");
-
-    let leading = spec.toolbar_items.iter().filter(|item| !item.secondary);
-    for item in leading {
-        actions_group.append(&action_bar_item_button(item));
-    }
-    toolbar.append(&actions_group);
-
-    let utility_group = GtkBox::new(Orientation::Horizontal, 4);
-    utility_group.add_css_class("toolbar-group");
-    utility_group.add_css_class("toolbar-utility-group");
-    for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
-        utility_group.append(&action_bar_item_button(item));
-    }
-    toolbar.append(&utility_group);
-
-    let status_cluster = GtkBox::new(Orientation::Horizontal, 6);
+    let status_cluster = GtkBox::new(Orientation::Horizontal, 0);
     status_cluster.set_halign(Align::End);
     status_cluster.add_css_class("toolbar-status-cluster");
     let meta = Label::new(Some(&spec.status_text));
     meta.add_css_class("toolbar-status");
     status_cluster.append(&meta);
-    toolbar.append(&status_cluster);
+    masthead.append(&status_cluster);
+    root.append(&masthead);
+
+    let toolbar = GtkBox::new(Orientation::Horizontal, 12);
+    toolbar.add_css_class("studio-toolbar");
+
+    let search_cluster = GtkBox::new(Orientation::Horizontal, 0);
+    search_cluster.add_css_class("toolbar-search-cluster");
+    let search = Entry::new();
+    search.add_css_class("toolbar-search");
+    search.set_placeholder_text(Some(&spec.search_placeholder));
+    search_cluster.append(&search);
+    toolbar.append(&search_cluster);
+
+    let toolbar_spacer = GtkBox::new(Orientation::Horizontal, 0);
+    toolbar_spacer.set_hexpand(true);
+    toolbar.append(&toolbar_spacer);
+
+    let actions_group = GtkBox::new(Orientation::Horizontal, 8);
+    actions_group.add_css_class("toolbar-actions");
+    for item in spec.toolbar_items.iter().filter(|item| !item.secondary) {
+        actions_group.append(&action_bar_item_button(item));
+    }
+    toolbar.append(&actions_group);
+
+    let utility_group = GtkBox::new(Orientation::Horizontal, 6);
+    utility_group.add_css_class("toolbar-utility-group");
+    for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
+        utility_group.append(&action_bar_item_button(item));
+    }
+    toolbar.append(&utility_group);
 
     root.append(&toolbar);
     TopBar { root }

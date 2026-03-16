@@ -6,7 +6,7 @@ use gtk::{
     Align, ApplicationWindow, Box as GtkBox, Dialog, Label, Orientation, ResponseType,
     ScrolledWindow, Separator,
 };
-use maruzzella_api::{MzAboutSection, MzContributionSurface, MzSettingsPage};
+use maruzzella_api::{MzAboutSection, MzContributionSurface, MzSettingsPage, MzViewPlacement};
 
 use crate::plugins::PluginHost;
 use crate::spec::{CommandSpec, ShellSpec};
@@ -279,7 +279,34 @@ fn present_plugins_dialog(window: &ApplicationWindow, host: Option<&PluginHost>)
                         "Settings Surfaces",
                         settings_pages
                             .into_iter()
-                            .map(|page| format!("{}: {}", page.title, page.summary))
+                            .map(|page| {
+                                format!(
+                                    "{} / {}: {}",
+                                    page.category.label(),
+                                    page.title,
+                                    page.summary
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                        false,
+                    );
+                }
+
+                let plugin_views = views_for_plugin(runtime, &descriptor.id);
+                if !plugin_views.is_empty() {
+                    append_named_list(
+                        &card,
+                        "Registered Views",
+                        plugin_views
+                            .into_iter()
+                            .map(|view| {
+                                format!(
+                                    "{} / {} ({})",
+                                    view.placement.label(),
+                                    view.title,
+                                    view.view_id
+                                )
+                            })
                             .collect::<Vec<_>>(),
                         false,
                     );
@@ -429,6 +456,29 @@ fn settings_pages_for_plugin(
     }
 
     pages
+}
+
+fn views_for_plugin<'a>(
+    runtime: &'a crate::plugins::PluginRuntime,
+    plugin_id: &str,
+) -> Vec<&'a crate::plugins::RegisteredViewFactory> {
+    let mut views = runtime
+        .view_factories()
+        .iter()
+        .filter(|view| view.plugin_id == plugin_id)
+        .collect::<Vec<_>>();
+    views.sort_by_key(|view| view_order_key(view.placement, &view.title));
+    views
+}
+
+fn view_order_key(placement: MzViewPlacement, title: &str) -> (usize, String) {
+    let rank = match placement {
+        MzViewPlacement::Workbench => 0,
+        MzViewPlacement::SidePanel => 1,
+        MzViewPlacement::BottomPanel => 2,
+        MzViewPlacement::Dialog => 3,
+    };
+    (rank, title.to_string())
 }
 
 fn logs_for_plugin<'a>(

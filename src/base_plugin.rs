@@ -6,9 +6,9 @@ use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Label, Orientation, Separator};
 use maruzzella_api::{
     MzAboutSection, MzBytes, MzCommandSpec, MzContributionSurface, MzHostApi, MzLogLevel,
-    MzMenuItemSpec, MzMenuSurface, MzPluginDescriptorView, MzPluginVTable, MzSettingsPage,
-    MzStatus, MzStr, MzSurfaceContribution, MzVersion, MzViewFactorySpec, MzViewRequest,
-    MZ_ABI_VERSION_V1,
+    MzMenuItemSpec, MzMenuSurface, MzPluginDescriptorView, MzPluginVTable, MzSettingsCategory,
+    MzSettingsPage, MzStatus, MzStr, MzSurfaceContribution, MzVersion, MzViewFactorySpec,
+    MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 
 use crate::plugins::{LoadedPlugin, PluginDescriptor, Version};
@@ -112,8 +112,10 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
     .to_bytes()
     .expect("built-in about section should serialize");
     let settings_payload = MzSettingsPage::new(
+        "workspace-defaults",
         "Workspace Defaults",
         "Default shell areas are now base-plugin-backed views rather than placeholder ProductSpec tabs.",
+        MzSettingsCategory::Workspace,
     )
     .to_bytes()
     .expect("built-in settings page should serialize");
@@ -202,9 +204,25 @@ extern "C" fn base_startup(host: *const MzHostApi) -> MzStatus {
 extern "C" fn base_shutdown(_host: *const MzHostApi) {}
 
 fn view_factory(view_id: &'static str) -> MzViewFactorySpec {
+    let (title, placement) = match view_id {
+        VIEW_WORKSPACE_HOME => ("Studio Home", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_QUEUE => ("Work Queue", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_SURFACES => ("Contribution Surfaces", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_OPS => ("System Ops", MzViewPlacement::Workbench),
+        VIEW_PANEL_NAVIGATOR => ("Workspace", MzViewPlacement::SidePanel),
+        VIEW_PANEL_RESOURCES => ("Resources", MzViewPlacement::SidePanel),
+        VIEW_PANEL_INSPECTOR => ("Inspector", MzViewPlacement::SidePanel),
+        VIEW_PANEL_DELIVERY => ("Release", MzViewPlacement::SidePanel),
+        VIEW_PANEL_ACTIVITY => ("Activity", MzViewPlacement::BottomPanel),
+        VIEW_PANEL_EXTENSIONS => ("Extensions", MzViewPlacement::BottomPanel),
+        _ => ("Base View", MzViewPlacement::Dialog),
+    };
+
     MzViewFactorySpec {
         plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
         view_id: MzStr::from_static(view_id),
+        title: MzStr::from_static(title),
+        placement,
         create: create_base_view,
     }
 }

@@ -211,15 +211,24 @@ impl MzAboutSection {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MzSettingsPage {
+    pub page_id: String,
     pub title: String,
     pub summary: String,
+    pub category: MzSettingsCategory,
 }
 
 impl MzSettingsPage {
-    pub fn new(title: impl Into<String>, summary: impl Into<String>) -> Self {
+    pub fn new(
+        page_id: impl Into<String>,
+        title: impl Into<String>,
+        summary: impl Into<String>,
+        category: MzSettingsCategory,
+    ) -> Self {
         Self {
+            page_id: page_id.into(),
             title: title.into(),
             summary: summary.into(),
+            category,
         }
     }
 
@@ -229,6 +238,25 @@ impl MzSettingsPage {
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MzSettingsCategory {
+    General,
+    Workspace,
+    Integrations,
+    Diagnostics,
+}
+
+impl MzSettingsCategory {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::General => "General",
+            Self::Workspace => "Workspace",
+            Self::Integrations => "Integrations",
+            Self::Diagnostics => "Diagnostics",
+        }
     }
 }
 
@@ -297,6 +325,25 @@ impl MzContributionSurface {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MzViewPlacement {
+    Workbench,
+    SidePanel,
+    BottomPanel,
+    Dialog,
+}
+
+impl MzViewPlacement {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Workbench => "Workbench",
+            Self::SidePanel => "Side Panel",
+            Self::BottomPanel => "Bottom Panel",
+            Self::Dialog => "Dialog",
+        }
+    }
+}
+
 pub type MzCreateViewFn =
     extern "C" fn(host: *const MzHostApi, request: *const MzViewRequest) -> *mut c_void;
 
@@ -305,6 +352,8 @@ pub type MzCreateViewFn =
 pub struct MzViewFactorySpec {
     pub plugin_id: MzStr,
     pub view_id: MzStr,
+    pub title: MzStr,
+    pub placement: MzViewPlacement,
     pub create: MzCreateViewFn,
 }
 
@@ -401,7 +450,12 @@ mod tests {
 
     #[test]
     fn settings_page_roundtrips_through_json_bytes() {
-        let page = MzSettingsPage::new("General", "Example plugin settings");
+        let page = MzSettingsPage::new(
+            "general",
+            "General",
+            "Example plugin settings",
+            MzSettingsCategory::General,
+        );
         let bytes = page.to_bytes().expect("settings page should serialize");
         let decoded = MzSettingsPage::from_bytes(&bytes).expect("settings page should decode");
         assert_eq!(decoded, page);
@@ -423,5 +477,15 @@ mod tests {
             .expect("surface should parse");
         assert_eq!(surface, MzContributionSurface::PluginSettingsPages);
         assert_eq!(surface.as_str(), "maruzzella.plugins.settings_pages");
+    }
+
+    #[test]
+    fn settings_category_labels_are_stable() {
+        assert_eq!(MzSettingsCategory::Workspace.label(), "Workspace");
+    }
+
+    #[test]
+    fn view_placement_labels_are_stable() {
+        assert_eq!(MzViewPlacement::BottomPanel.label(), "Bottom Panel");
     }
 }

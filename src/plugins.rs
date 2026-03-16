@@ -10,7 +10,8 @@ use libloading::{Library, Symbol};
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzContributionSurface, MzHostApi, MzLogLevel, MzMenuItemSpec,
     MzMenuSurface, MzPluginDependency, MzPluginDescriptorView, MzPluginVTable, MzStatus,
-    MzStatusCode, MzStr, MzSurfaceContribution, MzViewFactorySpec, MZ_ABI_VERSION_V1,
+    MzStatusCode, MzStr, MzSurfaceContribution, MzViewFactorySpec, MzViewPlacement,
+    MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -130,6 +131,8 @@ pub struct RegisteredSurfaceContribution {
 pub struct RegisteredViewFactory {
     pub plugin_id: String,
     pub view_id: String,
+    pub title: String,
+    pub placement: MzViewPlacement,
     pub create: maruzzella_api::MzCreateViewFn,
 }
 
@@ -810,6 +813,9 @@ extern "C" fn host_register_view_factory(factory: *const MzViewFactorySpec) -> M
     let Ok(view_id) = decode_runtime_str("view.view_id", factory.view_id) else {
         return MzStatus::new(MzStatusCode::InvalidArgument);
     };
+    let Ok(title) = decode_runtime_str("view.title", factory.title) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
 
     if !state.view_factory_ids.insert(view_id.clone()) {
         return MzStatus::new(MzStatusCode::AlreadyExists);
@@ -817,6 +823,8 @@ extern "C" fn host_register_view_factory(factory: *const MzViewFactorySpec) -> M
     state.view_factories.push(RegisteredViewFactory {
         plugin_id,
         view_id,
+        title,
+        placement: factory.placement,
         create: factory.create,
     });
     MzStatus::OK

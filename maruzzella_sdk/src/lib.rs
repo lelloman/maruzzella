@@ -4,7 +4,10 @@ use maruzzella_api::{
     MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion, MzViewFactorySpec,
     MzViewRequest, MZ_ABI_VERSION_V1,
 };
-pub use maruzzella_api::{MzContributionSurface, MzLogLevel, MzMenuSurface, MzStatusCode};
+pub use maruzzella_api::{
+    MzContributionSurface, MzLogLevel, MzMenuSurface, MzSettingsCategory, MzStatusCode,
+    MzViewPlacement,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Version(pub MzVersion);
@@ -188,6 +191,8 @@ pub struct SurfaceContributionSpec {
 pub struct ViewFactorySpec {
     pub plugin_id: &'static str,
     pub view_id: &'static str,
+    pub title: &'static str,
+    pub placement: MzViewPlacement,
     pub create: maruzzella_api::MzCreateViewFn,
 }
 
@@ -195,11 +200,15 @@ impl ViewFactorySpec {
     pub const fn new(
         plugin_id: &'static str,
         view_id: &'static str,
+        title: &'static str,
+        placement: MzViewPlacement,
         create: maruzzella_api::MzCreateViewFn,
     ) -> Self {
         Self {
             plugin_id,
             view_id,
+            title,
+            placement,
             create,
         }
     }
@@ -208,6 +217,8 @@ impl ViewFactorySpec {
         MzViewFactorySpec {
             plugin_id: MzStr::from_static(self.plugin_id),
             view_id: MzStr::from_static(self.view_id),
+            title: MzStr::from_static(self.title),
+            placement: self.placement,
             create: self.create,
         }
     }
@@ -248,10 +259,12 @@ impl SurfaceContributionSpec {
     pub fn settings_page(
         plugin_id: &'static str,
         contribution_id: &'static str,
+        page_id: impl Into<String>,
         title: impl Into<String>,
         summary: impl Into<String>,
+        category: MzSettingsCategory,
     ) -> Self {
-        let payload = maruzzella_api::MzSettingsPage::new(title, summary)
+        let payload = maruzzella_api::MzSettingsPage::new(page_id, title, summary, category)
             .to_bytes()
             .expect("settings pages should serialize");
         Self::new(

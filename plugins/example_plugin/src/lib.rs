@@ -2,8 +2,9 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
-    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzMenuSurface, MzStatusCode, Plugin,
-    PluginDependency, PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
+    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzMenuSurface, MzSettingsCategory,
+    MzStatusCode, MzViewPlacement, Plugin, PluginDependency, PluginDescriptor,
+    SurfaceContributionSpec, Version, ViewFactorySpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -80,16 +81,20 @@ impl Plugin for ExamplePlugin {
         host.register_surface_contribution(SurfaceContributionSpec::settings_page(
             "com.example.hello",
             "com.example.hello.settings.general",
+            "general",
             "Example Plugin Settings",
             format!(
                 "This plugin has been registered {} time(s) for the current persistence namespace.",
                 config.launches
             ),
+            MzSettingsCategory::Integrations,
         ))?;
 
         host.register_view_factory(ViewFactorySpec::new(
             "com.example.hello",
             "com.example.hello.welcome",
+            "Example Welcome View",
+            MzViewPlacement::Workbench,
             create_example_view,
         ))?;
 

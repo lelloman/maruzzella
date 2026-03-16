@@ -54,6 +54,7 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
         &window,
         &spec,
         Some(plugin_host.clone()),
+        &config.persistence_id,
         Some(state),
         Some(group_handles),
     );

@@ -9,9 +9,9 @@ use gtk::{
 };
 use maruzzella_api::{MzAboutSection, MzContributionSurface, MzSettingsPage, MzViewPlacement};
 
-use crate::plugins::PluginHost;
-use crate::shell::workbench_custom::CustomWorkbenchGroupHandle;
-use crate::spec::{CommandSpec, ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
+use crate::plugins::{PluginHost, PluginRuntime};
+use crate::shell::{tabbed_panel, workbench_custom::CustomWorkbenchGroupHandle};
+use crate::spec::{plugin_tab, CommandSpec, ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
 use crate::theme;
 
 type CommandHandler = Rc<dyn Fn()>;
@@ -45,6 +45,7 @@ pub fn shell_registry(
     window: &ApplicationWindow,
     spec: &ShellSpec,
     plugin_host: Option<Rc<PluginHost>>,
+    persistence_id: &str,
     shell_state: Option<ShellState>,
     group_handles: Option<GroupHandles>,
 ) -> CommandRegistry {
@@ -75,12 +76,14 @@ pub fn shell_registry(
 
     let views_window = window.clone();
     let host_for_views = plugin_host.clone();
+    let persistence_id_for_views = persistence_id.to_string();
     let state_for_views = shell_state.clone();
     let handles_for_views = group_handles.clone();
     registry.register("shell.browse_views", move || {
         present_views_dialog(
             &views_window,
             host_for_views.as_deref(),
+            &persistence_id_for_views,
             state_for_views.as_ref(),
             handles_for_views.as_ref(),
         );
@@ -369,6 +372,7 @@ fn present_plugins_dialog(window: &ApplicationWindow, host: Option<&PluginHost>)
 fn present_views_dialog(
     window: &ApplicationWindow,
     host: Option<&PluginHost>,
+    persistence_id: &str,
     shell_state: Option<&ShellState>,
     group_handles: Option<&GroupHandles>,
 ) {
@@ -460,25 +464,31 @@ fn present_views_dialog(
                 plugin_line.add_css_class("mono");
                 card.append(&plugin_line);
 
-                let focus_button = gtk::Button::with_label("Focus");
+                let focus_button = gtk::Button::with_label("Open");
                 focus_button.set_halign(Align::Start);
                 focus_button.add_css_class("toolbar-button");
                 let view_id = view.view_id.clone();
+                let runtime = host.and_then(|host| host.runtime()).cloned();
+                let persistence_id = persistence_id.to_string();
                 let state = shell_state.cloned();
                 let handles = group_handles.cloned();
                 let dialog_for_focus = dialog.clone();
                 focus_button.connect_clicked(move |_| {
-                    if let (Some(state), Some(handles)) = (state.as_ref(), handles.as_ref()) {
-                        if focus_plugin_view(state, handles, &view_id) {
+                    if let (Some(runtime), Some(state), Some(handles)) =
+                        (runtime.as_ref(), state.as_ref(), handles.as_ref())
+                    {
+                        if open_or_focus_plugin_view(
+                            runtime,
+                            &persistence_id,
+                            state,
+                            handles,
+                            &view_id,
+                        ) {
                             dialog_for_focus.close();
                         }
                     }
                 });
-                let can_focus = shell_state
-                    .and_then(|state| find_plugin_view_tab(&state.borrow().spec, &view.view_id))
-                    .is_some()
-                    && group_handles.is_some();
-                focus_button.set_sensitive(can_focus);
+                focus_button.set_sensitive(host.and_then(|host| host.runtime()).is_some());
                 card.append(&focus_button);
 
                 layout.append(&card);
@@ -689,6 +699,56 @@ fn focus_plugin_view(
     true
 }
 
+fn open_or_focus_plugin_view(
+    runtime: &Rc<PluginRuntime>,
+    persistence_id: &str,
+    shell_state: &ShellState,
+    group_handles: &GroupHandles,
+    plugin_view_id: &str,
+) -> bool {
+    if focus_plugin_view(shell_state, group_handles, plugin_view_id) {
+        return true;
+    }
+
+    let Some(view) = runtime
+        .view_factories()
+        .iter()
+        .find(|view| view.view_id == plugin_view_id)
+    else {
+        return false;
+    };
+    let Some(group_id) = target_group_id_for_placement(view.placement, group_handles) else {
+        return false;
+    };
+    let Some(handle) = group_handles.get(group_id) else {
+        return false;
+    };
+
+    let tab = {
+        let mut shell = shell_state.borrow_mut();
+        let tab = plugin_tab(
+            &next_dynamic_tab_id(&shell.spec, &view.view_id),
+            group_id,
+            &view.title,
+            &view.view_id,
+            "Plugin view opened from the shell view browser.",
+            true,
+        );
+        if let Some(group) = find_group_mut(&mut shell.spec, group_id) {
+            group.tabs.push(tab.clone());
+            group.active_tab_id = Some(tab.id.clone());
+        } else {
+            return false;
+        }
+        crate::layout::save(persistence_id, &shell.clone());
+        tab
+    };
+
+    let page = tabbed_panel::build_tab_page("workbench", &tab, Some(runtime));
+    handle.append_page(page, true);
+    true
+}
+
 fn find_plugin_view_tab(spec: &ShellSpec, plugin_view_id: &str) -> Option<(String, String)> {
     find_plugin_view_in_group(&spec.left_panel, plugin_view_id)
         .or_else(|| find_plugin_view_in_group(&spec.right_panel, plugin_view_id))
@@ -716,4 +776,87 @@ fn find_plugin_view_in_group(
         (tab.plugin_view_id.as_deref() == Some(plugin_view_id))
             .then(|| (group.id.clone(), tab.id.clone()))
     })
+}
+
+fn target_group_id_for_placement<'a>(
+    placement: MzViewPlacement,
+    group_handles: &'a GroupHandles,
+) -> Option<&'a str> {
+    let preferred = match placement {
+        MzViewPlacement::Workbench => "workbench-a",
+        MzViewPlacement::SidePanel => "panel-left",
+        MzViewPlacement::BottomPanel => "panel-bottom",
+        MzViewPlacement::Dialog => return None,
+    };
+    if group_handles.contains_key(preferred) {
+        Some(preferred)
+    } else {
+        None
+    }
+}
+
+fn next_dynamic_tab_id(spec: &ShellSpec, view_id: &str) -> String {
+    let base = format!("plugin-{}", view_id.replace('.', "-"));
+    if !tab_id_exists(spec, &base) {
+        return base;
+    }
+    let mut index = 2usize;
+    loop {
+        let candidate = format!("{base}-{index}");
+        if !tab_id_exists(spec, &candidate) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+fn tab_id_exists(spec: &ShellSpec, tab_id: &str) -> bool {
+    all_tabs(spec).any(|tab| tab.id == tab_id)
+}
+
+fn all_tabs<'a>(spec: &'a ShellSpec) -> Box<dyn Iterator<Item = &'a crate::spec::TabSpec> + 'a> {
+    Box::new(
+        spec.left_panel
+            .tabs
+            .iter()
+            .chain(spec.right_panel.tabs.iter())
+            .chain(spec.bottom_panel.tabs.iter())
+            .chain(workbench_tabs(&spec.workbench)),
+    )
+}
+
+fn workbench_tabs<'a>(
+    node: &'a WorkbenchNodeSpec,
+) -> Box<dyn Iterator<Item = &'a crate::spec::TabSpec> + 'a> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => Box::new(group.tabs.iter()),
+        WorkbenchNodeSpec::Split { children, .. } => {
+            Box::new(children.iter().flat_map(|child| workbench_tabs(child)))
+        }
+    }
+}
+
+fn find_group_mut<'a>(spec: &'a mut ShellSpec, group_id: &str) -> Option<&'a mut TabGroupSpec> {
+    if spec.left_panel.id == group_id {
+        return Some(&mut spec.left_panel);
+    }
+    if spec.right_panel.id == group_id {
+        return Some(&mut spec.right_panel);
+    }
+    if spec.bottom_panel.id == group_id {
+        return Some(&mut spec.bottom_panel);
+    }
+    find_group_mut_in_workbench(&mut spec.workbench, group_id)
+}
+
+fn find_group_mut_in_workbench<'a>(
+    node: &'a mut WorkbenchNodeSpec,
+    group_id: &str,
+) -> Option<&'a mut TabGroupSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => (group.id == group_id).then_some(group),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter_mut()
+            .find_map(|child| find_group_mut_in_workbench(child, group_id)),
+    }
 }

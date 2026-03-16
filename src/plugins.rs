@@ -12,11 +12,11 @@ use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzCommandSummary,
     MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
     MzMenuSurface, MzOpenViewRequest, MzOpenViewResult, MzPluginDependency,
-    MzPluginDescriptorView, MzPluginDiagnosticSummary, MzPluginLogSummary, MzPluginSnapshot,
-    MzPluginSummary, MzPluginVTable, MzSettingsCatalog, MzSettingsPage, MzSettingsPageSummary,
-    MzStatus, MzStatusCode, MzStr, MzSurfaceContribution, MzViewCatalog, MzViewFactorySpec,
-    MzViewOpenDisposition, MzViewPlacement, MzViewQuery, MzViewQueryResult, MzViewSummary,
-    MZ_ABI_VERSION_V1,
+    MzPluginDependencySummary, MzPluginDescriptorView, MzPluginDiagnosticSummary,
+    MzPluginLogSummary, MzPluginSnapshot, MzPluginSummary, MzPluginVTable, MzSettingsCatalog,
+    MzSettingsPage, MzSettingsPageSummary, MzStatus, MzStatusCode, MzStr, MzSurfaceContribution,
+    MzViewCatalog, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement, MzViewQuery,
+    MzViewQueryResult, MzViewSummary, MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -1233,6 +1233,16 @@ extern "C" fn host_read_plugin_state() -> MzBytes {
                 name: descriptor.name.clone(),
                 version: descriptor.version.to_string(),
                 description: descriptor.description.clone(),
+                dependencies: descriptor
+                    .dependencies
+                    .iter()
+                    .map(|dependency| MzPluginDependencySummary {
+                        plugin_id: dependency.plugin_id.clone(),
+                        min_version: dependency.min_version.to_string(),
+                        max_version_exclusive: dependency.max_version_exclusive.to_string(),
+                        required: dependency.required,
+                    })
+                    .collect(),
                 views,
                 logs,
             }
@@ -1256,7 +1266,9 @@ extern "C" fn host_read_settings_catalog() -> MzBytes {
     let pages = runtime
         .surface_contributions()
         .iter()
-        .filter(|contribution| contribution.surface == Some(MzContributionSurface::PluginSettingsPages))
+        .filter(|contribution| {
+            contribution.surface == Some(MzContributionSurface::PluginSettingsPages)
+        })
         .filter_map(|contribution| {
             MzSettingsPage::from_bytes(&contribution.payload)
                 .ok()

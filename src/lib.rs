@@ -15,11 +15,11 @@ use gtk::prelude::*;
 use gtk::Application;
 
 pub use plugins::{
-    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, resolve_load_order,
-    LoadedPlugin, PluginDependencySpec, PluginDescriptor, PluginDiagnostic, PluginDiagnosticLevel,
-    PluginHost, PluginLoadError, PluginLogEntry, PluginResolveError, PluginRuntime,
-    PluginRuntimeError, RegisteredCommand, RegisteredMenuItem, RegisteredSurfaceContribution,
-    RegisteredViewFactory, Version as PluginVersion,
+    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, load_static_plugin,
+    resolve_load_order, LoadedPlugin, PluginDependencySpec, PluginDescriptor, PluginDiagnostic,
+    PluginDiagnosticLevel, PluginHost, PluginLoadError, PluginLogEntry, PluginResolveError,
+    PluginRuntime, PluginRuntimeError, RegisteredCommand, RegisteredMenuItem,
+    RegisteredSurfaceContribution, RegisteredViewFactory, Version as PluginVersion,
 };
 pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
 pub use spec::{
@@ -36,6 +36,7 @@ pub struct MaruzzellaConfig {
     pub product: ProductSpec,
     pub theme: ThemeSpec,
     pub plugin_paths: Vec<PathBuf>,
+    pub builtin_plugins: Vec<fn() -> Result<plugins::LoadedPlugin, plugins::PluginLoadError>>,
 }
 
 impl Default for MaruzzellaConfig {
@@ -52,6 +53,7 @@ impl MaruzzellaConfig {
             product: default_product_spec(),
             theme: ThemeSpec::default(),
             plugin_paths: Vec::new(),
+            builtin_plugins: Vec::new(),
         }
     }
 
@@ -84,6 +86,22 @@ impl MaruzzellaConfig {
             .into_iter()
             .map(|path| path.as_ref().to_path_buf())
             .collect();
+        self
+    }
+
+    pub fn with_builtin_plugin(
+        mut self,
+        loader: fn() -> Result<plugins::LoadedPlugin, plugins::PluginLoadError>,
+    ) -> Self {
+        self.builtin_plugins.push(loader);
+        self
+    }
+
+    pub fn with_builtin_plugins<I>(mut self, loaders: I) -> Self
+    where
+        I: IntoIterator<Item = fn() -> Result<plugins::LoadedPlugin, plugins::PluginLoadError>>,
+    {
+        self.builtin_plugins = loaders.into_iter().collect();
         self
     }
 }

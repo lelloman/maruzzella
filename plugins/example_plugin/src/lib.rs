@@ -1,6 +1,6 @@
 use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
-use gtk::{Box as GtkBox, Button, Label, Orientation};
+use gtk::{Align, Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
     export_plugin, CommandSpec, HostApi, MenuItemSpec, MzMenuSurface, MzSettingsCategory,
     MzStatusCode, MzViewPlacement, Plugin, PluginDependency, PluginDescriptor,
@@ -80,7 +80,7 @@ impl Plugin for ExamplePlugin {
 
         host.register_surface_contribution(SurfaceContributionSpec::settings_page(
             "com.example.hello",
-            "com.example.hello.settings.general",
+            "com.example.hello.settings.summary",
             "general",
             "Example Plugin Settings",
             format!(
@@ -88,6 +88,20 @@ impl Plugin for ExamplePlugin {
                 config.launches
             ),
             MzSettingsCategory::Integrations,
+        ))?;
+
+        host.register_surface_contribution(SurfaceContributionSpec::settings_page_with_view(
+            "com.example.hello",
+            "com.example.hello.settings.editor",
+            maruzzella_sdk::ffi::MzSettingsPage::new(
+                "editor",
+                "Launch Counter",
+                "Open a plugin-owned settings view backed by persisted config.",
+                MzSettingsCategory::Integrations,
+            )
+            .with_view("com.example.hello.settings", MzViewPlacement::Workbench)
+            .with_instance_key("plugin:com.example.hello")
+            .with_requested_title("Example Plugin Settings"),
         ))?;
 
         host.register_view_factory(ViewFactorySpec::new(
@@ -98,7 +112,124 @@ impl Plugin for ExamplePlugin {
             create_example_view,
         ))?;
 
+        host.register_view_factory(ViewFactorySpec::new(
+            "com.example.hello",
+            "com.example.hello.settings",
+            "Example Plugin Settings",
+            MzViewPlacement::Workbench,
+            create_example_settings_view,
+        ))?;
+
         Ok(())
+    }
+}
+
+fn load_config(host: &maruzzella_sdk::ffi::MzHostApi) -> ExamplePluginConfig {
+    let Some(read) = host.read_config else {
+        return ExamplePluginConfig::default();
+    };
+    let bytes = read();
+    if bytes.ptr.is_null() || bytes.len == 0 {
+        return ExamplePluginConfig::default();
+    }
+    serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        .unwrap_or_default()
+}
+
+fn save_config(
+    host: &maruzzella_sdk::ffi::MzHostApi,
+    config: &ExamplePluginConfig,
+) -> Result<(), MzStatusCode> {
+    let Some(write) = host.write_config else {
+        return Err(MzStatusCode::NotFound);
+    };
+    let payload = serde_json::to_vec(config).map_err(|_| MzStatusCode::InternalError)?;
+    let status = write(maruzzella_sdk::ffi::MzBytes {
+        ptr: payload.as_ptr(),
+        len: payload.len(),
+    });
+    if status.is_ok() {
+        Ok(())
+    } else {
+        Err(status.code)
+    }
+}
+
+extern "C" fn create_example_settings_view(
+    host: *const maruzzella_sdk::ffi::MzHostApi,
+    _request: *const maruzzella_sdk::ffi::MzViewRequest,
+) -> *mut std::ffi::c_void {
+    let Some(host) = (unsafe { host.as_ref() }) else {
+        return std::ptr::null_mut();
+    };
+    if !gtk::is_initialized_main_thread() && gtk::init().is_err() {
+        return std::ptr::null_mut();
+    }
+
+    let root = GtkBox::new(Orientation::Vertical, 12);
+    root.set_margin_top(18);
+    root.set_margin_bottom(18);
+    root.set_margin_start(18);
+    root.set_margin_end(18);
+
+    let title = Label::new(Some("Example Plugin Settings"));
+    title.set_xalign(0.0);
+    title.add_css_class("title-3");
+
+    let body = Label::new(Some(
+        "This settings view is contributed by the plugin itself and persists state through the Maruzzella host config API.",
+    ));
+    body.set_xalign(0.0);
+    body.set_wrap(true);
+
+    let launches = Label::new(None);
+    launches.set_xalign(0.0);
+    launches.add_css_class("monospace");
+
+    let refresh_launches = {
+        let launches = launches.clone();
+        let host_copy = *host;
+        move || {
+            let config = load_config(&host_copy);
+            launches.set_label(&format!("launches = {}", config.launches));
+        }
+    };
+    refresh_launches();
+
+    let increment = Button::with_label("Increment");
+    increment.set_halign(Align::Start);
+    {
+        let host_copy = *host;
+        let refresh = refresh_launches.clone();
+        increment.connect_clicked(move |_| {
+            let mut config = load_config(&host_copy);
+            config.launches += 1;
+            let _ = save_config(&host_copy, &config);
+            refresh();
+        });
+    }
+
+    let reset = Button::with_label("Reset Counter");
+    reset.set_halign(Align::Start);
+    {
+        let host_copy = *host;
+        let refresh = refresh_launches.clone();
+        reset.connect_clicked(move |_| {
+            let config = ExamplePluginConfig::default();
+            let _ = save_config(&host_copy, &config);
+            refresh();
+        });
+    }
+
+    root.append(&title);
+    root.append(&body);
+    root.append(&launches);
+    root.append(&increment);
+    root.append(&reset);
+
+    unsafe {
+        <gtk::Widget as IntoGlibPtr<*mut gtk::ffi::GtkWidget>>::into_glib_ptr(root.upcast())
+            as *mut std::ffi::c_void
     }
 }
 

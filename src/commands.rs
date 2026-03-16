@@ -12,6 +12,7 @@ use crate::theme;
 
 const BASE_ABOUT_VIEW_ID: &str = "maruzzella.base.workspace.about";
 const BASE_PLUGINS_VIEW_ID: &str = "maruzzella.base.workspace.plugins";
+const BASE_SETTINGS_VIEW_ID: &str = "maruzzella.base.workspace.settings";
 const BASE_COMMANDS_VIEW_ID: &str = "maruzzella.base.workspace.commands";
 const BASE_REGISTERED_VIEWS_VIEW_ID: &str = "maruzzella.base.workspace.registered_views";
 
@@ -96,6 +97,21 @@ pub fn shell_registry(
             handles_for_plugins.as_ref(),
             BASE_PLUGINS_VIEW_ID,
             "Plugins",
+        );
+    });
+
+    let host_for_settings = plugin_host.clone();
+    let persistence_id_for_settings = persistence_id.to_string();
+    let state_for_settings = shell_state.clone();
+    let handles_for_settings = group_handles.clone();
+    registry.register("shell.settings", move || {
+        open_base_view(
+            host_for_settings.as_deref(),
+            &persistence_id_for_settings,
+            state_for_settings.as_ref(),
+            handles_for_settings.as_ref(),
+            BASE_SETTINGS_VIEW_ID,
+            "Settings",
         );
     });
 

@@ -162,14 +162,14 @@ Exit condition:
 
 ## Immediate Next Step
 
-The next implementation target should be **Plugin Manager And Settings**.
+The next implementation target should be **Plugin Configuration And Persistence**.
 
 Reason:
 
 - the real shell slice now exists and proves the product-first direction
-- commands, menus, plugin-backed views, typed shell catalogs, and plugin config persistence are all live
-- shared settings and diagnostics contracts now exist alongside menu/toolbar/startup surfaces
-- the next gains come from turning those contracts into a richer plugin manager and settings experience
+- plugins and settings now have first-class base-plugin-owned shell pages
+- settings surfaces can open plugin-owned settings views through stable host contracts
+- the next gaps are richer config schemas, invalid-state handling, and migration/versioning hooks
 
 ## Notes On Sequencing
 

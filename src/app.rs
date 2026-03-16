@@ -10,7 +10,8 @@ use crate::commands;
 use crate::layout::{self, PersistedShell};
 use crate::plugin_tabs::GroupHandles;
 use crate::plugins::{
-    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginHost, PluginRuntime,
+    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginDiagnostic,
+    PluginDiagnosticLevel, PluginHost, PluginRuntime,
 };
 use crate::product;
 use crate::shell::topbar;
@@ -88,6 +89,17 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
 fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
     let mut plugins = vec![base_plugin::load()];
     let mut diagnostics = Vec::new();
+    for loader in &config.builtin_plugins {
+        match loader() {
+            Ok(plugin) => plugins.push(plugin),
+            Err(error) => diagnostics.push(PluginDiagnostic {
+                level: PluginDiagnosticLevel::Error,
+                plugin_id: None,
+                path: None,
+                message: format!("builtin plugin load failed: {error:?}"),
+            }),
+        }
+    }
     for path in &config.plugin_paths {
         match load_plugin(path) {
             Ok(plugin) => plugins.push(plugin),

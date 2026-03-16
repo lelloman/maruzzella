@@ -1,14 +1,14 @@
 pub use maruzzella_api as ffi;
+pub use maruzzella_api::{
+    MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzContributionSurface, MzDiagnosticCatalog,
+    MzLogLevel, MzMenuSurface, MzPluginDependencySummary, MzPluginSnapshot, MzSettingsCatalog,
+    MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarItem, MzViewCatalog,
+    MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
+};
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,
     MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion,
-    MzViewFactorySpec, MzViewQuery, MzViewRequest, MZ_ABI_VERSION_V1,
-};
-pub use maruzzella_api::{
-    MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzContributionSurface,
-    MzDiagnosticCatalog, MzLogLevel, MzMenuSurface, MzPluginSnapshot, MzSettingsCatalog,
-    MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarItem, MzViewCatalog,
-    MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
+    MzViewFactorySpec, MzViewQuery, MZ_ABI_VERSION_V1,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -269,6 +269,20 @@ impl SurfaceContributionSpec {
         let payload = maruzzella_api::MzSettingsPage::new(page_id, title, summary, category)
             .to_bytes()
             .expect("settings pages should serialize");
+        Self::new(
+            plugin_id,
+            MzContributionSurface::PluginSettingsPages,
+            contribution_id,
+            payload,
+        )
+    }
+
+    pub fn settings_page_with_view(
+        plugin_id: &'static str,
+        contribution_id: &'static str,
+        page: maruzzella_api::MzSettingsPage,
+    ) -> Self {
+        let payload = page.to_bytes().expect("settings pages should serialize");
         Self::new(
             plugin_id,
             MzContributionSurface::PluginSettingsPages,

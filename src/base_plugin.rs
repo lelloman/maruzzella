@@ -3,14 +3,14 @@ use std::path::PathBuf;
 
 use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
-use gtk::{Align, Box as GtkBox, Label, Orientation, Separator};
+use gtk::{Align, Box as GtkBox, Button, Label, Orientation, Separator};
 use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec,
     MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
-    MzMenuSurface, MzPluginDescriptorView, MzPluginSnapshot, MzPluginVTable, MzSettingsCatalog,
-    MzSettingsCategory, MzSettingsPage, MzStartupTab, MzStatus, MzStr, MzSurfaceContribution,
-    MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec, MzViewPlacement, MzViewRequest,
-    MZ_ABI_VERSION_V1,
+    MzMenuSurface, MzOpenViewRequest, MzPluginDescriptorView, MzPluginSnapshot, MzPluginVTable,
+    MzSettingsCatalog, MzSettingsCategory, MzSettingsPage, MzStartupTab, MzStatus, MzStr,
+    MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec,
+    MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 
 use crate::plugins::{LoadedPlugin, PluginDescriptor, Version};
@@ -24,6 +24,7 @@ const VIEW_WORKSPACE_OPS: &str = "maruzzella.base.workspace.ops";
 const VIEW_WORKSPACE_COMMANDS: &str = "maruzzella.base.workspace.commands";
 const VIEW_WORKSPACE_REGISTERED_VIEWS: &str = "maruzzella.base.workspace.registered_views";
 const VIEW_WORKSPACE_PLUGINS: &str = "maruzzella.base.workspace.plugins";
+const VIEW_WORKSPACE_SETTINGS: &str = "maruzzella.base.workspace.settings";
 const VIEW_WORKSPACE_ABOUT: &str = "maruzzella.base.workspace.about";
 const VIEW_PANEL_NAVIGATOR: &str = "maruzzella.base.panel.navigator";
 const VIEW_PANEL_RESOURCES: &str = "maruzzella.base.panel.resources";
@@ -110,6 +111,12 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             title: MzStr::from_static("Plugins"),
             invoke: None,
         },
+        MzCommandSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            command_id: MzStr::from_static("shell.settings"),
+            title: MzStr::from_static("Settings"),
+            invoke: None,
+        },
     ];
 
     let menu_items = [
@@ -143,6 +150,13 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
         },
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            menu_id: MzStr::from_static("settings"),
+            parent_id: MzStr::from_static(MzMenuSurface::FileItems.as_str()),
+            title: MzStr::from_static("Settings"),
+            command_id: MzStr::from_static("shell.settings"),
+        },
+        MzMenuItemSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             menu_id: MzStr::from_static("about"),
             parent_id: MzStr::from_static(MzMenuSurface::HelpItems.as_str()),
             title: MzStr::from_static("About Maruzzella"),
@@ -162,6 +176,9 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
         "Default shell areas are now base-plugin-backed views rather than placeholder ProductSpec tabs.",
         MzSettingsCategory::Workspace,
     )
+    .with_view(VIEW_WORKSPACE_SETTINGS, MzViewPlacement::Workbench)
+    .with_instance_key(format!("plugin:{BASE_PLUGIN_ID}"))
+    .with_requested_title("Maruzzella Base Settings")
     .to_bytes()
     .expect("built-in settings page should serialize");
     let about = MzSurfaceContribution {
@@ -220,6 +237,16 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
                 Some("help-about-symbolic"),
                 None,
                 "shell.about",
+                true,
+            ),
+        ),
+        (
+            "settings",
+            toolbar_item_payload(
+                "settings",
+                Some("preferences-system-symbolic"),
+                None,
+                "shell.settings",
                 true,
             ),
         ),
@@ -344,6 +371,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
         view_factory(VIEW_WORKSPACE_COMMANDS),
         view_factory(VIEW_WORKSPACE_REGISTERED_VIEWS),
         view_factory(VIEW_WORKSPACE_PLUGINS),
+        view_factory(VIEW_WORKSPACE_SETTINGS),
         view_factory(VIEW_WORKSPACE_ABOUT),
         view_factory(VIEW_PANEL_NAVIGATOR),
         view_factory(VIEW_PANEL_RESOURCES),
@@ -457,6 +485,7 @@ fn view_factory(view_id: &'static str) -> MzViewFactorySpec {
         VIEW_WORKSPACE_COMMANDS => ("Command Palette", MzViewPlacement::Workbench),
         VIEW_WORKSPACE_REGISTERED_VIEWS => ("Registered Views", MzViewPlacement::Workbench),
         VIEW_WORKSPACE_PLUGINS => ("Plugins", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_SETTINGS => ("Settings", MzViewPlacement::Workbench),
         VIEW_WORKSPACE_ABOUT => ("About", MzViewPlacement::Workbench),
         VIEW_PANEL_NAVIGATOR => ("Workspace", MzViewPlacement::SidePanel),
         VIEW_PANEL_RESOURCES => ("Resources", MzViewPlacement::SidePanel),
@@ -489,6 +518,7 @@ extern "C" fn create_base_view(
     let Ok(view_id) = decode_str(request.view_id) else {
         return std::ptr::null_mut();
     };
+    let instance_key = decode_optional_str(request.instance_key);
 
     let widget = match view_id.as_str() {
         VIEW_WORKSPACE_HOME => workspace_home_view(),
@@ -498,6 +528,7 @@ extern "C" fn create_base_view(
         VIEW_WORKSPACE_COMMANDS => commands_view(host),
         VIEW_WORKSPACE_REGISTERED_VIEWS => registered_views_view(host),
         VIEW_WORKSPACE_PLUGINS => plugins_view(host),
+        VIEW_WORKSPACE_SETTINGS => settings_view(host, instance_key.as_deref()),
         VIEW_WORKSPACE_ABOUT => about_view(host),
         VIEW_PANEL_NAVIGATOR => navigator_view(),
         VIEW_PANEL_RESOURCES => resources_view(),
@@ -521,6 +552,13 @@ fn decode_str(value: MzStr) -> Result<String, ()> {
     std::str::from_utf8(bytes)
         .map(str::to_string)
         .map_err(|_| ())
+}
+
+fn decode_optional_str(value: MzStr) -> Option<String> {
+    if value.ptr.is_null() || value.len == 0 {
+        return None;
+    }
+    decode_str(value).ok()
 }
 
 fn workspace_home_view() -> gtk::Widget {
@@ -842,6 +880,21 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
         Some(("Base-owned", "status-running")),
     ));
 
+    let settings_button = action_button("Open Settings", Some("preferences-system-symbolic"));
+    let host_for_settings = *host;
+    settings_button.connect_clicked(move |_| {
+        open_host_view(
+            &host_for_settings,
+            BASE_PLUGIN_ID,
+            VIEW_WORKSPACE_SETTINGS,
+            MzViewPlacement::Workbench,
+            None,
+            Some("Settings"),
+            &[],
+        );
+    });
+    root.append(&settings_button);
+
     if !snapshot.activation_order.is_empty() {
         root.append(&section(
             "Activation Order",
@@ -887,7 +940,32 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
             card.append(&section("Description", &[plugin.description.as_str()]));
         }
 
+        if !plugin.dependencies.is_empty() {
+            card.append(&section("Dependencies", &[]));
+            card.append(&summary_list(
+                &plugin
+                    .dependencies
+                    .iter()
+                    .map(|dependency| {
+                        format!(
+                            "{}  [{} {}..{})",
+                            dependency.plugin_id,
+                            if dependency.required {
+                                "required"
+                            } else {
+                                "optional"
+                            },
+                            dependency.min_version,
+                            dependency.max_version_exclusive
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+                true,
+            ));
+        }
+
         if !plugin.views.is_empty() {
+            card.append(&section("Views", &[]));
             card.append(&summary_list(
                 &plugin
                     .views
@@ -902,16 +980,26 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
             .pages
             .iter()
             .filter(|page| page.plugin_id == plugin.plugin_id)
-            .map(|page| format!("{}  [{}]", page.page.title, page.page.category.label()))
+            .cloned()
             .collect::<Vec<_>>();
         if !plugin_settings.is_empty() {
-            card.append(&summary_list(
-                &plugin_settings,
-                false,
-            ));
+            card.append(&section("Settings", &[]));
+            card.append(&settings_page_list(&plugin_settings, Some(host)));
+        }
+
+        let plugin_diagnostics = diagnostic_catalog
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.plugin_id.as_deref() == Some(plugin.plugin_id.as_str()))
+            .map(|diagnostic| format!("[{}] {}", diagnostic.level, diagnostic.message))
+            .collect::<Vec<_>>();
+        if !plugin_diagnostics.is_empty() {
+            card.append(&section("Diagnostics", &[]));
+            card.append(&summary_list(&plugin_diagnostics, false));
         }
 
         if !plugin.logs.is_empty() {
+            card.append(&section("Logs", &[]));
             card.append(&summary_list(
                 &plugin
                     .logs
@@ -924,6 +1012,60 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
 
         root.append(&card);
         root.append(&Separator::new(Orientation::Horizontal));
+    }
+
+    root.upcast()
+}
+
+fn settings_view(host: &MzHostApi, instance_key: Option<&str>) -> gtk::Widget {
+    let root = view_root();
+    let snapshot = read_plugin_state(host);
+    let settings_catalog = read_settings_catalog(host);
+    let selected_plugin_id = instance_key.and_then(parse_plugin_instance_key);
+    root.append(&hero(
+        "Settings",
+        "Plugin-owned settings entries are aggregated here by the base plugin. Entries can either summarize config state or open concrete plugin settings views.",
+        Some(("Surface-driven", "status-running")),
+    ));
+
+    let plugin_ids = if let Some(plugin_id) = selected_plugin_id {
+        vec![plugin_id.to_string()]
+    } else {
+        snapshot
+            .plugins
+            .iter()
+            .map(|plugin| plugin.plugin_id.clone())
+            .collect::<Vec<_>>()
+    };
+
+    let mut rendered_any = false;
+    for plugin_id in plugin_ids {
+        let plugin_settings = settings_catalog
+            .pages
+            .iter()
+            .filter(|page| page.plugin_id == plugin_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        if plugin_settings.is_empty() {
+            continue;
+        }
+        rendered_any = true;
+        let plugin_title = snapshot
+            .plugins
+            .iter()
+            .find(|plugin| plugin.plugin_id == plugin_id)
+            .map(|plugin| plugin.name.clone())
+            .unwrap_or_else(|| plugin_id.clone());
+        root.append(&section(&plugin_title, &[plugin_id.as_str()]));
+        root.append(&settings_page_list(&plugin_settings, Some(host)));
+        root.append(&Separator::new(Orientation::Horizontal));
+    }
+
+    if !rendered_any {
+        root.append(&section(
+            "Settings",
+            &["No plugin settings pages are currently registered."],
+        ));
     }
 
     root.upcast()
@@ -1078,6 +1220,109 @@ fn summary_list(rows: &[String], mono: bool) -> GtkBox {
     box_
 }
 
+fn settings_page_list(
+    pages: &[maruzzella_api::MzSettingsPageSummary],
+    host: Option<&MzHostApi>,
+) -> GtkBox {
+    let box_ = GtkBox::new(Orientation::Vertical, 10);
+    for page_summary in pages {
+        let row = GtkBox::new(Orientation::Vertical, 6);
+        let title = Label::new(Some(&format!(
+            "{}  [{}]",
+            page_summary.page.title,
+            page_summary.page.category.label()
+        )));
+        title.set_xalign(0.0);
+        title.add_css_class("section-title");
+        row.append(&title);
+
+        if !page_summary.page.summary.is_empty() {
+            let summary = Label::new(Some(&page_summary.page.summary));
+            summary.set_xalign(0.0);
+            summary.set_wrap(true);
+            summary.add_css_class("muted");
+            row.append(&summary);
+        }
+
+        if let (Some(host), Some(view_id)) = (host, page_summary.page.view_id.as_deref()) {
+            let button = action_button("Open Settings Page", Some("go-next-symbolic"));
+            let host_copy = *host;
+            let plugin_id = page_summary.plugin_id.clone();
+            let view_id = view_id.to_string();
+            let instance_key = page_summary.page.instance_key.clone();
+            let requested_title = page_summary.page.requested_title.clone();
+            let placement = page_summary
+                .page
+                .placement
+                .unwrap_or(MzViewPlacement::Workbench);
+            button.connect_clicked(move |_| {
+                open_host_view(
+                    &host_copy,
+                    &plugin_id,
+                    &view_id,
+                    placement,
+                    instance_key.as_deref(),
+                    requested_title.as_deref(),
+                    &[],
+                );
+            });
+            row.append(&button);
+        }
+
+        row.append(&Separator::new(Orientation::Horizontal));
+        box_.append(&row);
+    }
+    box_
+}
+
+fn action_button(label_text: &str, icon_name: Option<&str>) -> Button {
+    let button = Button::with_label(label_text);
+    button.set_halign(Align::Start);
+    if let Some(icon_name) = icon_name {
+        button.set_icon_name(icon_name);
+    }
+    button
+}
+
+fn open_host_view(
+    host: &MzHostApi,
+    plugin_id: &str,
+    view_id: &str,
+    placement: MzViewPlacement,
+    instance_key: Option<&str>,
+    requested_title: Option<&str>,
+    payload: &[u8],
+) {
+    let Some(open) = host.open_view else {
+        return;
+    };
+    let request = MzOpenViewRequest {
+        plugin_id: str_to_mzstr(plugin_id),
+        view_id: str_to_mzstr(view_id),
+        placement,
+        instance_key: instance_key.map(str_to_mzstr).unwrap_or_else(MzStr::empty),
+        requested_title: requested_title
+            .map(str_to_mzstr)
+            .unwrap_or_else(MzStr::empty),
+        payload: MzBytes {
+            ptr: payload.as_ptr(),
+            len: payload.len(),
+        },
+    };
+    let _ = open(&request);
+}
+
+fn str_to_mzstr(value: &str) -> MzStr {
+    MzStr {
+        ptr: value.as_ptr(),
+        len: value.len(),
+    }
+}
+
+fn parse_plugin_instance_key(value: &str) -> Option<&str> {
+    value.strip_prefix("plugin:")
+}
+
 fn toolbar_item_payload(
     item_id: &'static str,
     icon_name: Option<&'static str>,
@@ -1185,6 +1430,10 @@ mod tests {
             .iter()
             .any(|command| command.command_id == "shell.plugins"));
         assert!(runtime
+            .commands()
+            .iter()
+            .any(|command| command.command_id == "shell.settings"));
+        assert!(runtime
             .surface_contributions()
             .iter()
             .any(|surface| surface.surface == Some(MzContributionSurface::AboutSections)));
@@ -1196,6 +1445,10 @@ mod tests {
             .view_factories()
             .iter()
             .any(|factory| factory.view_id == VIEW_WORKSPACE_HOME));
+        assert!(runtime
+            .view_factories()
+            .iter()
+            .any(|factory| factory.view_id == VIEW_WORKSPACE_SETTINGS));
         assert!(runtime
             .view_factories()
             .iter()

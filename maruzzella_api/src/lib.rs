@@ -222,6 +222,10 @@ pub struct MzSettingsPage {
     pub title: String,
     pub summary: String,
     pub category: MzSettingsCategory,
+    pub view_id: Option<String>,
+    pub placement: Option<MzViewPlacement>,
+    pub instance_key: Option<String>,
+    pub requested_title: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -372,8 +376,17 @@ pub struct MzPluginSummary {
     pub name: String,
     pub version: String,
     pub description: String,
+    pub dependencies: Vec<MzPluginDependencySummary>,
     pub views: Vec<MzViewSummary>,
     pub logs: Vec<MzPluginLogSummary>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzPluginDependencySummary {
+    pub plugin_id: String,
+    pub min_version: String,
+    pub max_version_exclusive: String,
+    pub required: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -449,7 +462,27 @@ impl MzSettingsPage {
             title: title.into(),
             summary: summary.into(),
             category,
+            view_id: None,
+            placement: None,
+            instance_key: None,
+            requested_title: None,
         }
+    }
+
+    pub fn with_view(mut self, view_id: impl Into<String>, placement: MzViewPlacement) -> Self {
+        self.view_id = Some(view_id.into());
+        self.placement = Some(placement);
+        self
+    }
+
+    pub fn with_instance_key(mut self, instance_key: impl Into<String>) -> Self {
+        self.instance_key = Some(instance_key.into());
+        self
+    }
+
+    pub fn with_requested_title(mut self, requested_title: impl Into<String>) -> Self {
+        self.requested_title = Some(requested_title.into());
+        self
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {

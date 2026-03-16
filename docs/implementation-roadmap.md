@@ -162,14 +162,14 @@ Exit condition:
 
 ## Immediate Next Step
 
-The next implementation target should be **Contribution Surfaces**.
+The next implementation target should be **Plugin Manager And Settings**.
 
 Reason:
 
 - the real shell slice now exists and proves the product-first direction
-- commands, menus, plugin-backed views, plugin settings summaries, and plugin config persistence are all live
-- shared shell contracts are still ad hoc and stringly typed
-- richer plugin manager and settings UI depend on those surfaces being explicit
+- commands, menus, plugin-backed views, typed shell catalogs, and plugin config persistence are all live
+- shared settings and diagnostics contracts now exist alongside menu/toolbar/startup surfaces
+- the next gains come from turning those contracts into a richer plugin manager and settings experience
 
 ## Notes On Sequencing
 
@@ -177,6 +177,6 @@ The order above is intentional:
 
 - the shell must feel real before deeper platform work is worth standardizing
 - contribution surfaces should be derived from working shell flows rather than invented in isolation
-- plugin manager and settings become much more valuable once their shared surfaces are explicit
+- plugin manager and settings become much more valuable once those shared surfaces are explicit
 
 The exact slice boundaries may still shift, but changes should continue to preserve a clean path toward this roadmap.

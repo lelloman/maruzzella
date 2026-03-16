@@ -216,12 +216,19 @@ impl MzAboutSection {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MzSettingsPage {
     pub page_id: String,
     pub title: String,
     pub summary: String,
     pub category: MzSettingsCategory,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzSettingsPageSummary {
+    pub plugin_id: String,
+    pub contribution_id: String,
+    pub page: MzSettingsPage,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -366,18 +373,31 @@ pub struct MzPluginSummary {
     pub version: String,
     pub description: String,
     pub views: Vec<MzViewSummary>,
-    pub settings_pages: Vec<MzSettingsPage>,
     pub logs: Vec<MzPluginLogSummary>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MzPluginSnapshot {
     pub activation_order: Vec<String>,
-    pub diagnostics: Vec<MzPluginDiagnosticSummary>,
     pub plugins: Vec<MzPluginSummary>,
 }
 
 impl MzPluginSnapshot {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzSettingsCatalog {
+    pub pages: Vec<MzSettingsPageSummary>,
+}
+
+impl MzSettingsCatalog {
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
@@ -393,6 +413,21 @@ pub struct MzAboutCatalog {
 }
 
 impl MzAboutCatalog {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzDiagnosticCatalog {
+    pub diagnostics: Vec<MzPluginDiagnosticSummary>,
+}
+
+impl MzDiagnosticCatalog {
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
@@ -442,6 +477,12 @@ impl MzSettingsCategory {
             Self::Integrations => "Integrations",
             Self::Diagnostics => "Diagnostics",
         }
+    }
+}
+
+impl Default for MzSettingsCategory {
+    fn default() -> Self {
+        Self::General
     }
 }
 
@@ -610,6 +651,8 @@ pub type MzUpdateViewTitleFn = extern "C" fn(query: *const MzViewQuery, title: M
 pub type MzReadCommandCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadViewCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadPluginStateFn = extern "C" fn() -> MzBytes;
+pub type MzReadSettingsCatalogFn = extern "C" fn() -> MzBytes;
+pub type MzReadDiagnosticCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadAboutCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadConfigFn = extern "C" fn() -> MzBytes;
 pub type MzWriteConfigFn = extern "C" fn(payload: MzBytes) -> MzStatus;
@@ -632,6 +675,8 @@ pub struct MzHostApi {
     pub read_command_catalog: Option<MzReadCommandCatalogFn>,
     pub read_view_catalog: Option<MzReadViewCatalogFn>,
     pub read_plugin_state: Option<MzReadPluginStateFn>,
+    pub read_settings_catalog: Option<MzReadSettingsCatalogFn>,
+    pub read_diagnostic_catalog: Option<MzReadDiagnosticCatalogFn>,
     pub read_about_catalog: Option<MzReadAboutCatalogFn>,
     pub read_config: Option<MzReadConfigFn>,
     pub write_config: Option<MzWriteConfigFn>,
@@ -655,6 +700,8 @@ impl MzHostApi {
             read_command_catalog: None,
             read_view_catalog: None,
             read_plugin_state: None,
+            read_settings_catalog: None,
+            read_diagnostic_catalog: None,
             read_about_catalog: None,
             read_config: None,
             write_config: None,
@@ -721,6 +768,46 @@ mod tests {
         let bytes = page.to_bytes().expect("settings page should serialize");
         let decoded = MzSettingsPage::from_bytes(&bytes).expect("settings page should decode");
         assert_eq!(decoded, page);
+    }
+
+    #[test]
+    fn settings_catalog_roundtrips_through_json_bytes() {
+        let catalog = MzSettingsCatalog {
+            pages: vec![MzSettingsPageSummary {
+                plugin_id: "example.plugin".to_string(),
+                contribution_id: "example.plugin.settings.general".to_string(),
+                page: MzSettingsPage::new(
+                    "general",
+                    "General",
+                    "Example plugin settings",
+                    MzSettingsCategory::General,
+                ),
+            }],
+        };
+        let bytes = catalog
+            .to_bytes()
+            .expect("settings catalog should serialize");
+        let decoded =
+            MzSettingsCatalog::from_bytes(&bytes).expect("settings catalog should decode");
+        assert_eq!(decoded, catalog);
+    }
+
+    #[test]
+    fn diagnostic_catalog_roundtrips_through_json_bytes() {
+        let catalog = MzDiagnosticCatalog {
+            diagnostics: vec![MzPluginDiagnosticSummary {
+                level: "Warning".to_string(),
+                plugin_id: Some("example.plugin".to_string()),
+                path: None,
+                message: "Example warning".to_string(),
+            }],
+        };
+        let bytes = catalog
+            .to_bytes()
+            .expect("diagnostic catalog should serialize");
+        let decoded =
+            MzDiagnosticCatalog::from_bytes(&bytes).expect("diagnostic catalog should decode");
+        assert_eq!(decoded, catalog);
     }
 
     #[test]

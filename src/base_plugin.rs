@@ -5,11 +5,12 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Label, Orientation, Separator};
 use maruzzella_api::{
-    MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzContributionSurface,
-    MzHostApi, MzLogLevel, MzMenuItemSpec, MzMenuSurface, MzPluginDescriptorView,
-    MzPluginSnapshot, MzPluginVTable, MzSettingsCategory, MzSettingsPage, MzStartupTab, MzStatus,
-    MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec,
-    MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
+    MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec,
+    MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
+    MzMenuSurface, MzPluginDescriptorView, MzPluginSnapshot, MzPluginVTable, MzSettingsCatalog,
+    MzSettingsCategory, MzSettingsPage, MzStartupTab, MzStatus, MzStr, MzSurfaceContribution,
+    MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec, MzViewPlacement, MzViewRequest,
+    MZ_ABI_VERSION_V1,
 };
 
 use crate::plugins::{LoadedPlugin, PluginDescriptor, Version};
@@ -607,7 +608,7 @@ fn workspace_surfaces_view() -> gtk::Widget {
         ),
         (
             "maruzzella.plugins.settings_pages",
-            "Plugin-owned settings summaries shown in the Plugins dialog",
+            "Plugin-owned settings entries exposed through the shared settings catalog",
         ),
     ]));
     root.upcast()
@@ -758,7 +759,7 @@ fn extensions_view() -> gtk::Widget {
     let root = view_root();
     root.append(&hero(
         "Extensions",
-        "The base plugin and example plugin already contribute commands, menus, settings summaries, and views through the same runtime.",
+        "The base plugin and example plugin already contribute commands, menus, settings surfaces, and views through the same runtime.",
         Some(("Platform proven", "status-running")),
     ));
     root.append(&section(
@@ -766,7 +767,7 @@ fn extensions_view() -> gtk::Widget {
         &[
             "Dynamic plugin loading and dependency ordering",
             "Plugin commands dispatched from GTK actions",
-            "Plugin settings summaries in the Plugins dialog",
+            "Plugin settings surfaces aggregated through the host catalog",
             "Plugin-owned view factories mounted into shell tabs",
         ],
     ));
@@ -833,9 +834,11 @@ fn registered_views_view(host: &MzHostApi) -> gtk::Widget {
 fn plugins_view(host: &MzHostApi) -> gtk::Widget {
     let root = view_root();
     let snapshot = read_plugin_state(host);
+    let settings_catalog = read_settings_catalog(host);
+    let diagnostic_catalog = read_diagnostic_catalog(host);
     root.append(&hero(
         "Plugins",
-        "The default plugin manager page is now provided by the base plugin using host runtime snapshot data.",
+        "The default plugin manager page is now provided by the base plugin using explicit host catalogs for runtime inventory, settings, and diagnostics.",
         Some(("Base-owned", "status-running")),
     ));
 
@@ -850,9 +853,9 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
         ));
     }
 
-    if !snapshot.diagnostics.is_empty() {
+    if !diagnostic_catalog.diagnostics.is_empty() {
         root.append(&summary_list(
-            &snapshot
+            &diagnostic_catalog
                 .diagnostics
                 .iter()
                 .map(|diagnostic| {
@@ -895,13 +898,15 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
             ));
         }
 
-        if !plugin.settings_pages.is_empty() {
+        let plugin_settings = settings_catalog
+            .pages
+            .iter()
+            .filter(|page| page.plugin_id == plugin.plugin_id)
+            .map(|page| format!("{}  [{}]", page.page.title, page.page.category.label()))
+            .collect::<Vec<_>>();
+        if !plugin_settings.is_empty() {
             card.append(&summary_list(
-                &plugin
-                    .settings_pages
-                    .iter()
-                    .map(|page| format!("{}  [{}]", page.title, page.category.label()))
-                    .collect::<Vec<_>>(),
+                &plugin_settings,
                 false,
             ));
         }
@@ -1123,7 +1128,6 @@ fn read_plugin_state(host: &MzHostApi) -> MzPluginSnapshot {
     let Some(read) = host.read_plugin_state else {
         return MzPluginSnapshot {
             activation_order: Vec::new(),
-            diagnostics: Vec::new(),
             plugins: Vec::new(),
         };
     };
@@ -1135,6 +1139,24 @@ fn decode_snapshot<T: serde::de::DeserializeOwned + Default>(bytes: MzBytes) -> 
         return T::default();
     }
     serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        .unwrap_or_default()
+}
+
+fn read_settings_catalog(host: &MzHostApi) -> MzSettingsCatalog {
+    let Some(read) = host.read_settings_catalog else {
+        return MzSettingsCatalog::default();
+    };
+    let bytes = read();
+    MzSettingsCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        .unwrap_or_default()
+}
+
+fn read_diagnostic_catalog(host: &MzHostApi) -> MzDiagnosticCatalog {
+    let Some(read) = host.read_diagnostic_catalog else {
+        return MzDiagnosticCatalog::default();
+    };
+    let bytes = read();
+    MzDiagnosticCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
         .unwrap_or_default()
 }
 

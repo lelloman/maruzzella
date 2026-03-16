@@ -5,9 +5,10 @@ use maruzzella_api::{
     MzViewFactorySpec, MzViewQuery, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 pub use maruzzella_api::{
-    MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzContributionSurface, MzLogLevel,
-    MzMenuSurface, MzPluginSnapshot, MzSettingsCategory, MzStartupTab, MzStatusCode,
-    MzToolbarItem, MzViewCatalog, MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
+    MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzContributionSurface,
+    MzDiagnosticCatalog, MzLogLevel, MzMenuSurface, MzPluginSnapshot, MzSettingsCatalog,
+    MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarItem, MzViewCatalog,
+    MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -611,6 +612,30 @@ impl<'a> HostApi<'a> {
             return Err(MzStatusCode::NotFound);
         }
         MzPluginSnapshot::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn read_settings_catalog(&self) -> Result<MzSettingsCatalog, MzStatusCode> {
+        let Some(read) = self.raw.read_settings_catalog else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(MzSettingsCatalog::default());
+        }
+        MzSettingsCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn read_diagnostic_catalog(&self) -> Result<MzDiagnosticCatalog, MzStatusCode> {
+        let Some(read) = self.raw.read_diagnostic_catalog else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(MzDiagnosticCatalog::default());
+        }
+        MzDiagnosticCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
             .map_err(|_| MzStatusCode::InternalError)
     }
 

@@ -10,12 +10,13 @@ use gtk::Widget;
 use libloading::{Library, Symbol};
 use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzCommandSummary,
-    MzContributionSurface, MzHostApi, MzLogLevel, MzMenuItemSpec, MzMenuSurface,
-    MzOpenViewRequest, MzOpenViewResult, MzPluginDependency, MzPluginDescriptorView,
-    MzPluginDiagnosticSummary, MzPluginLogSummary, MzPluginSnapshot, MzPluginSummary,
-    MzPluginVTable, MzSettingsPage, MzStatus, MzStatusCode, MzStr, MzSurfaceContribution,
-    MzViewCatalog, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement, MzViewQuery,
-    MzViewQueryResult, MzViewSummary, MZ_ABI_VERSION_V1,
+    MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
+    MzMenuSurface, MzOpenViewRequest, MzOpenViewResult, MzPluginDependency,
+    MzPluginDescriptorView, MzPluginDiagnosticSummary, MzPluginLogSummary, MzPluginSnapshot,
+    MzPluginSummary, MzPluginVTable, MzSettingsCatalog, MzSettingsPage, MzSettingsPageSummary,
+    MzStatus, MzStatusCode, MzStr, MzSurfaceContribution, MzViewCatalog, MzViewFactorySpec,
+    MzViewOpenDisposition, MzViewPlacement, MzViewQuery, MzViewQueryResult, MzViewSummary,
+    MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -208,6 +209,8 @@ struct PluginShellHost {
     command_snapshot_buffer: RefCell<Vec<u8>>,
     view_snapshot_buffer: RefCell<Vec<u8>>,
     plugin_snapshot_buffer: RefCell<Vec<u8>>,
+    settings_snapshot_buffer: RefCell<Vec<u8>>,
+    diagnostic_snapshot_buffer: RefCell<Vec<u8>>,
     about_snapshot_buffer: RefCell<Vec<u8>>,
 }
 
@@ -296,6 +299,8 @@ impl PluginRuntime {
             command_snapshot_buffer: RefCell::new(Vec::new()),
             view_snapshot_buffer: RefCell::new(Vec::new()),
             plugin_snapshot_buffer: RefCell::new(Vec::new()),
+            settings_snapshot_buffer: RefCell::new(Vec::new()),
+            diagnostic_snapshot_buffer: RefCell::new(Vec::new()),
             about_snapshot_buffer: RefCell::new(Vec::new()),
         });
         ACTIVE_SHELL_HOST.with(|cell| cell.set(Rc::as_ptr(&shell_host)));
@@ -389,6 +394,8 @@ impl PluginRuntime {
             read_command_catalog: Some(host_read_command_catalog),
             read_view_catalog: Some(host_read_view_catalog),
             read_plugin_state: Some(host_read_plugin_state),
+            read_settings_catalog: Some(host_read_settings_catalog),
+            read_diagnostic_catalog: Some(host_read_diagnostic_catalog),
             read_about_catalog: Some(host_read_about_catalog),
             read_config: None,
             write_config: None,
@@ -546,6 +553,36 @@ pub fn load_plugin(path: impl AsRef<Path>) -> Result<LoadedPlugin, PluginLoadErr
         vtable,
         _library: library,
     })
+}
+
+pub fn load_static_plugin(
+    path: impl Into<PathBuf>,
+    entry: PluginEntryPoint,
+) -> Result<LoadedPlugin, PluginLoadError> {
+    let path = path.into();
+    let vtable = unsafe { entry() };
+    let Some(vtable) = (unsafe { vtable.as_ref() }) else {
+        return Err(PluginLoadError::NullVTable { path });
+    };
+
+    if vtable.abi_version != MZ_ABI_VERSION_V1 {
+        return Err(PluginLoadError::AbiMismatch {
+            path,
+            plugin_abi_version: vtable.abi_version,
+        });
+    }
+
+    let descriptor_view = (vtable.descriptor)();
+    let descriptor = descriptor_from_view(&path, descriptor_view)?;
+    if descriptor.required_abi_version != MZ_ABI_VERSION_V1 {
+        return Err(PluginLoadError::DescriptorAbiMismatch {
+            path,
+            plugin_id: descriptor.id,
+            required_abi_version: descriptor.required_abi_version,
+        });
+    }
+
+    Ok(LoadedPlugin::from_static_vtable(path, descriptor, vtable))
 }
 
 pub fn resolve_load_order<'a>(
@@ -741,6 +778,8 @@ impl HostState {
             read_command_catalog: None,
             read_view_catalog: None,
             read_plugin_state: None,
+            read_settings_catalog: None,
+            read_diagnostic_catalog: None,
             read_about_catalog: None,
             read_config: Some(host_read_config),
             write_config: Some(host_write_config),
@@ -1168,15 +1207,6 @@ extern "C" fn host_read_plugin_state() -> MzBytes {
         .iter()
         .map(|plugin| {
             let descriptor = plugin.descriptor();
-            let settings_pages = runtime
-                .surface_contributions()
-                .iter()
-                .filter(|contribution| {
-                    contribution.plugin_id == descriptor.id
-                        && contribution.surface == Some(MzContributionSurface::PluginSettingsPages)
-                })
-                .filter_map(|contribution| MzSettingsPage::from_bytes(&contribution.payload).ok())
-                .collect::<Vec<_>>();
             let views = runtime
                 .view_factories()
                 .iter()
@@ -1204,12 +1234,52 @@ extern "C" fn host_read_plugin_state() -> MzBytes {
                 version: descriptor.version.to_string(),
                 description: descriptor.description.clone(),
                 views,
-                settings_pages,
                 logs,
             }
         })
         .collect::<Vec<_>>();
 
+    let snapshot = MzPluginSnapshot {
+        activation_order: runtime.activation_order().to_vec(),
+        plugins,
+    };
+    snapshot_bytes(&shell_host.plugin_snapshot_buffer, &snapshot)
+}
+
+extern "C" fn host_read_settings_catalog() -> MzBytes {
+    let Some(shell_host) = current_shell_host() else {
+        return MzBytes::empty();
+    };
+    let Some(runtime) = shell_host.runtime.upgrade() else {
+        return MzBytes::empty();
+    };
+    let pages = runtime
+        .surface_contributions()
+        .iter()
+        .filter(|contribution| contribution.surface == Some(MzContributionSurface::PluginSettingsPages))
+        .filter_map(|contribution| {
+            MzSettingsPage::from_bytes(&contribution.payload)
+                .ok()
+                .map(|page| MzSettingsPageSummary {
+                    plugin_id: contribution.plugin_id.clone(),
+                    contribution_id: contribution.contribution_id.clone(),
+                    page,
+                })
+        })
+        .collect::<Vec<_>>();
+    snapshot_bytes(
+        &shell_host.settings_snapshot_buffer,
+        &MzSettingsCatalog { pages },
+    )
+}
+
+extern "C" fn host_read_diagnostic_catalog() -> MzBytes {
+    let Some(shell_host) = current_shell_host() else {
+        return MzBytes::empty();
+    };
+    let Some(runtime) = shell_host.runtime.upgrade() else {
+        return MzBytes::empty();
+    };
     let diagnostics = runtime
         .diagnostics
         .iter()
@@ -1223,13 +1293,10 @@ extern "C" fn host_read_plugin_state() -> MzBytes {
             message: diagnostic.message.clone(),
         })
         .collect::<Vec<_>>();
-
-    let snapshot = MzPluginSnapshot {
-        activation_order: runtime.activation_order().to_vec(),
-        diagnostics,
-        plugins,
-    };
-    snapshot_bytes(&shell_host.plugin_snapshot_buffer, &snapshot)
+    snapshot_bytes(
+        &shell_host.diagnostic_snapshot_buffer,
+        &MzDiagnosticCatalog { diagnostics },
+    )
 }
 
 extern "C" fn host_read_about_catalog() -> MzBytes {

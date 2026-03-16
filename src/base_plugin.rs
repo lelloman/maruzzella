@@ -5,11 +5,11 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Label, Orientation, Separator};
 use maruzzella_api::{
-    MzAboutSection, MzBytes, MzCommandSpec, MzCommandSummary, MzContributionSurface, MzHostApi,
-    MzLogLevel, MzMenuItemSpec, MzMenuSurface, MzPluginDescriptorView, MzPluginSnapshot,
-    MzPluginVTable, MzSettingsCategory, MzSettingsPage, MzStartupTab, MzStatus, MzStr,
-    MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewFactorySpec, MzViewPlacement,
-    MzViewRequest, MzViewSummary, MZ_ABI_VERSION_V1,
+    MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzContributionSurface,
+    MzHostApi, MzLogLevel, MzMenuItemSpec, MzMenuSurface, MzPluginDescriptorView,
+    MzPluginSnapshot, MzPluginVTable, MzSettingsCategory, MzSettingsPage, MzStartupTab, MzStatus,
+    MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec,
+    MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 
 use crate::plugins::{LoadedPlugin, PluginDescriptor, Version};
@@ -775,7 +775,7 @@ fn extensions_view() -> gtk::Widget {
 
 fn commands_view(host: &MzHostApi) -> gtk::Widget {
     let root = view_root();
-    let commands = read_command_snapshot(host);
+    let commands = read_command_catalog(host).commands;
     root.append(&hero(
         "Command Palette",
         "The base plugin now owns the visible command browser while the host keeps the underlying shell capabilities.",
@@ -800,7 +800,7 @@ fn commands_view(host: &MzHostApi) -> gtk::Widget {
 
 fn registered_views_view(host: &MzHostApi) -> gtk::Widget {
     let root = view_root();
-    let views = read_view_snapshot(host);
+    let views = read_view_catalog(host).views;
     root.append(&hero(
         "Registered Views",
         "This page is contributed by the base plugin and rendered from host-provided view metadata.",
@@ -832,7 +832,7 @@ fn registered_views_view(host: &MzHostApi) -> gtk::Widget {
 
 fn plugins_view(host: &MzHostApi) -> gtk::Widget {
     let root = view_root();
-    let snapshot = read_plugin_snapshot(host);
+    let snapshot = read_plugin_state(host);
     root.append(&hero(
         "Plugins",
         "The default plugin manager page is now provided by the base plugin using host runtime snapshot data.",
@@ -926,7 +926,7 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
 
 fn about_view(host: &MzHostApi) -> gtk::Widget {
     let root = view_root();
-    let sections = read_about_snapshot(host);
+    let sections = read_about_catalog(host).sections;
     root.append(&hero(
         "About Maruzzella",
         "The base plugin now owns the default About page and renders aggregated about sections from host contributions.",
@@ -1105,22 +1105,22 @@ fn startup_tab_payload(
     tab.to_bytes().expect("startup tab should serialize")
 }
 
-fn read_command_snapshot(host: &MzHostApi) -> Vec<MzCommandSummary> {
-    let Some(read) = host.read_command_snapshot else {
-        return Vec::new();
+fn read_command_catalog(host: &MzHostApi) -> MzCommandCatalog {
+    let Some(read) = host.read_command_catalog else {
+        return MzCommandCatalog::default();
     };
     decode_snapshot(read())
 }
 
-fn read_view_snapshot(host: &MzHostApi) -> Vec<MzViewSummary> {
-    let Some(read) = host.read_view_snapshot else {
-        return Vec::new();
+fn read_view_catalog(host: &MzHostApi) -> MzViewCatalog {
+    let Some(read) = host.read_view_catalog else {
+        return MzViewCatalog::default();
     };
     decode_snapshot(read())
 }
 
-fn read_plugin_snapshot(host: &MzHostApi) -> MzPluginSnapshot {
-    let Some(read) = host.read_plugin_snapshot else {
+fn read_plugin_state(host: &MzHostApi) -> MzPluginSnapshot {
+    let Some(read) = host.read_plugin_state else {
         return MzPluginSnapshot {
             activation_order: Vec::new(),
             diagnostics: Vec::new(),
@@ -1138,9 +1138,9 @@ fn decode_snapshot<T: serde::de::DeserializeOwned + Default>(bytes: MzBytes) -> 
         .unwrap_or_default()
 }
 
-fn read_about_snapshot(host: &MzHostApi) -> Vec<MzAboutSection> {
-    let Some(read) = host.read_about_snapshot else {
-        return Vec::new();
+fn read_about_catalog(host: &MzHostApi) -> MzAboutCatalog {
+    let Some(read) = host.read_about_catalog else {
+        return MzAboutCatalog::default();
     };
     decode_snapshot(read())
 }

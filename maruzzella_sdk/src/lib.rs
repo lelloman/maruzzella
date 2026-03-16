@@ -5,9 +5,9 @@ use maruzzella_api::{
     MzViewFactorySpec, MzViewQuery, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 pub use maruzzella_api::{
-    MzCommandSummary, MzContributionSurface, MzLogLevel, MzMenuSurface, MzPluginSnapshot,
-    MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarItem, MzViewOpenDisposition,
-    MzViewPlacement, MzViewSummary,
+    MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzContributionSurface, MzLogLevel,
+    MzMenuSurface, MzPluginSnapshot, MzSettingsCategory, MzStartupTab, MzStatusCode,
+    MzToolbarItem, MzViewCatalog, MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -578,51 +578,51 @@ impl<'a> HostApi<'a> {
         }
     }
 
-    pub fn read_command_snapshot(&self) -> Result<Vec<MzCommandSummary>, MzStatusCode> {
-        let Some(read) = self.raw.read_command_snapshot else {
+    pub fn read_command_catalog(&self) -> Result<MzCommandCatalog, MzStatusCode> {
+        let Some(read) = self.raw.read_command_catalog else {
             return Err(MzStatusCode::NotFound);
         };
         let bytes = read();
         if bytes.ptr.is_null() || bytes.len == 0 {
-            return Ok(Vec::new());
+            return Ok(MzCommandCatalog::default());
         }
-        serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        MzCommandCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
             .map_err(|_| MzStatusCode::InternalError)
     }
 
-    pub fn read_view_snapshot(&self) -> Result<Vec<MzViewSummary>, MzStatusCode> {
-        let Some(read) = self.raw.read_view_snapshot else {
+    pub fn read_view_catalog(&self) -> Result<MzViewCatalog, MzStatusCode> {
+        let Some(read) = self.raw.read_view_catalog else {
             return Err(MzStatusCode::NotFound);
         };
         let bytes = read();
         if bytes.ptr.is_null() || bytes.len == 0 {
-            return Ok(Vec::new());
+            return Ok(MzViewCatalog::default());
         }
-        serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        MzViewCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
             .map_err(|_| MzStatusCode::InternalError)
     }
 
-    pub fn read_plugin_snapshot(&self) -> Result<MzPluginSnapshot, MzStatusCode> {
-        let Some(read) = self.raw.read_plugin_snapshot else {
+    pub fn read_plugin_state(&self) -> Result<MzPluginSnapshot, MzStatusCode> {
+        let Some(read) = self.raw.read_plugin_state else {
             return Err(MzStatusCode::NotFound);
         };
         let bytes = read();
         if bytes.ptr.is_null() || bytes.len == 0 {
             return Err(MzStatusCode::NotFound);
         }
-        serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        MzPluginSnapshot::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
             .map_err(|_| MzStatusCode::InternalError)
     }
 
-    pub fn read_about_snapshot(&self) -> Result<Vec<maruzzella_api::MzAboutSection>, MzStatusCode> {
-        let Some(read) = self.raw.read_about_snapshot else {
+    pub fn read_about_catalog(&self) -> Result<MzAboutCatalog, MzStatusCode> {
+        let Some(read) = self.raw.read_about_catalog else {
             return Err(MzStatusCode::NotFound);
         };
         let bytes = read();
         if bytes.ptr.is_null() || bytes.len == 0 {
-            return Ok(Vec::new());
+            return Ok(MzAboutCatalog::default());
         }
-        serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        MzAboutCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
             .map_err(|_| MzStatusCode::InternalError)
     }
 

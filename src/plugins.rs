@@ -9,12 +9,13 @@ use glib::translate::FromGlibPtrFull;
 use gtk::Widget;
 use libloading::{Library, Symbol};
 use maruzzella_api::{
-    MzAboutSection, MzBytes, MzCommandSpec, MzCommandSummary, MzContributionSurface, MzHostApi,
-    MzLogLevel, MzMenuItemSpec, MzMenuSurface, MzOpenViewRequest, MzOpenViewResult,
-    MzPluginDependency, MzPluginDescriptorView, MzPluginDiagnosticSummary, MzPluginLogSummary,
-    MzPluginSnapshot, MzPluginSummary, MzPluginVTable, MzSettingsPage, MzStatus, MzStatusCode,
-    MzStr, MzSurfaceContribution, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement,
-    MzViewQuery, MzViewQueryResult, MzViewSummary, MZ_ABI_VERSION_V1,
+    MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzCommandSummary,
+    MzContributionSurface, MzHostApi, MzLogLevel, MzMenuItemSpec, MzMenuSurface,
+    MzOpenViewRequest, MzOpenViewResult, MzPluginDependency, MzPluginDescriptorView,
+    MzPluginDiagnosticSummary, MzPluginLogSummary, MzPluginSnapshot, MzPluginSummary,
+    MzPluginVTable, MzSettingsPage, MzStatus, MzStatusCode, MzStr, MzSurfaceContribution,
+    MzViewCatalog, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement, MzViewQuery,
+    MzViewQueryResult, MzViewSummary, MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -385,10 +386,10 @@ impl PluginRuntime {
             focus_view: Some(host_focus_view),
             is_view_open: Some(host_is_view_open),
             update_view_title: Some(host_update_view_title),
-            read_command_snapshot: Some(host_read_command_snapshot),
-            read_view_snapshot: Some(host_read_view_snapshot),
-            read_plugin_snapshot: Some(host_read_plugin_snapshot),
-            read_about_snapshot: Some(host_read_about_snapshot),
+            read_command_catalog: Some(host_read_command_catalog),
+            read_view_catalog: Some(host_read_view_catalog),
+            read_plugin_state: Some(host_read_plugin_state),
+            read_about_catalog: Some(host_read_about_catalog),
             read_config: None,
             write_config: None,
         };
@@ -737,10 +738,10 @@ impl HostState {
             focus_view: None,
             is_view_open: None,
             update_view_title: None,
-            read_command_snapshot: None,
-            read_view_snapshot: None,
-            read_plugin_snapshot: None,
-            read_about_snapshot: None,
+            read_command_catalog: None,
+            read_view_catalog: None,
+            read_plugin_state: None,
+            read_about_catalog: None,
             read_config: Some(host_read_config),
             write_config: Some(host_write_config),
         }
@@ -1113,7 +1114,7 @@ extern "C" fn host_update_view_title(query: *const MzViewQuery, title: MzStr) ->
     }
 }
 
-extern "C" fn host_read_command_snapshot() -> MzBytes {
+extern "C" fn host_read_command_catalog() -> MzBytes {
     let Some(shell_host) = current_shell_host() else {
         return MzBytes::empty();
     };
@@ -1128,10 +1129,13 @@ extern "C" fn host_read_command_snapshot() -> MzBytes {
             title: command.title.clone(),
         })
         .collect::<Vec<_>>();
-    snapshot_bytes(&shell_host.command_snapshot_buffer, &commands)
+    snapshot_bytes(
+        &shell_host.command_snapshot_buffer,
+        &MzCommandCatalog { commands },
+    )
 }
 
-extern "C" fn host_read_view_snapshot() -> MzBytes {
+extern "C" fn host_read_view_catalog() -> MzBytes {
     let Some(shell_host) = current_shell_host() else {
         return MzBytes::empty();
     };
@@ -1148,10 +1152,10 @@ extern "C" fn host_read_view_snapshot() -> MzBytes {
             placement: view.placement,
         })
         .collect::<Vec<_>>();
-    snapshot_bytes(&shell_host.view_snapshot_buffer, &views)
+    snapshot_bytes(&shell_host.view_snapshot_buffer, &MzViewCatalog { views })
 }
 
-extern "C" fn host_read_plugin_snapshot() -> MzBytes {
+extern "C" fn host_read_plugin_state() -> MzBytes {
     let Some(shell_host) = current_shell_host() else {
         return MzBytes::empty();
     };
@@ -1228,7 +1232,7 @@ extern "C" fn host_read_plugin_snapshot() -> MzBytes {
     snapshot_bytes(&shell_host.plugin_snapshot_buffer, &snapshot)
 }
 
-extern "C" fn host_read_about_snapshot() -> MzBytes {
+extern "C" fn host_read_about_catalog() -> MzBytes {
     let Some(shell_host) = current_shell_host() else {
         return MzBytes::empty();
     };
@@ -1241,7 +1245,10 @@ extern "C" fn host_read_about_snapshot() -> MzBytes {
         .filter(|contribution| contribution.surface == Some(MzContributionSurface::AboutSections))
         .filter_map(|contribution| MzAboutSection::from_bytes(&contribution.payload).ok())
         .collect::<Vec<_>>();
-    snapshot_bytes(&shell_host.about_snapshot_buffer, &sections)
+    snapshot_bytes(
+        &shell_host.about_snapshot_buffer,
+        &MzAboutCatalog { sections },
+    )
 }
 
 thread_local! {

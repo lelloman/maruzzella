@@ -308,11 +308,41 @@ pub struct MzCommandSummary {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzCommandCatalog {
+    pub commands: Vec<MzCommandSummary>,
+}
+
+impl MzCommandCatalog {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MzViewSummary {
     pub plugin_id: String,
     pub view_id: String,
     pub title: String,
     pub placement: MzViewPlacement,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzViewCatalog {
+    pub views: Vec<MzViewSummary>,
+}
+
+impl MzViewCatalog {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -345,6 +375,31 @@ pub struct MzPluginSnapshot {
     pub activation_order: Vec<String>,
     pub diagnostics: Vec<MzPluginDiagnosticSummary>,
     pub plugins: Vec<MzPluginSummary>,
+}
+
+impl MzPluginSnapshot {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzAboutCatalog {
+    pub sections: Vec<MzAboutSection>,
+}
+
+impl MzAboutCatalog {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
 }
 
 impl MzSettingsPage {
@@ -552,10 +607,10 @@ pub type MzOpenViewFn = extern "C" fn(request: *const MzOpenViewRequest) -> MzOp
 pub type MzFocusViewFn = extern "C" fn(query: *const MzViewQuery) -> MzStatus;
 pub type MzIsViewOpenFn = extern "C" fn(query: *const MzViewQuery) -> MzViewQueryResult;
 pub type MzUpdateViewTitleFn = extern "C" fn(query: *const MzViewQuery, title: MzStr) -> MzStatus;
-pub type MzReadCommandSnapshotFn = extern "C" fn() -> MzBytes;
-pub type MzReadViewSnapshotFn = extern "C" fn() -> MzBytes;
-pub type MzReadPluginSnapshotFn = extern "C" fn() -> MzBytes;
-pub type MzReadAboutSnapshotFn = extern "C" fn() -> MzBytes;
+pub type MzReadCommandCatalogFn = extern "C" fn() -> MzBytes;
+pub type MzReadViewCatalogFn = extern "C" fn() -> MzBytes;
+pub type MzReadPluginStateFn = extern "C" fn() -> MzBytes;
+pub type MzReadAboutCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadConfigFn = extern "C" fn() -> MzBytes;
 pub type MzWriteConfigFn = extern "C" fn(payload: MzBytes) -> MzStatus;
 
@@ -574,10 +629,10 @@ pub struct MzHostApi {
     pub focus_view: Option<MzFocusViewFn>,
     pub is_view_open: Option<MzIsViewOpenFn>,
     pub update_view_title: Option<MzUpdateViewTitleFn>,
-    pub read_command_snapshot: Option<MzReadCommandSnapshotFn>,
-    pub read_view_snapshot: Option<MzReadViewSnapshotFn>,
-    pub read_plugin_snapshot: Option<MzReadPluginSnapshotFn>,
-    pub read_about_snapshot: Option<MzReadAboutSnapshotFn>,
+    pub read_command_catalog: Option<MzReadCommandCatalogFn>,
+    pub read_view_catalog: Option<MzReadViewCatalogFn>,
+    pub read_plugin_state: Option<MzReadPluginStateFn>,
+    pub read_about_catalog: Option<MzReadAboutCatalogFn>,
     pub read_config: Option<MzReadConfigFn>,
     pub write_config: Option<MzWriteConfigFn>,
 }
@@ -597,10 +652,10 @@ impl MzHostApi {
             focus_view: None,
             is_view_open: None,
             update_view_title: None,
-            read_command_snapshot: None,
-            read_view_snapshot: None,
-            read_plugin_snapshot: None,
-            read_about_snapshot: None,
+            read_command_catalog: None,
+            read_view_catalog: None,
+            read_plugin_state: None,
+            read_about_catalog: None,
             read_config: None,
             write_config: None,
         }

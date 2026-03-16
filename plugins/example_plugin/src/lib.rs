@@ -2,8 +2,8 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
-    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzStatusCode, Plugin, PluginDependency,
-    PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
+    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzMenuSurface, MzStatusCode, Plugin,
+    PluginDependency, PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -65,7 +65,7 @@ impl Plugin for ExamplePlugin {
         host.register_menu_item(MenuItemSpec::new(
             "com.example.hello",
             "example-plugin",
-            "maruzzella.menu.file.items",
+            MzMenuSurface::FileItems,
             "Example Plugin",
             "example.hello.show",
         ))?;

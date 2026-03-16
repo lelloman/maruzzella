@@ -5,16 +5,15 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Label, Orientation, Separator};
 use maruzzella_api::{
-    MzAboutSection, MzBytes, MzCommandSpec, MzHostApi, MzLogLevel, MzMenuItemSpec,
-    MzPluginDescriptorView, MzPluginVTable, MzSettingsPage, MzStatus, MzStr, MzSurfaceContribution,
-    MzVersion, MzViewFactorySpec, MzViewRequest, MZ_ABI_VERSION_V1,
+    MzAboutSection, MzBytes, MzCommandSpec, MzContributionSurface, MzHostApi, MzLogLevel,
+    MzMenuItemSpec, MzMenuSurface, MzPluginDescriptorView, MzPluginVTable, MzSettingsPage,
+    MzStatus, MzStr, MzSurfaceContribution, MzVersion, MzViewFactorySpec, MzViewRequest,
+    MZ_ABI_VERSION_V1,
 };
 
 use crate::plugins::{LoadedPlugin, PluginDescriptor, Version};
 
 const BASE_PLUGIN_ID: &str = "maruzzella.base";
-const SURFACE_ABOUT_SECTIONS: &str = "maruzzella.about.sections";
-const SURFACE_PLUGIN_SETTINGS_PAGES: &str = "maruzzella.plugins.settings_pages";
 
 const VIEW_WORKSPACE_HOME: &str = "maruzzella.base.workspace.home";
 const VIEW_WORKSPACE_QUEUE: &str = "maruzzella.base.workspace.queue";
@@ -93,14 +92,14 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             menu_id: MzStr::from_static("plugins"),
-            parent_id: MzStr::from_static("maruzzella.menu.file.items"),
+            parent_id: MzStr::from_static(MzMenuSurface::FileItems.as_str()),
             title: MzStr::from_static("Plugins"),
             command_id: MzStr::from_static("shell.plugins"),
         },
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             menu_id: MzStr::from_static("about"),
-            parent_id: MzStr::from_static("maruzzella.menu.help.items"),
+            parent_id: MzStr::from_static(MzMenuSurface::HelpItems.as_str()),
             title: MzStr::from_static("About Maruzzella"),
             command_id: MzStr::from_static("shell.about"),
         },
@@ -120,7 +119,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
     .expect("built-in settings page should serialize");
     let about = MzSurfaceContribution {
         plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
-        surface_id: MzStr::from_static(SURFACE_ABOUT_SECTIONS),
+        surface_id: MzStr::from_static(MzContributionSurface::AboutSections.as_str()),
         contribution_id: MzStr::from_static("maruzzella.base.about"),
         payload: MzBytes {
             ptr: about_payload.as_ptr(),
@@ -129,7 +128,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
     };
     let settings = MzSurfaceContribution {
         plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
-        surface_id: MzStr::from_static(SURFACE_PLUGIN_SETTINGS_PAGES),
+        surface_id: MzStr::from_static(MzContributionSurface::PluginSettingsPages.as_str()),
         contribution_id: MzStr::from_static("maruzzella.base.settings.workspace"),
         payload: MzBytes {
             ptr: settings_payload.as_ptr(),
@@ -636,11 +635,11 @@ mod tests {
         assert!(runtime
             .surface_contributions()
             .iter()
-            .any(|surface| surface.surface_id == SURFACE_ABOUT_SECTIONS));
+            .any(|surface| surface.surface == Some(MzContributionSurface::AboutSections)));
         assert!(runtime
             .surface_contributions()
             .iter()
-            .any(|surface| surface.surface_id == SURFACE_PLUGIN_SETTINGS_PAGES));
+            .any(|surface| surface.surface == Some(MzContributionSurface::PluginSettingsPages)));
         assert!(runtime
             .view_factories()
             .iter()

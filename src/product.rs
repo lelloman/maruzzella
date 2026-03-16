@@ -78,7 +78,7 @@ pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
         .collect::<HashSet<_>>();
 
     for item in runtime.menu_items() {
-        let Some((root_id, root_label)) = root_for_parent_surface(&item.parent_id) else {
+        let Some(parent_surface) = item.parent_surface else {
             if !known_root_ids.contains(&item.parent_id) {
                 continue;
             }
@@ -92,6 +92,9 @@ pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
             }
             continue;
         };
+
+        let root_id = parent_surface.root_id();
+        let root_label = parent_surface.root_label();
 
         if known_root_ids.insert(root_id.to_string()) {
             spec.menu_roots.push(MenuRootSpec {
@@ -111,15 +114,6 @@ pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
     }
 
     spec.menu_roots.sort_by_key(|root| menu_root_rank(&root.id));
-}
-
-fn root_for_parent_surface(parent_id: &str) -> Option<(&'static str, &'static str)> {
-    match parent_id {
-        "maruzzella.menu.file.items" => Some(("file", "File")),
-        "maruzzella.menu.help.items" => Some(("help", "Help")),
-        "maruzzella.menu.view.items" => Some(("view", "View")),
-        _ => None,
-    }
 }
 
 fn menu_root_rank(root_id: &str) -> (usize, String) {
@@ -325,6 +319,7 @@ mod tests {
     use crate::plugins::{
         PluginRuntime, RegisteredCommand, RegisteredMenuItem, RegisteredSurfaceContribution,
     };
+    use maruzzella_api::MzMenuSurface;
 
     #[test]
     fn merges_plugin_commands_and_surface_backed_menu_roots() {
@@ -341,12 +336,14 @@ mod tests {
                 plugin_id: "maruzzella.base".to_string(),
                 menu_id: "plugins".to_string(),
                 parent_id: "maruzzella.menu.file.items".to_string(),
+                parent_surface: Some(MzMenuSurface::FileItems),
                 title: "Plugins".to_string(),
                 command_id: "shell.plugins".to_string(),
             }],
             surface_contributions: vec![RegisteredSurfaceContribution {
                 plugin_id: "maruzzella.base".to_string(),
                 surface_id: "maruzzella.about.sections".to_string(),
+                surface: Some(maruzzella_api::MzContributionSurface::AboutSections),
                 contribution_id: "base.about".to_string(),
                 payload: Vec::new(),
             }],

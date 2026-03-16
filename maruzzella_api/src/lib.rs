@@ -232,6 +232,71 @@ impl MzSettingsPage {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MzMenuSurface {
+    FileItems,
+    ViewItems,
+    HelpItems,
+}
+
+impl MzMenuSurface {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FileItems => "maruzzella.menu.file.items",
+            Self::ViewItems => "maruzzella.menu.view.items",
+            Self::HelpItems => "maruzzella.menu.help.items",
+        }
+    }
+
+    pub const fn root_id(self) -> &'static str {
+        match self {
+            Self::FileItems => "file",
+            Self::ViewItems => "view",
+            Self::HelpItems => "help",
+        }
+    }
+
+    pub const fn root_label(self) -> &'static str {
+        match self {
+            Self::FileItems => "File",
+            Self::ViewItems => "View",
+            Self::HelpItems => "Help",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "maruzzella.menu.file.items" => Some(Self::FileItems),
+            "maruzzella.menu.view.items" => Some(Self::ViewItems),
+            "maruzzella.menu.help.items" => Some(Self::HelpItems),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MzContributionSurface {
+    AboutSections,
+    PluginSettingsPages,
+}
+
+impl MzContributionSurface {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AboutSections => "maruzzella.about.sections",
+            Self::PluginSettingsPages => "maruzzella.plugins.settings_pages",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "maruzzella.about.sections" => Some(Self::AboutSections),
+            "maruzzella.plugins.settings_pages" => Some(Self::PluginSettingsPages),
+            _ => None,
+        }
+    }
+}
+
 pub type MzCreateViewFn =
     extern "C" fn(host: *const MzHostApi, request: *const MzViewRequest) -> *mut c_void;
 
@@ -340,5 +405,23 @@ mod tests {
         let bytes = page.to_bytes().expect("settings page should serialize");
         let decoded = MzSettingsPage::from_bytes(&bytes).expect("settings page should decode");
         assert_eq!(decoded, page);
+    }
+
+    #[test]
+    fn menu_surface_helpers_roundtrip() {
+        let surface =
+            MzMenuSurface::parse("maruzzella.menu.file.items").expect("menu surface should parse");
+        assert_eq!(surface, MzMenuSurface::FileItems);
+        assert_eq!(surface.root_id(), "file");
+        assert_eq!(surface.root_label(), "File");
+        assert_eq!(surface.as_str(), "maruzzella.menu.file.items");
+    }
+
+    #[test]
+    fn contribution_surface_helpers_roundtrip() {
+        let surface = MzContributionSurface::parse("maruzzella.plugins.settings_pages")
+            .expect("surface should parse");
+        assert_eq!(surface, MzContributionSurface::PluginSettingsPages);
+        assert_eq!(surface.as_str(), "maruzzella.plugins.settings_pages");
     }
 }

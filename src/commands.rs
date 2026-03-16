@@ -6,7 +6,7 @@ use gtk::{
     Align, ApplicationWindow, Box as GtkBox, Dialog, Label, Orientation, ResponseType,
     ScrolledWindow, Separator,
 };
-use maruzzella_api::{MzAboutSection, MzSettingsPage};
+use maruzzella_api::{MzAboutSection, MzContributionSurface, MzSettingsPage};
 
 use crate::plugins::PluginHost;
 use crate::spec::{CommandSpec, ShellSpec};
@@ -389,7 +389,9 @@ fn about_sections(runtime: Option<&crate::plugins::PluginRuntime>) -> Vec<MzAbou
         for contribution in runtime
             .surface_contributions()
             .iter()
-            .filter(|contribution| contribution.surface_id == "maruzzella.about.sections")
+            .filter(|contribution| {
+                contribution.surface == Some(MzContributionSurface::AboutSections)
+            })
         {
             if let Ok(section) = MzAboutSection::from_bytes(&contribution.payload) {
                 sections.push(section);
@@ -418,7 +420,7 @@ fn settings_pages_for_plugin(
         .iter()
         .filter(|contribution| {
             contribution.plugin_id == plugin_id
-                && contribution.surface_id == "maruzzella.plugins.settings_pages"
+                && contribution.surface == Some(MzContributionSurface::PluginSettingsPages)
         })
     {
         if let Ok(page) = MzSettingsPage::from_bytes(&contribution.payload) {

@@ -8,9 +8,9 @@ use glib::translate::FromGlibPtrFull;
 use gtk::Widget;
 use libloading::{Library, Symbol};
 use maruzzella_api::{
-    MzBytes, MzCommandSpec, MzHostApi, MzLogLevel, MzMenuItemSpec, MzPluginDependency,
-    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStatusCode, MzStr, MzSurfaceContribution,
-    MzViewFactorySpec, MZ_ABI_VERSION_V1,
+    MzBytes, MzCommandSpec, MzContributionSurface, MzHostApi, MzLogLevel, MzMenuItemSpec,
+    MzMenuSurface, MzPluginDependency, MzPluginDescriptorView, MzPluginVTable, MzStatus,
+    MzStatusCode, MzStr, MzSurfaceContribution, MzViewFactorySpec, MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -112,6 +112,7 @@ pub struct RegisteredMenuItem {
     pub plugin_id: String,
     pub menu_id: String,
     pub parent_id: String,
+    pub parent_surface: Option<MzMenuSurface>,
     pub title: String,
     pub command_id: String,
 }
@@ -120,6 +121,7 @@ pub struct RegisteredMenuItem {
 pub struct RegisteredSurfaceContribution {
     pub plugin_id: String,
     pub surface_id: String,
+    pub surface: Option<MzContributionSurface>,
     pub contribution_id: String,
     pub payload: Vec<u8>,
 }
@@ -747,6 +749,7 @@ extern "C" fn host_register_menu_item(item: *const MzMenuItemSpec) -> MzStatus {
     state.menu_items.push(RegisteredMenuItem {
         plugin_id,
         menu_id,
+        parent_surface: MzMenuSurface::parse(&parent_id),
         parent_id,
         title,
         command_id,
@@ -785,6 +788,7 @@ extern "C" fn host_register_surface_contribution(
         .surface_contributions
         .push(RegisteredSurfaceContribution {
             plugin_id,
+            surface: MzContributionSurface::parse(&surface_id),
             surface_id,
             contribution_id,
             payload,
@@ -1037,13 +1041,15 @@ mod tests {
         let menu = maruzzella_api::MzMenuItemSpec {
             plugin_id: MzStr::from_static("maruzzella.base"),
             menu_id: MzStr::from_static("plugins"),
-            parent_id: MzStr::from_static("maruzzella.menu.file.items"),
+            parent_id: MzStr::from_static(maruzzella_api::MzMenuSurface::FileItems.as_str()),
             title: MzStr::from_static("Plugins"),
             command_id: MzStr::from_static("shell.plugins"),
         };
         let surface = maruzzella_api::MzSurfaceContribution {
             plugin_id: MzStr::from_static("maruzzella.base"),
-            surface_id: MzStr::from_static("maruzzella.about.sections"),
+            surface_id: MzStr::from_static(
+                maruzzella_api::MzContributionSurface::AboutSections.as_str(),
+            ),
             contribution_id: MzStr::from_static("base.about"),
             payload: maruzzella_api::MzBytes {
                 ptr: br#"{"title":"Base"}"#.as_ptr(),
@@ -1079,7 +1085,7 @@ mod tests {
         let menu = maruzzella_api::MzMenuItemSpec {
             plugin_id: MzStr::from_static("com.example.notes"),
             menu_id: MzStr::from_static("notes"),
-            parent_id: MzStr::from_static("maruzzella.menu.file.items"),
+            parent_id: MzStr::from_static(maruzzella_api::MzMenuSurface::FileItems.as_str()),
             title: MzStr::from_static("Notes"),
             command_id: MzStr::from_static("notes.open"),
         };

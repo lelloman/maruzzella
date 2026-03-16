@@ -4,7 +4,7 @@ use maruzzella_api::{
     MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion, MzViewFactorySpec,
     MzViewRequest, MZ_ABI_VERSION_V1,
 };
-pub use maruzzella_api::{MzLogLevel, MzStatusCode};
+pub use maruzzella_api::{MzContributionSurface, MzLogLevel, MzMenuSurface, MzStatusCode};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Version(pub MzVersion);
@@ -143,7 +143,7 @@ impl CommandSpec {
 pub struct MenuItemSpec {
     pub plugin_id: &'static str,
     pub menu_id: &'static str,
-    pub parent_id: &'static str,
+    pub parent: MzMenuSurface,
     pub title: &'static str,
     pub command_id: &'static str,
 }
@@ -152,14 +152,14 @@ impl MenuItemSpec {
     pub const fn new(
         plugin_id: &'static str,
         menu_id: &'static str,
-        parent_id: &'static str,
+        parent: MzMenuSurface,
         title: &'static str,
         command_id: &'static str,
     ) -> Self {
         Self {
             plugin_id,
             menu_id,
-            parent_id,
+            parent,
             title,
             command_id,
         }
@@ -169,7 +169,7 @@ impl MenuItemSpec {
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(self.plugin_id),
             menu_id: MzStr::from_static(self.menu_id),
-            parent_id: MzStr::from_static(self.parent_id),
+            parent_id: MzStr::from_static(self.parent.as_str()),
             title: MzStr::from_static(self.title),
             command_id: MzStr::from_static(self.command_id),
         }
@@ -179,7 +179,7 @@ impl MenuItemSpec {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SurfaceContributionSpec {
     pub plugin_id: &'static str,
-    pub surface_id: &'static str,
+    pub surface: MzContributionSurface,
     pub contribution_id: &'static str,
     pub payload: Vec<u8>,
 }
@@ -216,13 +216,13 @@ impl ViewFactorySpec {
 impl SurfaceContributionSpec {
     pub fn new(
         plugin_id: &'static str,
-        surface_id: &'static str,
+        surface: MzContributionSurface,
         contribution_id: &'static str,
         payload: impl Into<Vec<u8>>,
     ) -> Self {
         Self {
             plugin_id,
-            surface_id,
+            surface,
             contribution_id,
             payload: payload.into(),
         }
@@ -239,7 +239,7 @@ impl SurfaceContributionSpec {
             .expect("about sections should serialize");
         Self::new(
             plugin_id,
-            "maruzzella.about.sections",
+            MzContributionSurface::AboutSections,
             contribution_id,
             payload,
         )
@@ -256,7 +256,7 @@ impl SurfaceContributionSpec {
             .expect("settings pages should serialize");
         Self::new(
             plugin_id,
-            "maruzzella.plugins.settings_pages",
+            MzContributionSurface::PluginSettingsPages,
             contribution_id,
             payload,
         )
@@ -265,7 +265,7 @@ impl SurfaceContributionSpec {
     fn as_ffi(&self) -> MzSurfaceContribution {
         MzSurfaceContribution {
             plugin_id: MzStr::from_static(self.plugin_id),
-            surface_id: MzStr::from_static(self.surface_id),
+            surface_id: MzStr::from_static(self.surface.as_str()),
             contribution_id: MzStr::from_static(self.contribution_id),
             payload: MzBytes {
                 ptr: self.payload.as_ptr(),

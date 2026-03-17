@@ -58,7 +58,7 @@ pub fn build(spec: &ShellSpec) -> TopBar {
 }
 
 fn action_bar_item_button(item: &ToolbarItemSpec) -> Button {
-    let action_ref = menu_action_ref(&item.command_id);
+    let action_ref = menu_action_ref(&item.id);
     match (&item.icon_name, &item.label) {
         (Some(icon_name), Some(label)) => toolbar_button(icon_name, label, &action_ref),
         (Some(icon_name), None) => icon_button(icon_name, &action_ref, &item.id),
@@ -113,7 +113,7 @@ fn build_menu_model(spec: &ShellSpec) -> gio::Menu {
 fn submenu(items: &[MenuItemSpec]) -> gio::Menu {
     let submenu = gio::Menu::new();
     for item in items {
-        submenu.append(Some(&item.label), Some(&menu_action_ref(&item.command_id)));
+        submenu.append(Some(&item.label), Some(&menu_action_ref(&item.id)));
     }
     submenu
 }
@@ -129,10 +129,26 @@ pub fn install_actions(
         let title = command.title.clone();
         simple.connect_activate(move |_, _| {
             if let Some(handler) = handler.as_ref() {
-                handler();
+                handler(&[]);
             } else {
                 eprintln!("unhandled command: {title}");
             }
+        });
+        window.add_action(&simple);
+    }
+
+    for action_id in spec
+        .menu_items
+        .iter()
+        .map(|item| item.id.as_str())
+        .chain(spec.toolbar_items.iter().map(|item| item.id.as_str()))
+    {
+        let Some(handler) = registry.handler_for(action_id) else {
+            continue;
+        };
+        let simple = gio::SimpleAction::new(&command_name(action_id), None);
+        simple.connect_activate(move |_, _| {
+            handler(&[]);
         });
         window.add_action(&simple);
     }

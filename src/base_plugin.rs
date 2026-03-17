@@ -126,6 +126,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             parent_id: MzStr::from_static(MzMenuSurface::ViewItems.as_str()),
             title: MzStr::from_static("Command Palette"),
             command_id: MzStr::from_static("shell.open_command_palette"),
+            payload: MzBytes::empty(),
         },
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
@@ -133,6 +134,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             parent_id: MzStr::from_static(MzMenuSurface::ViewItems.as_str()),
             title: MzStr::from_static("Reload Theme"),
             command_id: MzStr::from_static("shell.reload_theme"),
+            payload: MzBytes::empty(),
         },
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
@@ -140,6 +142,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             parent_id: MzStr::from_static(MzMenuSurface::ViewItems.as_str()),
             title: MzStr::from_static("Browse Views"),
             command_id: MzStr::from_static("shell.browse_views"),
+            payload: MzBytes::empty(),
         },
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
@@ -147,6 +150,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             parent_id: MzStr::from_static(MzMenuSurface::FileItems.as_str()),
             title: MzStr::from_static("Plugins"),
             command_id: MzStr::from_static("shell.plugins"),
+            payload: MzBytes::empty(),
         },
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
@@ -154,6 +158,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             parent_id: MzStr::from_static(MzMenuSurface::FileItems.as_str()),
             title: MzStr::from_static("Settings"),
             command_id: MzStr::from_static("shell.settings"),
+            payload: MzBytes::empty(),
         },
         MzMenuItemSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
@@ -161,6 +166,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             parent_id: MzStr::from_static(MzMenuSurface::HelpItems.as_str()),
             title: MzStr::from_static("About Maruzzella"),
             command_id: MzStr::from_static("shell.about"),
+            payload: MzBytes::empty(),
         },
     ];
 

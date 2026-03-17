@@ -3,8 +3,8 @@ use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
     export_plugin, CommandSpec, HostApi, MenuItemSpec, MzConfigContract, MzMenuSurface,
-    MzSettingsCategory, MzStatusCode, MzViewPlacement, Plugin, PluginDependency,
-    PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
+    MzSettingsCategory, MzStatusCode, MzToolbarItem, MzViewPlacement, Plugin,
+    PluginDependency, PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +21,12 @@ struct ExamplePluginConfig {
 extern "C" fn show_example_plugin(
     payload: maruzzella_sdk::ffi::MzBytes,
 ) -> maruzzella_sdk::ffi::MzStatus {
-    let _ = payload;
+    if !payload.ptr.is_null() && payload.len > 0 {
+        let bytes = unsafe { std::slice::from_raw_parts(payload.ptr, payload.len) };
+        if std::str::from_utf8(bytes).is_err() {
+            return maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument);
+        }
+    }
     maruzzella_sdk::ffi::MzStatus::OK
 }
 
@@ -67,13 +72,27 @@ impl Plugin for ExamplePlugin {
             MzMenuSurface::FileItems,
             "Example Plugin",
             "example.hello.show",
-        ))?;
+        )
+        .with_payload(b"open-from-menu"))?;
 
         host.register_surface_contribution(SurfaceContributionSpec::about_section(
             "com.example.hello",
             "com.example.hello.about",
             "Example Plugin",
             "Loaded from a dynamic library",
+        ))?;
+
+        host.register_surface_contribution(SurfaceContributionSpec::toolbar_item(
+            "com.example.hello",
+            "com.example.hello.toolbar.show",
+            MzToolbarItem::new(
+                "example-plugin-toolbar",
+                Some("face-smile-symbolic".to_string()),
+                Some("Example".to_string()),
+                "example.hello.show",
+                true,
+            )
+            .with_payload(b"open-from-toolbar"),
         ))?;
 
         host.register_surface_contribution(SurfaceContributionSpec::settings_page(

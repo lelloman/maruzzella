@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use gtk::ApplicationWindow;
@@ -16,7 +16,7 @@ const BASE_SETTINGS_VIEW_ID: &str = "maruzzella.base.workspace.settings";
 const BASE_COMMANDS_VIEW_ID: &str = "maruzzella.base.workspace.commands";
 const BASE_REGISTERED_VIEWS_VIEW_ID: &str = "maruzzella.base.workspace.registered_views";
 
-type CommandHandler = Rc<dyn Fn()>;
+type CommandHandler = Rc<dyn Fn(&[u8])>;
 
 #[derive(Clone, Default)]
 pub struct CommandRegistry {
@@ -30,7 +30,7 @@ impl CommandRegistry {
 
     pub fn register<F>(&mut self, command_id: &str, handler: F)
     where
-        F: Fn() + 'static,
+        F: Fn(&[u8]) + 'static,
     {
         self.handlers
             .insert(command_id.to_string(), Rc::new(handler));
@@ -51,7 +51,7 @@ pub fn shell_registry(
 ) -> CommandRegistry {
     let mut registry = CommandRegistry::new();
 
-    registry.register("shell.reload_theme", move || {
+    registry.register("shell.reload_theme", move |_| {
         theme::reload();
     });
 
@@ -59,7 +59,7 @@ pub fn shell_registry(
     let persistence_id_for_about = persistence_id.to_string();
     let state_for_about = shell_state.clone();
     let handles_for_about = group_handles.clone();
-    registry.register("shell.about", move || {
+    registry.register("shell.about", move |_| {
         open_base_view(
             host_for_about.as_deref(),
             &persistence_id_for_about,
@@ -74,7 +74,7 @@ pub fn shell_registry(
     let persistence_id_for_commands = persistence_id.to_string();
     let state_for_commands = shell_state.clone();
     let handles_for_commands = group_handles.clone();
-    registry.register("shell.open_command_palette", move || {
+    registry.register("shell.open_command_palette", move |_| {
         open_base_view(
             host_for_commands.as_deref(),
             &persistence_id_for_commands,
@@ -89,7 +89,7 @@ pub fn shell_registry(
     let persistence_id_for_plugins = persistence_id.to_string();
     let state_for_plugins = shell_state.clone();
     let handles_for_plugins = group_handles.clone();
-    registry.register("shell.plugins", move || {
+    registry.register("shell.plugins", move |_| {
         open_base_view(
             host_for_plugins.as_deref(),
             &persistence_id_for_plugins,
@@ -104,7 +104,7 @@ pub fn shell_registry(
     let persistence_id_for_settings = persistence_id.to_string();
     let state_for_settings = shell_state.clone();
     let handles_for_settings = group_handles.clone();
-    registry.register("shell.settings", move || {
+    registry.register("shell.settings", move |_| {
         open_base_view(
             host_for_settings.as_deref(),
             &persistence_id_for_settings,
@@ -119,7 +119,7 @@ pub fn shell_registry(
     let persistence_id_for_views = persistence_id.to_string();
     let state_for_views = shell_state.clone();
     let handles_for_views = group_handles.clone();
-    registry.register("shell.browse_views", move || {
+    registry.register("shell.browse_views", move |_| {
         open_base_view(
             host_for_views.as_deref(),
             &persistence_id_for_views,
@@ -140,12 +140,37 @@ pub fn shell_registry(
             }
             let command_id = command.id.clone();
             let runtime = plugin_runtime.clone();
-            registry.register(&command_id.clone(), move || {
-                if let Err(status) = runtime.dispatch_command(&command_id, &[]) {
+            registry.register(&command_id.clone(), move |payload| {
+                if let Err(status) = runtime.dispatch_command(&command_id, payload) {
                     eprintln!("plugin command failed: {command_id} ({status:?})");
                 }
             });
         }
+    }
+
+    let mut invocation_ids = HashSet::new();
+    for item in spec
+        .menu_items
+        .iter()
+        .map(|item| (item.id.as_str(), item.command_id.as_str(), item.payload.clone()))
+        .chain(
+            spec.toolbar_items
+                .iter()
+                .map(|item| (item.id.as_str(), item.command_id.as_str(), item.payload.clone())),
+        )
+    {
+        if !invocation_ids.insert(item.0.to_string()) {
+            continue;
+        }
+        let action_id = item.0.to_string();
+        let command_id = item.1.to_string();
+        let payload = item.2;
+        let Some(handler) = registry.handler_for(&command_id) else {
+            continue;
+        };
+        registry.register(&action_id, move |_| {
+            handler(&payload);
+        });
     }
 
     registry

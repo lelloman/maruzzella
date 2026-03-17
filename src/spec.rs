@@ -81,6 +81,8 @@ pub struct ToolbarItemSpec {
     pub icon_name: Option<String>,
     pub label: Option<String>,
     pub command_id: String,
+    #[serde(default)]
+    pub payload: Vec<u8>,
     pub secondary: bool,
 }
 
@@ -96,6 +98,8 @@ pub struct MenuItemSpec {
     pub root_id: String,
     pub label: String,
     pub command_id: String,
+    #[serde(default)]
+    pub payload: Vec<u8>,
 }
 
 impl TabGroupSpec {

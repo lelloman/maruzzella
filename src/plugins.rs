@@ -127,6 +127,7 @@ pub struct RegisteredMenuItem {
     pub parent_surface: Option<MzMenuSurface>,
     pub title: String,
     pub command_id: String,
+    pub payload: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -198,7 +199,7 @@ pub struct PluginRuntime {
     pub(crate) surface_contributions: Vec<RegisteredSurfaceContribution>,
     pub(crate) view_factories: Vec<RegisteredViewFactory>,
     pub(crate) logs: Vec<PluginLogEntry>,
-    pub(crate) diagnostics: Vec<PluginDiagnostic>,
+    pub(crate) diagnostics: RefCell<Vec<PluginDiagnostic>>,
     view_host: RefCell<Option<Rc<PluginShellHost>>>,
 }
 
@@ -266,7 +267,7 @@ impl PluginRuntime {
             surface_contributions: host_state.surface_contributions,
             view_factories: host_state.view_factories,
             logs: host_state.logs,
-            diagnostics: Vec::new(),
+            diagnostics: RefCell::new(Vec::new()),
             view_host: RefCell::new(None),
         })
     }
@@ -281,7 +282,7 @@ impl PluginRuntime {
             surface_contributions: Vec::new(),
             view_factories: Vec::new(),
             logs: Vec::new(),
-            diagnostics: Vec::new(),
+            diagnostics: RefCell::new(Vec::new()),
             view_host: RefCell::new(None),
         }
     }
@@ -326,9 +327,16 @@ impl PluginRuntime {
             .iter()
             .find(|command| command.command_id == command_id)
         else {
+            self.record_command_diagnostic(None, command_id, payload.len(), MzStatusCode::NotFound);
             return Err(MzStatusCode::NotFound);
         };
         let Some(invoke) = command.invoke else {
+            self.record_command_diagnostic(
+                Some(command.plugin_id.as_str()),
+                command_id,
+                payload.len(),
+                MzStatusCode::NotFound,
+            );
             return Err(MzStatusCode::NotFound);
         };
         let status = invoke(MzBytes {
@@ -338,8 +346,31 @@ impl PluginRuntime {
         if status.is_ok() {
             Ok(())
         } else {
+            self.record_command_diagnostic(
+                Some(command.plugin_id.as_str()),
+                command_id,
+                payload.len(),
+                status.code,
+            );
             Err(status.code)
         }
+    }
+
+    fn record_command_diagnostic(
+        &self,
+        plugin_id: Option<&str>,
+        command_id: &str,
+        payload_len: usize,
+        status: MzStatusCode,
+    ) {
+        self.diagnostics.borrow_mut().push(PluginDiagnostic {
+            level: PluginDiagnosticLevel::Error,
+            plugin_id: plugin_id.map(str::to_string),
+            path: None,
+            message: format!(
+                "command dispatch failed: {command_id} (payload: {payload_len} bytes, status: {status:?})"
+            ),
+        });
     }
 
     pub fn menu_items(&self) -> &[RegisteredMenuItem] {
@@ -889,6 +920,7 @@ extern "C" fn host_register_menu_item(item: *const MzMenuItemSpec) -> MzStatus {
         parent_id,
         title,
         command_id,
+        payload: bytes_to_vec(item.payload),
     });
     MzStatus::OK
 }
@@ -1427,6 +1459,7 @@ extern "C" fn host_read_diagnostic_catalog() -> MzBytes {
     };
     let diagnostics = runtime
         .diagnostics
+        .borrow()
         .iter()
         .map(|diagnostic| MzPluginDiagnosticSummary {
             level: format!("{:?}", diagnostic.level),
@@ -1697,6 +1730,7 @@ mod tests {
             parent_id: MzStr::from_static(maruzzella_api::MzMenuSurface::FileItems.as_str()),
             title: MzStr::from_static("Plugins"),
             command_id: MzStr::from_static("shell.plugins"),
+            payload: MzBytes::empty(),
         };
         let surface = maruzzella_api::MzSurfaceContribution {
             plugin_id: MzStr::from_static("maruzzella.base"),
@@ -1741,6 +1775,7 @@ mod tests {
             parent_id: MzStr::from_static(maruzzella_api::MzMenuSurface::FileItems.as_str()),
             title: MzStr::from_static("Notes"),
             command_id: MzStr::from_static("notes.open"),
+            payload: MzBytes::empty(),
         };
         host.register_menu_item.expect("menu registrar")(&menu);
         maruzzella_api::MzStatus::OK

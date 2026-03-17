@@ -173,6 +173,7 @@ pub struct MzMenuItemSpec {
     pub parent_id: MzStr,
     pub title: MzStr,
     pub command_id: MzStr,
+    pub payload: MzBytes,
 }
 
 #[repr(C)]
@@ -273,6 +274,8 @@ pub struct MzToolbarItem {
     pub icon_name: Option<String>,
     pub label: Option<String>,
     pub command_id: String,
+    #[serde(default)]
+    pub payload: Vec<u8>,
     pub secondary: bool,
 }
 
@@ -289,8 +292,14 @@ impl MzToolbarItem {
             icon_name,
             label,
             command_id: command_id.into(),
+            payload: Vec::new(),
             secondary,
         }
+    }
+
+    pub fn with_payload(mut self, payload: impl Into<Vec<u8>>) -> Self {
+        self.payload = payload.into();
+        self
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {

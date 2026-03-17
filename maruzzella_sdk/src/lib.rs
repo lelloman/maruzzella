@@ -153,6 +153,7 @@ pub struct MenuItemSpec {
     pub parent: MzMenuSurface,
     pub title: &'static str,
     pub command_id: &'static str,
+    pub payload: &'static [u8],
 }
 
 impl MenuItemSpec {
@@ -169,7 +170,13 @@ impl MenuItemSpec {
             parent,
             title,
             command_id,
+            payload: &[],
         }
+    }
+
+    pub const fn with_payload(mut self, payload: &'static [u8]) -> Self {
+        self.payload = payload;
+        self
     }
 
     fn into_ffi(self) -> MzMenuItemSpec {
@@ -179,6 +186,10 @@ impl MenuItemSpec {
             parent_id: MzStr::from_static(self.parent.as_str()),
             title: MzStr::from_static(self.title),
             command_id: MzStr::from_static(self.command_id),
+            payload: MzBytes {
+                ptr: self.payload.as_ptr(),
+                len: self.payload.len(),
+            },
         }
     }
 }

@@ -111,8 +111,8 @@ fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
         plugins,
         &config.persistence_id,
     ) {
-        Ok(mut runtime) => {
-            runtime.diagnostics = diagnostics.clone();
+        Ok(runtime) => {
+            runtime.diagnostics.replace(diagnostics.clone());
             PluginHost::new(Some(Rc::new(runtime)), diagnostics)
         }
         Err(error) => {

@@ -129,6 +129,7 @@ fn merge_runtime_menus(spec: &mut ShellSpec, runtime: &PluginRuntime) {
                     root_id: item.parent_id.clone(),
                     label: item.title.clone(),
                     command_id: item.command_id.clone(),
+                    payload: item.payload.clone(),
                 });
             }
             continue;
@@ -150,6 +151,7 @@ fn merge_runtime_menus(spec: &mut ShellSpec, runtime: &PluginRuntime) {
                 root_id: root_id.to_string(),
                 label: item.title.clone(),
                 command_id: item.command_id.clone(),
+                payload: item.payload.clone(),
             });
         }
     }
@@ -178,6 +180,7 @@ fn merge_runtime_toolbar(spec: &mut ShellSpec, runtime: &PluginRuntime) {
                 icon_name: item.icon_name,
                 label: item.label,
                 command_id: item.command_id,
+                payload: item.payload,
                 secondary: item.secondary,
             });
         }
@@ -286,6 +289,7 @@ mod tests {
             parent_surface: Some(MzMenuSurface::FileItems),
             title: "Plugins".to_string(),
             command_id: "shell.plugins".to_string(),
+            payload: Vec::new(),
         }];
         runtime.surface_contributions = vec![RegisteredSurfaceContribution {
             plugin_id: "maruzzella.base".to_string(),

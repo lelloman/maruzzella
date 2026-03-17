@@ -43,6 +43,12 @@ The platform artifact will be:
 - macOS: `.dylib`
 - Windows: `.dll`
 
+Typical debug artifact names are:
+
+- Linux: `target/debug/libyour_plugin.so`
+- macOS: `target/debug/libyour_plugin.dylib`
+- Windows: `target/debug/your_plugin.dll`
+
 ## 4. Load It In Maruzzella
 
 You have two supported host-side options.
@@ -61,6 +67,24 @@ Discovery directory:
 - add a custom directory with `with_plugin_dir(...)`
 
 Default discovery can be disabled with `without_default_plugin_discovery()`.
+
+## Packaging Notes
+
+For now Maruzzella expects raw platform-native dynamic libraries, not packaged bundles.
+
+Recommended downstream conventions:
+
+- ship plugins as separate platform artifacts
+- copy them into a per-app plugin directory at install time
+- keep third-party plugins out of the app binary directory unless the product explicitly wants that layout
+
+Recommended install targets:
+
+- Linux: `$XDG_CONFIG_HOME/<persistence_id>/plugins` for local development, or an app-managed plugin dir for packaged apps
+- macOS: an app-managed plugin dir plus `with_plugin_dir(...)` is the cleanest current path
+- Windows: an app-managed plugin dir plus `with_plugin_dir(...)` is the cleanest current path
+
+The host-side discovery logic only filters by platform library extension right now. It does not impose signing, manifests, or packaging metadata.
 
 ## 5. Shared Contracts
 

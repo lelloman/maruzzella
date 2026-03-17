@@ -208,6 +208,16 @@ The sample plugin in [plugins/example_plugin](/home/lelloman/lelloprojects/maruz
 
 See [docs/plugin-author-workflow.md](/home/lelloman/lelloprojects/maruzzella/docs/plugin-author-workflow.md) for a concrete workflow.
 
+## Packaging Notes
+
+Maruzzella currently loads raw platform-native plugin libraries.
+
+- Linux plugins are expected as `.so`
+- macOS plugins are expected as `.dylib`
+- Windows plugins are expected as `.dll`
+
+The current recommended packaging convention is to install plugin libraries into a product-managed plugin directory and point Maruzzella at that directory with discovery, rather than relying on ad hoc working-directory copies in production.
+
 ## Versioning Policy
 
 `maruzzella_api` now follows a simple policy:

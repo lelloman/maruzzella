@@ -2,10 +2,10 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
-    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzConfigContract, MzHostEvent,
-    MzMenuSurface, MzSettingsCategory, MzStatusCode, MzToolbarItem, MzViewPlacement, Plugin,
-    PluginDependency, PluginDescriptor, ServiceSpec, SurfaceContributionSpec, Version,
-    ViewFactorySpec,
+    decode_json_payload, export_plugin, CommandSpec, HostApi, MenuItemSpec, MzConfigContract,
+    MzHostEvent, MzMenuSurface, MzSettingsCategory, MzStatusCode, MzToolbarItem,
+    MzViewPlacement, Plugin, PluginDependency, PluginDescriptor, SurfaceContributionSpec,
+    Version, ViewFactorySpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -23,21 +23,14 @@ struct ExamplePluginConfig {
 extern "C" fn show_example_plugin(
     payload: maruzzella_sdk::ffi::MzBytes,
 ) -> maruzzella_sdk::ffi::MzStatus {
-    if !payload.ptr.is_null() && payload.len > 0 {
-        let bytes = unsafe { std::slice::from_raw_parts(payload.ptr, payload.len) };
-        if std::str::from_utf8(bytes).is_err() {
-            return maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument);
-        }
+    if decode_json_payload::<String>(payload).is_err() {
+        return maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument);
     }
     maruzzella_sdk::ffi::MzStatus::OK
 }
 
 extern "C" fn observe_host_event(payload: maruzzella_sdk::ffi::MzBytes) -> maruzzella_sdk::ffi::MzStatus {
-    if payload.ptr.is_null() || payload.len == 0 {
-        return maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument);
-    }
-    let bytes = unsafe { std::slice::from_raw_parts(payload.ptr, payload.len) };
-    match serde_json::from_slice::<MzHostEvent>(bytes) {
+    match decode_json_payload::<MzHostEvent>(payload) {
         Ok(_) => maruzzella_sdk::ffi::MzStatus::OK,
         Err(_) => maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument),
     }
@@ -69,13 +62,13 @@ impl Plugin for ExamplePlugin {
         let mut config = host.read_json_config::<ExamplePluginConfig>()?;
         config.launches += 1;
         host.write_json_config(&config, Some(CONFIG_SCHEMA_VERSION))?;
-        host.register_service(&ServiceSpec::new(
+        host.register_json_service(
             "com.example.hello",
             EXAMPLE_SERVICE_ID,
             "0.1.0",
             "Example runtime state service",
-            serde_json::to_vec(&config).map_err(|_| MzStatusCode::InternalError)?,
-        ))?;
+            &config,
+        )?;
         host.register_host_event_subscriber(
             "maruzzella.command.dispatched",
             observe_host_event,
@@ -98,7 +91,7 @@ impl Plugin for ExamplePlugin {
             "Example Plugin",
             "example.hello.show",
         )
-        .with_payload(b"open-from-menu"))?;
+        .with_payload(b"\"open-from-menu\""))?;
 
         host.register_surface_contribution(SurfaceContributionSpec::about_section(
             "com.example.hello",
@@ -117,7 +110,7 @@ impl Plugin for ExamplePlugin {
                 "example.hello.show",
                 true,
             )
-            .with_payload(b"open-from-toolbar"),
+            .with_payload(b"\"open-from-toolbar\""),
         ))?;
 
         host.register_surface_contribution(SurfaceContributionSpec::settings_page(
@@ -171,18 +164,8 @@ impl Plugin for ExamplePlugin {
 }
 
 fn load_config(host: &maruzzella_sdk::ffi::MzHostApi) -> ExamplePluginConfig {
-    let Some(read) = host.read_config_record else {
-        return ExamplePluginConfig::default();
-    };
-    let bytes = read();
-    if bytes.ptr.is_null() || bytes.len == 0 {
-        return ExamplePluginConfig::default();
-    }
-    let record = maruzzella_sdk::MzConfigRecord::from_bytes(unsafe {
-        std::slice::from_raw_parts(bytes.ptr, bytes.len)
-    })
-    .unwrap_or_default();
-    serde_json::from_slice(&record.payload)
+    HostApi::from_raw(host)
+        .read_json_config::<ExamplePluginConfig>()
         .unwrap_or_default()
 }
 
@@ -190,24 +173,7 @@ fn save_config(
     host: &maruzzella_sdk::ffi::MzHostApi,
     config: &ExamplePluginConfig,
 ) -> Result<(), MzStatusCode> {
-    let Some(write) = host.write_config_record else {
-        return Err(MzStatusCode::NotFound);
-    };
-    let payload = maruzzella_sdk::MzConfigRecord::new(
-        serde_json::to_vec(config).map_err(|_| MzStatusCode::InternalError)?,
-    )
-    .with_schema_version(CONFIG_SCHEMA_VERSION)
-    .to_bytes()
-    .map_err(|_| MzStatusCode::InternalError)?;
-    let status = write(maruzzella_sdk::ffi::MzBytes {
-        ptr: payload.as_ptr(),
-        len: payload.len(),
-    });
-    if status.is_ok() {
-        Ok(())
-    } else {
-        Err(status.code)
-    }
+    HostApi::from_raw(host).write_json_config(config, Some(CONFIG_SCHEMA_VERSION))
 }
 
 extern "C" fn create_example_settings_view(

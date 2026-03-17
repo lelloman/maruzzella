@@ -13,6 +13,19 @@ use maruzzella_api::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 
+pub fn encode_json_payload<T: Serialize>(value: &T) -> Result<Vec<u8>, MzStatusCode> {
+    serde_json::to_vec(value).map_err(|_| MzStatusCode::InternalError)
+}
+
+pub fn decode_json_payload<T: DeserializeOwned>(bytes: MzBytes) -> Result<Option<T>, MzStatusCode> {
+    if bytes.ptr.is_null() || bytes.len == 0 {
+        return Ok(None);
+    }
+    serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        .map(Some)
+        .map_err(|_| MzStatusCode::InternalError)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Version(pub MzVersion);
 
@@ -509,6 +522,24 @@ impl<'a> HostApi<'a> {
         }
     }
 
+    pub fn register_json_service<T: Serialize>(
+        &self,
+        plugin_id: &'static str,
+        service_id: &'static str,
+        version: &'static str,
+        summary: &'static str,
+        value: &T,
+    ) -> Result<(), MzStatusCode> {
+        let payload = encode_json_payload(value)?;
+        self.register_service(&ServiceSpec::new(
+            plugin_id,
+            service_id,
+            version,
+            summary,
+            payload,
+        ))
+    }
+
     pub fn register_host_event_subscriber(
         &self,
         event_id: &'static str,
@@ -739,6 +770,18 @@ impl<'a> HostApi<'a> {
         Ok(Some(
             unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) }.to_vec(),
         ))
+    }
+
+    pub fn read_json_service<T: DeserializeOwned>(
+        &self,
+        service_id: &str,
+    ) -> Result<Option<T>, MzStatusCode> {
+        let Some(bytes) = self.read_service(service_id)? else {
+            return Ok(None);
+        };
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|_| MzStatusCode::InternalError)
     }
 
     pub fn read_settings_catalog(&self) -> Result<MzSettingsCatalog, MzStatusCode> {
@@ -1017,5 +1060,23 @@ mod tests {
     fn export_vtable_uses_v1_abi() {
         let vtable = plugin_vtable::<ExamplePlugin>();
         assert_eq!(vtable.abi_version, MZ_ABI_VERSION_V1);
+    }
+
+    #[test]
+    fn typed_json_payload_helpers_roundtrip() {
+        #[derive(Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+        struct Payload {
+            launches: u32,
+        }
+
+        let payload = Payload { launches: 7 };
+        let bytes = encode_json_payload(&payload).expect("payload should encode");
+        let decoded = decode_json_payload::<Payload>(MzBytes {
+            ptr: bytes.as_ptr(),
+            len: bytes.len(),
+        })
+        .expect("payload should decode")
+        .expect("payload should exist");
+        assert_eq!(decoded, payload);
     }
 }

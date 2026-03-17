@@ -100,10 +100,10 @@ fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
             }),
         }
     }
-    for path in &config.plugin_paths {
-        match load_plugin(path) {
+    for path in discovered_plugin_paths(config) {
+        match load_plugin(&path) {
             Ok(plugin) => plugins.push(plugin),
-            Err(error) => diagnostics.push(diagnostic_for_load_error(path, &error)),
+            Err(error) => diagnostics.push(diagnostic_for_load_error(&path, &error)),
         }
     }
 
@@ -120,6 +120,36 @@ fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
             PluginHost::new(None, diagnostics)
         }
     }
+}
+
+fn discovered_plugin_paths(config: &MaruzzellaConfig) -> Vec<std::path::PathBuf> {
+    let mut ordered_paths = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for path in &config.plugin_paths {
+        if seen.insert(path.clone()) {
+            ordered_paths.push(path.clone());
+        }
+    }
+
+    let discovery_dirs = if config.enable_default_plugin_discovery {
+        crate::default_plugin_discovery_dirs(&config.persistence_id)
+            .into_iter()
+            .chain(config.plugin_dirs.iter().cloned())
+            .collect::<Vec<_>>()
+    } else {
+        config.plugin_dirs.clone()
+    };
+
+    for dir in discovery_dirs {
+        for path in crate::discover_plugin_paths_in_dir(&dir) {
+            if seen.insert(path.clone()) {
+                ordered_paths.push(path);
+            }
+        }
+    }
+
+    ordered_paths
 }
 
 fn build_shell(

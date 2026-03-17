@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 pub mod app;
@@ -18,7 +20,7 @@ pub use plugins::{
     diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, load_static_plugin,
     resolve_load_order, LoadedPlugin, PluginDependencySpec, PluginDescriptor, PluginDiagnostic,
     PluginDiagnosticLevel, PluginHost, PluginLoadError, PluginLogEntry, PluginResolveError,
-    PluginRuntime, PluginRuntimeError, RegisteredCommand, RegisteredMenuItem,
+    PluginRuntime, PluginRuntimeError, RegisteredCommand, RegisteredMenuItem, RegisteredService,
     RegisteredSurfaceContribution, RegisteredViewFactory, Version as PluginVersion,
 };
 pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
@@ -36,6 +38,8 @@ pub struct MaruzzellaConfig {
     pub product: ProductSpec,
     pub theme: ThemeSpec,
     pub plugin_paths: Vec<PathBuf>,
+    pub plugin_dirs: Vec<PathBuf>,
+    pub enable_default_plugin_discovery: bool,
     pub builtin_plugins: Vec<fn() -> Result<plugins::LoadedPlugin, plugins::PluginLoadError>>,
 }
 
@@ -53,6 +57,8 @@ impl MaruzzellaConfig {
             product: default_product_spec(),
             theme: ThemeSpec::default(),
             plugin_paths: Vec::new(),
+            plugin_dirs: Vec::new(),
+            enable_default_plugin_discovery: true,
             builtin_plugins: Vec::new(),
         }
     }
@@ -86,6 +92,33 @@ impl MaruzzellaConfig {
             .into_iter()
             .map(|path| path.as_ref().to_path_buf())
             .collect();
+        self
+    }
+
+    pub fn with_plugin_dir(mut self, path: impl AsRef<Path>) -> Self {
+        self.plugin_dirs.push(path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn with_plugin_dirs<I, P>(mut self, paths: I) -> Self
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
+        self.plugin_dirs = paths
+            .into_iter()
+            .map(|path| path.as_ref().to_path_buf())
+            .collect();
+        self
+    }
+
+    pub fn with_default_plugin_discovery(mut self) -> Self {
+        self.enable_default_plugin_discovery = true;
+        self
+    }
+
+    pub fn without_default_plugin_discovery(mut self) -> Self {
+        self.enable_default_plugin_discovery = false;
         self
     }
 
@@ -132,4 +165,96 @@ pub fn run_default() {
 
 pub fn run(config: MaruzzellaConfig) {
     build_application(config).run();
+}
+
+pub fn default_plugin_discovery_dirs(persistence_id: &str) -> Vec<PathBuf> {
+    let mut dirs = vec![plugin_config_root(persistence_id).join("plugins"), PathBuf::from("plugins")];
+    dirs.retain(|dir| !dir.as_os_str().is_empty());
+    let mut seen = HashSet::new();
+    dirs.into_iter()
+        .filter(|dir| seen.insert(dir.clone()))
+        .collect()
+}
+
+pub fn discover_plugin_paths_in_dir(dir: impl AsRef<Path>) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut paths = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.is_file() && is_dynamic_plugin_library(path))
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths
+}
+
+pub fn is_dynamic_plugin_library(path: impl AsRef<Path>) -> bool {
+    let Some(extension) = path.as_ref().extension().and_then(|ext| ext.to_str()) else {
+        return false;
+    };
+    #[cfg(target_os = "windows")]
+    {
+        extension.eq_ignore_ascii_case("dll")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        extension.eq_ignore_ascii_case("dylib")
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        extension.eq_ignore_ascii_case("so")
+    }
+}
+
+fn plugin_config_root(persistence_id: &str) -> PathBuf {
+    let mut root = if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
+        PathBuf::from(dir)
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".config")
+    } else {
+        PathBuf::from(".")
+    };
+    root.push(persistence_id);
+    root
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_plugin_discovery_includes_config_and_local_dirs() {
+        let dirs = default_plugin_discovery_dirs("maruzzella-test");
+        assert!(dirs.iter().any(|dir| dir.ends_with("maruzzella-test/plugins")));
+        assert!(dirs.iter().any(|dir| dir == Path::new("plugins")));
+    }
+
+    #[test]
+    fn discovery_filters_for_platform_plugin_libraries() {
+        let temp = std::env::temp_dir().join(format!(
+            "maruzzella-discovery-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&temp);
+        let plugin_name = if cfg!(target_os = "windows") {
+            "example_plugin.dll"
+        } else if cfg!(target_os = "macos") {
+            "libexample_plugin.dylib"
+        } else {
+            "libexample_plugin.so"
+        };
+        let plugin_path = temp.join(plugin_name);
+        let non_plugin_path = temp.join("README.md");
+        let _ = fs::write(&plugin_path, []);
+        let _ = fs::write(&non_plugin_path, []);
+
+        let discovered = discover_plugin_paths_in_dir(&temp);
+        assert_eq!(discovered, vec![plugin_path.clone()]);
+        assert!(is_dynamic_plugin_library(&plugin_path));
+        assert!(!is_dynamic_plugin_library(&non_plugin_path));
+
+        let _ = fs::remove_file(plugin_path);
+        let _ = fs::remove_file(non_plugin_path);
+        let _ = fs::remove_dir(temp);
+    }
 }

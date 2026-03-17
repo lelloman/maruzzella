@@ -16,6 +16,7 @@ Today the project is in an intermediate but coherent state:
 - plugin-backed GTK views can now be mounted into tabs
 - the default app now boots into a coherent base-plugin-backed shell slice instead of placeholder-first `ProductSpec` text tabs
 - plugin configuration persistence and plugin settings-summary surfaces are wired through the host
+- plugin runtime services, host events, and discovery conventions are now available to downstreams
 
 That means the plugin architecture is proven and the shell now exercises it in its default startup experience, but many shared shell contracts are still not formalized.
 
@@ -71,7 +72,11 @@ The intended integration surface is the crate root:
 - `MaruzzellaConfig`: application id, persistence namespace, and product definition
 - `ThemeSpec`: configurable theme tokens and optional external stylesheet template
 - `MaruzzellaConfig::with_plugin_path(...)`: register a dynamic plugin library to load at startup
+- `MaruzzellaConfig::with_plugin_dir(...)`: add a directory to plugin discovery
+- `MaruzzellaConfig::without_default_plugin_discovery()`: opt out of the built-in discovery convention
 - `MaruzzellaConfig::with_theme(...)`: swap typography, palette, sizing, or the whole stylesheet
+- `default_plugin_discovery_dirs(...)`: inspect the built-in plugin discovery convention
+- `discover_plugin_paths_in_dir(...)`: enumerate loadable plugin artifacts in a directory
 - `run(config)`: launch a configured shell
 - `build_application(config)`: build a GTK application without running it yet
 - `ProductSpec` and related spec types: define branding, menus, toolbar actions, panels, and workbench layout
@@ -99,6 +104,19 @@ Dynamic plugins can also be attached through config:
 ```rust
 let config = MaruzzellaConfig::new("com.example.my-app")
     .with_plugin_path("plugins/libexample_plugin.so");
+```
+
+Discovery can also be directory-based. By default Maruzzella now scans:
+
+- `$XDG_CONFIG_HOME/<persistence_id>/plugins`
+- `./plugins`
+
+You can add more directories or opt out of the built-in convention:
+
+```rust
+let config = MaruzzellaConfig::new("com.example.my-app")
+    .with_plugin_dir("/opt/my-app/plugins")
+    .without_default_plugin_discovery();
 ```
 
 ## Theming
@@ -172,6 +190,32 @@ The easiest way to evolve the shell is to change the default `ProductSpec` in `s
 
 The shell model in `src/spec.rs` is serializable, so layouts can be generated or persisted without coupling them to widget code.
 
+## Plugin Author Workflow
+
+The repeatable plugin author path is now:
+
+1. Create a `cdylib` crate that depends on `maruzzella_sdk`.
+2. Export the plugin with `export_plugin!(YourPlugin)`.
+3. Build the library for the current platform.
+4. Either point the host at the exact library with `with_plugin_path(...)` or place it in one of the discovery directories.
+
+The sample plugin in [plugins/example_plugin](/home/lelloman/lelloprojects/maruzzella/plugins/example_plugin) demonstrates:
+
+- command, menu, toolbar, settings, and view contributions
+- host-owned config persistence
+- service registration
+- host event subscription
+
+See [docs/plugin-author-workflow.md](/home/lelloman/lelloprojects/maruzzella/docs/plugin-author-workflow.md) for a concrete workflow.
+
+## Versioning Policy
+
+`maruzzella_api` now follows a simple policy:
+
+- additive changes that preserve `MZ_ABI_VERSION_V1` keep the ABI version stable
+- any breaking C-ABI layout or semantic incompatibility requires a new ABI constant and corresponding host/plugin upgrade
+- `maruzzella_sdk` is expected to track the API crate closely and should be upgraded together in downstream plugin work
+
 ## Design Notes
 
 The first plugin ABI draft lives in [docs/plugin-abi-rfc.md](/home/lelloman/lelloprojects/maruzzella/docs/plugin-abi-rfc.md).
@@ -191,10 +235,8 @@ On the host side, `maruzzella` now exposes the first loading and activation prim
 
 Plugin commands are now executable, not just declarative metadata: a plugin can register a command together with an ABI-safe handler function, and Maruzzella will dispatch GTK menu actions back into that plugin.
 
-What is not done yet:
+What is still rough:
 
-- contribution surfaces are still relatively small and stringly typed
-- the plugin manager is a useful dialog, but not yet a full shell page
-- plugin configuration exists, but richer settings UI contracts are still planned work
-
-Plugin views are now wired into the default shell slice, so the next major targets in [docs/implementation-roadmap.md](/home/lelloman/lelloprojects/maruzzella/docs/implementation-roadmap.md) are deeper contribution surfaces and richer plugin/settings management UI.
+- some contribution surfaces are still intentionally small
+- packaging beyond raw platform libraries is not standardized
+- the SDK can still be tightened further as more third-party plugins appear

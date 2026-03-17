@@ -27,6 +27,12 @@ Implemented so far:
 17. base-plugin-owned About, Plugins, and Settings shell pages
 18. plugin settings entries that can open concrete plugin-owned settings views
 19. example plugin exercising plugin-owned config-backed settings UI end to end
+20. schema-aware plugin configuration persistence with config-state surfacing
+21. payload-aware command dispatch through menus and toolbar items
+22. runtime diagnostics, service registry, and host event subscriptions
+23. plugin discovery conventions for explicit paths and discovery directories
+24. plugin author workflow and packaging/versioning documentation
+25. SDK ergonomics helpers for typed JSON payload, config, and service handling
 
 These pieces are enough to prove the basic architecture:
 
@@ -42,10 +48,10 @@ These pieces are enough to prove the basic architecture:
 
 What is still explicitly not done:
 
-- plugin configuration is still raw plugin-owned bytes with no schema/version/migration contract
-- invalid or missing plugin config state is not yet modeled explicitly in the shell UI
-- runtime services are still minimal beyond commands, views, catalogs, and config read/write
-- packaging/discovery/docs for third-party plugin authors still need dedicated polish
+- plugin packaging is still raw platform-native library distribution rather than a richer package format
+- discovery conventions exist, but signed/distributed third-party plugin installation is not standardized
+- the SDK is cleaner, but more convenience wrappers may still be worth adding as third-party usage grows
+- the roadmap itself no longer needs to drive the next slice; follow-up work should now be driven by stabilization and downstream adoption needs
 
 ## Guiding Direction
 
@@ -96,71 +102,56 @@ Delivered:
 - settings entries can open plugin-owned settings views through stable host APIs
 - example plugin demonstrates config-backed plugin-owned settings UI
 
-## Remaining Phases
-
 ### 4. Plugin Configuration And Persistence
 
-Goal:
+Outcome:
 
-- support plugin-owned persistent configuration hosted by Maruzzella
+- plugin-owned persistent configuration is now schema-aware, host-backed, and visible in shell settings UI
 
-Work:
+Delivered:
 
-- build on top of the existing host-side config storage keyed by plugin id
-- expose richer plugin read/write config APIs and stable settings UI contracts
-- make invalid/missing config states visible in the shell UI
-- reserve version-aware config migration hooks
-
-Exit condition:
-
-- plugins can store and retrieve stable configuration through the host and expose it cleanly in-app
+- host-owned config records with optional schema version metadata
+- richer config read/write APIs in the ABI and SDK
+- settings-page config contracts with missing/ready/migration-required/invalid state summaries
+- reserved migration hook identifiers for future config migrations
 
 ### 5. Richer Runtime Services
 
-Goal:
+Outcome:
 
-- make the plugin host practical for more than static menus and basic commands
+- the plugin host now supports real payload-carrying interactions and shared runtime services
 
-Work:
+Delivered:
 
-- command payload support beyond empty payloads
-- better runtime diagnostics
-- optional service registry
-- host events or lifecycle subscriptions
-- structured error surfacing to UI
-
-Exit condition:
-
-- plugin interactions are rich enough for real product integrations
+- payload-aware command dispatch from menus and toolbar items
+- structured runtime diagnostics surfaced in the existing diagnostics catalog/UI
+- optional service registry with host catalogs and service payload lookup
+- host event subscriptions and emitted lifecycle/runtime events
+- example plugin exercising services and host event subscription
 
 ### 6. Polish And Packaging
 
-Goal:
+Outcome:
 
-- make the plugin system usable by downstream products and third-party plugin authors
+- downstream plugin author workflow is now documented and repeatable
 
-Work:
+Delivered:
 
-- plugin discovery conventions
-- platform-specific loading details
-- build/documentation examples
-- versioning policy for `maruzzella_api`
-- SDK ergonomics cleanup
+- plugin discovery conventions through explicit paths, discovery directories, and default discovery roots
+- platform-specific library artifact expectations documented for Linux, macOS, and Windows
+- plugin author workflow guide and updated README examples
+- explicit `maruzzella_api` versioning expectations in docs
+- SDK ergonomics cleanup for typed JSON payload/config/service helpers
 
-Exit condition:
+## Post-Roadmap Follow-Up
 
-- plugin author workflow is documented and repeatable
+The original roadmap phases are now implemented. The next useful work should be framed as stabilization and adoption follow-up rather than another numbered roadmap phase.
 
-## Immediate Next Step
+Current likely targets:
 
-The next implementation target should be **Plugin Configuration And Persistence**.
-
-Reason:
-
-- the real shell slice now exists and proves the product-first direction
-- plugins and settings now have first-class base-plugin-owned shell pages
-- settings surfaces can open plugin-owned settings views through stable host contracts
-- the next gaps are richer config schemas, invalid-state handling, and migration/versioning hooks
+- review the plugin/runtime surface for rough edges before treating it as stable for downstream products
+- improve packaging/install conventions beyond raw platform-native libraries
+- keep tightening SDK ergonomics as real third-party plugin examples appear
 
 ## Notes On Sequencing
 

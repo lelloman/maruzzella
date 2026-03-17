@@ -187,6 +187,54 @@ pub struct MzSurfaceContribution {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MzServiceSpec {
+    pub plugin_id: MzStr,
+    pub service_id: MzStr,
+    pub version: MzStr,
+    pub summary: MzStr,
+    pub payload: MzBytes,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MzServiceQuery {
+    pub service_id: MzStr,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzServiceSummary {
+    pub plugin_id: String,
+    pub service_id: String,
+    pub version: String,
+    pub summary: String,
+    pub payload: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzServiceCatalog {
+    pub services: Vec<MzServiceSummary>,
+}
+
+impl MzServiceCatalog {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzHostEvent {
+    pub event_id: String,
+    pub plugin_id: Option<String>,
+    pub subject_id: Option<String>,
+    pub payload: Vec<u8>,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MzViewRequest {
     pub plugin_id: MzStr,
     pub view_id: MzStr,
@@ -770,6 +818,10 @@ pub type MzRegisterMenuItemFn = extern "C" fn(item: *const MzMenuItemSpec) -> Mz
 pub type MzRegisterSurfaceContributionFn =
     extern "C" fn(contribution: *const MzSurfaceContribution) -> MzStatus;
 pub type MzRegisterViewFactoryFn = extern "C" fn(factory: *const MzViewFactorySpec) -> MzStatus;
+pub type MzRegisterServiceFn = extern "C" fn(service: *const MzServiceSpec) -> MzStatus;
+pub type MzHostEventHandlerFn = extern "C" fn(event: MzBytes) -> MzStatus;
+pub type MzRegisterHostEventSubscriberFn =
+    extern "C" fn(event_id: MzStr, handler: MzHostEventHandlerFn) -> MzStatus;
 pub type MzDispatchCommandFn = extern "C" fn(command_id: MzStr, payload: MzBytes) -> MzStatus;
 pub type MzOpenViewFn = extern "C" fn(request: *const MzOpenViewRequest) -> MzOpenViewResult;
 pub type MzFocusViewFn = extern "C" fn(query: *const MzViewQuery) -> MzStatus;
@@ -778,6 +830,8 @@ pub type MzUpdateViewTitleFn = extern "C" fn(query: *const MzViewQuery, title: M
 pub type MzReadCommandCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadViewCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadPluginStateFn = extern "C" fn() -> MzBytes;
+pub type MzReadServiceCatalogFn = extern "C" fn() -> MzBytes;
+pub type MzReadServiceFn = extern "C" fn(query: MzServiceQuery) -> MzBytes;
 pub type MzReadSettingsCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadDiagnosticCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadAboutCatalogFn = extern "C" fn() -> MzBytes;
@@ -796,6 +850,8 @@ pub struct MzHostApi {
     pub register_menu_item: Option<MzRegisterMenuItemFn>,
     pub register_surface_contribution: Option<MzRegisterSurfaceContributionFn>,
     pub register_view_factory: Option<MzRegisterViewFactoryFn>,
+    pub register_service: Option<MzRegisterServiceFn>,
+    pub register_host_event_subscriber: Option<MzRegisterHostEventSubscriberFn>,
     pub dispatch_command: Option<MzDispatchCommandFn>,
     pub open_view: Option<MzOpenViewFn>,
     pub focus_view: Option<MzFocusViewFn>,
@@ -804,6 +860,8 @@ pub struct MzHostApi {
     pub read_command_catalog: Option<MzReadCommandCatalogFn>,
     pub read_view_catalog: Option<MzReadViewCatalogFn>,
     pub read_plugin_state: Option<MzReadPluginStateFn>,
+    pub read_service_catalog: Option<MzReadServiceCatalogFn>,
+    pub read_service: Option<MzReadServiceFn>,
     pub read_settings_catalog: Option<MzReadSettingsCatalogFn>,
     pub read_diagnostic_catalog: Option<MzReadDiagnosticCatalogFn>,
     pub read_about_catalog: Option<MzReadAboutCatalogFn>,
@@ -823,6 +881,8 @@ impl MzHostApi {
             register_menu_item: None,
             register_surface_contribution: None,
             register_view_factory: None,
+            register_service: None,
+            register_host_event_subscriber: None,
             dispatch_command: None,
             open_view: None,
             focus_view: None,
@@ -831,6 +891,8 @@ impl MzHostApi {
             read_command_catalog: None,
             read_view_catalog: None,
             read_plugin_state: None,
+            read_service_catalog: None,
+            read_service: None,
             read_settings_catalog: None,
             read_diagnostic_catalog: None,
             read_about_catalog: None,
@@ -930,6 +992,25 @@ mod tests {
             .expect("settings catalog should serialize");
         let decoded =
             MzSettingsCatalog::from_bytes(&bytes).expect("settings catalog should decode");
+        assert_eq!(decoded, catalog);
+    }
+
+    #[test]
+    fn service_catalog_roundtrips_through_json_bytes() {
+        let catalog = MzServiceCatalog {
+            services: vec![MzServiceSummary {
+                plugin_id: "example.plugin".to_string(),
+                service_id: "example.runtime".to_string(),
+                version: "1.0.0".to_string(),
+                summary: "Example runtime service".to_string(),
+                payload: vec![1, 2, 3],
+            }],
+        };
+        let bytes = catalog
+            .to_bytes()
+            .expect("service catalog should serialize");
+        let decoded = MzServiceCatalog::from_bytes(&bytes)
+            .expect("service catalog should decode");
         assert_eq!(decoded, catalog);
     }
 

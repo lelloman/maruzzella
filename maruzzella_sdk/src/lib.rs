@@ -2,14 +2,14 @@ pub use maruzzella_api as ffi;
 pub use maruzzella_api::{
     MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzConfigContract, MzConfigRecord,
     MzConfigState, MzConfigStateSummary, MzContributionSurface, MzDiagnosticCatalog, MzLogLevel,
-    MzMenuSurface, MzPluginDependencySummary, MzPluginSnapshot, MzSettingsCatalog,
-    MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarItem, MzViewCatalog,
-    MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
+    MzHostEvent, MzMenuSurface, MzPluginDependencySummary, MzPluginSnapshot, MzServiceCatalog,
+    MzServiceSummary, MzSettingsCatalog, MzSettingsCategory, MzStartupTab, MzStatusCode,
+    MzToolbarItem, MzViewCatalog, MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
 };
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,
-    MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion,
-    MzViewFactorySpec, MzViewQuery, MZ_ABI_VERSION_V1,
+    MzPluginDescriptorView, MzPluginVTable, MzServiceQuery, MzServiceSpec, MzStatus, MzStr,
+    MzSurfaceContribution, MzVersion, MzViewFactorySpec, MzViewQuery, MZ_ABI_VERSION_V1,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -211,6 +211,15 @@ pub struct ViewFactorySpec {
     pub create: maruzzella_api::MzCreateViewFn,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServiceSpec {
+    pub plugin_id: &'static str,
+    pub service_id: &'static str,
+    pub version: &'static str,
+    pub summary: &'static str,
+    pub payload: Vec<u8>,
+}
+
 impl ViewFactorySpec {
     pub const fn new(
         plugin_id: &'static str,
@@ -235,6 +244,37 @@ impl ViewFactorySpec {
             title: MzStr::from_static(self.title),
             placement: self.placement,
             create: self.create,
+        }
+    }
+}
+
+impl ServiceSpec {
+    pub fn new(
+        plugin_id: &'static str,
+        service_id: &'static str,
+        version: &'static str,
+        summary: &'static str,
+        payload: impl Into<Vec<u8>>,
+    ) -> Self {
+        Self {
+            plugin_id,
+            service_id,
+            version,
+            summary,
+            payload: payload.into(),
+        }
+    }
+
+    fn as_ffi(&self) -> MzServiceSpec {
+        MzServiceSpec {
+            plugin_id: MzStr::from_static(self.plugin_id),
+            service_id: MzStr::from_static(self.service_id),
+            version: MzStr::from_static(self.version),
+            summary: MzStr::from_static(self.summary),
+            payload: MzBytes {
+                ptr: self.payload.as_ptr(),
+                len: self.payload.len(),
+            },
         }
     }
 }
@@ -456,6 +496,35 @@ impl<'a> HostApi<'a> {
         }
     }
 
+    pub fn register_service(&self, service: &ServiceSpec) -> Result<(), MzStatusCode> {
+        let Some(register) = self.raw.register_service else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let ffi = service.as_ffi();
+        let status = register(&ffi);
+        if status.is_ok() {
+            Ok(())
+        } else {
+            Err(status.code)
+        }
+    }
+
+    pub fn register_host_event_subscriber(
+        &self,
+        event_id: &'static str,
+        handler: maruzzella_api::MzHostEventHandlerFn,
+    ) -> Result<(), MzStatusCode> {
+        let Some(register) = self.raw.register_host_event_subscriber else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let status = register(MzStr::from_static(event_id), handler);
+        if status.is_ok() {
+            Ok(())
+        } else {
+            Err(status.code)
+        }
+    }
+
     pub fn dispatch_command(
         &self,
         command_id: &'static str,
@@ -640,6 +709,36 @@ impl<'a> HostApi<'a> {
         }
         MzPluginSnapshot::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
             .map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn read_service_catalog(&self) -> Result<MzServiceCatalog, MzStatusCode> {
+        let Some(read) = self.raw.read_service_catalog else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(MzServiceCatalog::default());
+        }
+        MzServiceCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn read_service(&self, service_id: &str) -> Result<Option<Vec<u8>>, MzStatusCode> {
+        let Some(read) = self.raw.read_service else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let bytes = read(MzServiceQuery {
+            service_id: MzStr {
+                ptr: service_id.as_ptr(),
+                len: service_id.len(),
+            },
+        });
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(None);
+        }
+        Ok(Some(
+            unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) }.to_vec(),
+        ))
     }
 
     pub fn read_settings_catalog(&self) -> Result<MzSettingsCatalog, MzStatusCode> {

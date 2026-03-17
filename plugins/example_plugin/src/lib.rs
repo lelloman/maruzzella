@@ -2,9 +2,10 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
-    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzConfigContract, MzMenuSurface,
-    MzSettingsCategory, MzStatusCode, MzToolbarItem, MzViewPlacement, Plugin,
-    PluginDependency, PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
+    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzConfigContract, MzHostEvent,
+    MzMenuSurface, MzSettingsCategory, MzStatusCode, MzToolbarItem, MzViewPlacement, Plugin,
+    PluginDependency, PluginDescriptor, ServiceSpec, SurfaceContributionSpec, Version,
+    ViewFactorySpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +13,7 @@ struct ExamplePlugin;
 
 const CONFIG_SCHEMA_VERSION: u32 = 1;
 const CONFIG_MIGRATION_HOOK: &str = "com.example.hello.config.v1";
+const EXAMPLE_SERVICE_ID: &str = "com.example.hello.runtime";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct ExamplePluginConfig {
@@ -28,6 +30,17 @@ extern "C" fn show_example_plugin(
         }
     }
     maruzzella_sdk::ffi::MzStatus::OK
+}
+
+extern "C" fn observe_host_event(payload: maruzzella_sdk::ffi::MzBytes) -> maruzzella_sdk::ffi::MzStatus {
+    if payload.ptr.is_null() || payload.len == 0 {
+        return maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument);
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(payload.ptr, payload.len) };
+    match serde_json::from_slice::<MzHostEvent>(bytes) {
+        Ok(_) => maruzzella_sdk::ffi::MzStatus::OK,
+        Err(_) => maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument),
+    }
 }
 
 impl Plugin for ExamplePlugin {
@@ -56,6 +69,18 @@ impl Plugin for ExamplePlugin {
         let mut config = host.read_json_config::<ExamplePluginConfig>()?;
         config.launches += 1;
         host.write_json_config(&config, Some(CONFIG_SCHEMA_VERSION))?;
+        host.register_service(&ServiceSpec::new(
+            "com.example.hello",
+            EXAMPLE_SERVICE_ID,
+            "0.1.0",
+            "Example runtime state service",
+            serde_json::to_vec(&config).map_err(|_| MzStatusCode::InternalError)?,
+        ))?;
+        host.register_host_event_subscriber(
+            "maruzzella.command.dispatched",
+            observe_host_event,
+        )?;
+        host.register_host_event_subscriber("maruzzella.runtime.ready", observe_host_event)?;
 
         host.register_command(
             CommandSpec::new(

@@ -66,6 +66,13 @@ pub fn merge_runtime_startup_tabs(spec: &mut ShellSpec, runtime: &PluginRuntime)
         .filter(|contribution| contribution.surface == Some(MzContributionSurface::StartupTabs))
     {
         let Ok(tab) = MzStartupTab::from_bytes(&contribution.payload) else {
+            runtime.push_diagnostic(
+                Some(contribution.plugin_id.clone()),
+                format!(
+                    "invalid startup tab contribution payload: {}",
+                    contribution.contribution_id
+                ),
+            );
             continue;
         };
         let Some(group) = find_group_mut(spec, &tab.group_id) else {
@@ -172,6 +179,13 @@ fn merge_runtime_toolbar(spec: &mut ShellSpec, runtime: &PluginRuntime) {
         .filter(|contribution| contribution.surface == Some(MzContributionSurface::ToolbarItems))
     {
         let Ok(item) = MzToolbarItem::from_bytes(&contribution.payload) else {
+            runtime.push_diagnostic(
+                Some(contribution.plugin_id.clone()),
+                format!(
+                    "invalid toolbar contribution payload: {}",
+                    contribution.contribution_id
+                ),
+            );
             continue;
         };
         if known_toolbar_ids.insert(item.item_id.clone()) {

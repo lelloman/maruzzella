@@ -11,11 +11,12 @@ use libloading::{Library, Symbol};
 use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzCommandSummary,
     MzConfigRecord, MzConfigState, MzConfigStateSummary, MzContributionSurface,
-    MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec, MzMenuSurface,
+    MzDiagnosticCatalog, MzHostApi, MzHostEvent, MzLogLevel, MzMenuItemSpec, MzMenuSurface,
     MzOpenViewRequest, MzOpenViewResult, MzPluginDependency, MzPluginDependencySummary,
     MzPluginDescriptorView, MzPluginDiagnosticSummary, MzPluginLogSummary, MzPluginSnapshot,
-    MzPluginSummary, MzPluginVTable, MzSettingsCatalog, MzSettingsPage, MzSettingsPageSummary,
-    MzStatus, MzStatusCode, MzStr, MzSurfaceContribution, MzViewCatalog, MzViewFactorySpec,
+    MzPluginSummary, MzPluginVTable, MzServiceCatalog, MzServiceQuery, MzServiceSpec,
+    MzServiceSummary, MzSettingsCatalog, MzSettingsPage, MzSettingsPageSummary, MzStatus,
+    MzStatusCode, MzStr, MzSurfaceContribution, MzViewCatalog, MzViewFactorySpec,
     MzViewOpenDisposition, MzViewPlacement, MzViewQuery, MzViewQueryResult, MzViewSummary,
     MZ_ABI_VERSION_V1,
 };
@@ -149,6 +150,22 @@ pub struct RegisteredViewFactory {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisteredService {
+    pub plugin_id: String,
+    pub service_id: String,
+    pub version: String,
+    pub summary: String,
+    pub payload: Vec<u8>,
+}
+
+#[derive(Clone)]
+pub struct RegisteredHostEventSubscriber {
+    pub plugin_id: String,
+    pub event_id: String,
+    pub handler: maruzzella_api::MzHostEventHandlerFn,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PluginLogEntry {
     pub plugin_id: String,
     pub level: MzLogLevel,
@@ -198,6 +215,8 @@ pub struct PluginRuntime {
     pub(crate) menu_items: Vec<RegisteredMenuItem>,
     pub(crate) surface_contributions: Vec<RegisteredSurfaceContribution>,
     pub(crate) view_factories: Vec<RegisteredViewFactory>,
+    pub(crate) services: Vec<RegisteredService>,
+    pub(crate) host_event_subscribers: Vec<RegisteredHostEventSubscriber>,
     pub(crate) logs: Vec<PluginLogEntry>,
     pub(crate) diagnostics: RefCell<Vec<PluginDiagnostic>>,
     view_host: RefCell<Option<Rc<PluginShellHost>>>,
@@ -211,6 +230,8 @@ struct PluginShellHost {
     command_snapshot_buffer: RefCell<Vec<u8>>,
     view_snapshot_buffer: RefCell<Vec<u8>>,
     plugin_snapshot_buffer: RefCell<Vec<u8>>,
+    service_snapshot_buffer: RefCell<Vec<u8>>,
+    service_payload_buffer: RefCell<Vec<u8>>,
     settings_snapshot_buffer: RefCell<Vec<u8>>,
     diagnostic_snapshot_buffer: RefCell<Vec<u8>>,
     about_snapshot_buffer: RefCell<Vec<u8>>,
@@ -256,8 +277,16 @@ impl PluginRuntime {
                     status: startup_status.code,
                 });
             }
+
+            host_state.emit_host_event(
+                "maruzzella.plugin.started",
+                Some(plugin.descriptor.id.as_str()),
+                Some(plugin.descriptor.id.as_str()),
+                &[],
+            );
         }
         host_state.current_plugin_id = None;
+        host_state.emit_host_event("maruzzella.runtime.ready", None, None, &[]);
 
         Ok(Self {
             plugins,
@@ -266,6 +295,8 @@ impl PluginRuntime {
             menu_items: host_state.menu_items,
             surface_contributions: host_state.surface_contributions,
             view_factories: host_state.view_factories,
+            services: host_state.services,
+            host_event_subscribers: host_state.host_event_subscribers,
             logs: host_state.logs,
             diagnostics: RefCell::new(Vec::new()),
             view_host: RefCell::new(None),
@@ -281,6 +312,8 @@ impl PluginRuntime {
             menu_items: Vec::new(),
             surface_contributions: Vec::new(),
             view_factories: Vec::new(),
+            services: Vec::new(),
+            host_event_subscribers: Vec::new(),
             logs: Vec::new(),
             diagnostics: RefCell::new(Vec::new()),
             view_host: RefCell::new(None),
@@ -301,6 +334,8 @@ impl PluginRuntime {
             command_snapshot_buffer: RefCell::new(Vec::new()),
             view_snapshot_buffer: RefCell::new(Vec::new()),
             plugin_snapshot_buffer: RefCell::new(Vec::new()),
+            service_snapshot_buffer: RefCell::new(Vec::new()),
+            service_payload_buffer: RefCell::new(Vec::new()),
             settings_snapshot_buffer: RefCell::new(Vec::new()),
             diagnostic_snapshot_buffer: RefCell::new(Vec::new()),
             about_snapshot_buffer: RefCell::new(Vec::new()),
@@ -344,6 +379,12 @@ impl PluginRuntime {
             len: payload.len(),
         });
         if status.is_ok() {
+            self.emit_host_event(
+                "maruzzella.command.dispatched",
+                Some(command.plugin_id.as_str()),
+                Some(command_id),
+                payload,
+            );
             Ok(())
         } else {
             self.record_command_diagnostic(
@@ -385,8 +426,80 @@ impl PluginRuntime {
         &self.view_factories
     }
 
+    pub fn services(&self) -> &[RegisteredService] {
+        &self.services
+    }
+
     pub fn logs(&self) -> &[PluginLogEntry] {
         &self.logs
+    }
+
+    pub(crate) fn push_diagnostic(
+        &self,
+        plugin_id: Option<String>,
+        message: impl Into<String>,
+    ) {
+        self.diagnostics.borrow_mut().push(PluginDiagnostic {
+            level: PluginDiagnosticLevel::Error,
+            plugin_id,
+            path: None,
+            message: message.into(),
+        });
+    }
+
+    pub(crate) fn push_diagnostic_once(
+        &self,
+        plugin_id: Option<String>,
+        message: impl Into<String>,
+    ) {
+        let message = message.into();
+        let exists = self.diagnostics.borrow().iter().any(|diagnostic| {
+            diagnostic.plugin_id == plugin_id && diagnostic.message == message
+        });
+        if !exists {
+            self.push_diagnostic(plugin_id, message);
+        }
+    }
+
+    fn emit_host_event(
+        &self,
+        event_id: &str,
+        plugin_id: Option<&str>,
+        subject_id: Option<&str>,
+        payload: &[u8],
+    ) {
+        let event = MzHostEvent {
+            event_id: event_id.to_string(),
+            plugin_id: plugin_id.map(str::to_string),
+            subject_id: subject_id.map(str::to_string),
+            payload: payload.to_vec(),
+        };
+        for subscriber in self
+            .host_event_subscribers
+            .iter()
+            .filter(|subscriber| subscriber.event_id == event_id)
+        {
+            let Ok(bytes) = serde_json::to_vec(&event) else {
+                self.push_diagnostic(
+                    Some(subscriber.plugin_id.clone()),
+                    format!("failed to serialize host event {event_id}"),
+                );
+                continue;
+            };
+            let status = (subscriber.handler)(MzBytes {
+                ptr: bytes.as_ptr(),
+                len: bytes.len(),
+            });
+            if !status.is_ok() {
+                self.push_diagnostic(
+                    Some(subscriber.plugin_id.clone()),
+                    format!(
+                        "host event handler failed: {} for {} ({:?})",
+                        event_id, subscriber.plugin_id, status.code
+                    ),
+                );
+            }
+        }
     }
 
     pub fn create_view(
@@ -418,6 +531,8 @@ impl PluginRuntime {
             register_menu_item: None,
             register_surface_contribution: None,
             register_view_factory: None,
+            register_service: None,
+            register_host_event_subscriber: None,
             dispatch_command: Some(runtime_dispatch_command),
             open_view: Some(host_open_view),
             focus_view: Some(host_focus_view),
@@ -426,6 +541,8 @@ impl PluginRuntime {
             read_command_catalog: Some(host_read_command_catalog),
             read_view_catalog: Some(host_read_view_catalog),
             read_plugin_state: Some(host_read_plugin_state),
+            read_service_catalog: Some(host_read_service_catalog),
+            read_service: Some(host_read_service),
             read_settings_catalog: Some(host_read_settings_catalog),
             read_diagnostic_catalog: Some(host_read_diagnostic_catalog),
             read_about_catalog: Some(host_read_about_catalog),
@@ -454,6 +571,10 @@ impl PluginRuntime {
 
         let widget_ptr = (factory.create)(&host_api, &request);
         if widget_ptr.is_null() {
+            self.push_diagnostic(
+                Some(factory.plugin_id.clone()),
+                format!("view factory returned null for {}", factory.view_id),
+            );
             return Err(PluginViewCreateError::FactoryReturnedNull {
                 plugin_id: factory.plugin_id.clone(),
                 view_id: factory.view_id.clone(),
@@ -797,10 +918,15 @@ struct HostState {
     surface_contribution_ids: HashSet<(String, String)>,
     view_factories: Vec<RegisteredViewFactory>,
     view_factory_ids: HashSet<String>,
+    services: Vec<RegisteredService>,
+    service_ids: HashSet<String>,
+    host_event_subscribers: Vec<RegisteredHostEventSubscriber>,
     logs: Vec<PluginLogEntry>,
     plugin_configs: layout::PluginConfigs,
     read_config_buffer: Vec<u8>,
     read_config_record_buffer: Vec<u8>,
+    read_service_catalog_buffer: Vec<u8>,
+    read_service_buffer: Vec<u8>,
 }
 
 impl HostState {
@@ -813,6 +939,8 @@ impl HostState {
             register_menu_item: Some(host_register_menu_item),
             register_surface_contribution: Some(host_register_surface_contribution),
             register_view_factory: Some(host_register_view_factory),
+            register_service: Some(host_register_service),
+            register_host_event_subscriber: Some(host_register_host_event_subscriber),
             dispatch_command: Some(host_dispatch_command),
             open_view: None,
             focus_view: None,
@@ -821,6 +949,8 @@ impl HostState {
             read_command_catalog: None,
             read_view_catalog: None,
             read_plugin_state: None,
+            read_service_catalog: Some(host_read_service_catalog),
+            read_service: Some(host_read_service),
             read_settings_catalog: None,
             read_diagnostic_catalog: None,
             read_about_catalog: None,
@@ -835,6 +965,49 @@ impl HostState {
         self.current_plugin_id
             .as_deref()
             .unwrap_or("<unknown-plugin>")
+    }
+
+    fn emit_host_event(
+        &mut self,
+        event_id: &str,
+        plugin_id: Option<&str>,
+        subject_id: Option<&str>,
+        payload: &[u8],
+    ) {
+        let event = MzHostEvent {
+            event_id: event_id.to_string(),
+            plugin_id: plugin_id.map(str::to_string),
+            subject_id: subject_id.map(str::to_string),
+            payload: payload.to_vec(),
+        };
+        let Ok(bytes) = serde_json::to_vec(&event) else {
+            self.logs.push(PluginLogEntry {
+                plugin_id: self.plugin_id().to_string(),
+                level: MzLogLevel::Error,
+                message: format!("failed to serialize host event: {event_id}"),
+            });
+            return;
+        };
+        for subscriber in self
+            .host_event_subscribers
+            .iter()
+            .filter(|subscriber| subscriber.event_id == event_id)
+        {
+            let status = (subscriber.handler)(MzBytes {
+                ptr: bytes.as_ptr(),
+                len: bytes.len(),
+            });
+            if !status.is_ok() {
+                self.logs.push(PluginLogEntry {
+                    plugin_id: subscriber.plugin_id.clone(),
+                    level: MzLogLevel::Error,
+                    message: format!(
+                        "host event handler failed: {event_id} ({:?})",
+                        status.code
+                    ),
+                });
+            }
+        }
     }
 }
 
@@ -995,6 +1168,58 @@ extern "C" fn host_register_view_factory(factory: *const MzViewFactorySpec) -> M
     MzStatus::OK
 }
 
+extern "C" fn host_register_service(service: *const MzServiceSpec) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(service) = (unsafe { service.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    let Ok(plugin_id) = decode_runtime_str("service.plugin_id", service.plugin_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(service_id) = decode_runtime_str("service.service_id", service.service_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(version) = decode_runtime_str("service.version", service.version) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(summary) = decode_runtime_str("service.summary", service.summary) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+
+    if !state.service_ids.insert(service_id.clone()) {
+        return MzStatus::new(MzStatusCode::AlreadyExists);
+    }
+    state.services.push(RegisteredService {
+        plugin_id,
+        service_id,
+        version,
+        summary,
+        payload: bytes_to_vec(service.payload),
+    });
+    MzStatus::OK
+}
+
+extern "C" fn host_register_host_event_subscriber(
+    event_id: MzStr,
+    handler: maruzzella_api::MzHostEventHandlerFn,
+) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(event_id) = decode_runtime_str("event.event_id", event_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    state.host_event_subscribers.push(RegisteredHostEventSubscriber {
+        plugin_id: state.plugin_id().to_string(),
+        event_id,
+        handler,
+    });
+    MzStatus::OK
+}
+
 extern "C" fn host_dispatch_command(command_id: MzStr, payload: MzBytes) -> MzStatus {
     let Some(state) = current_host_state() else {
         return MzStatus::new(MzStatusCode::InvalidArgument);
@@ -1134,18 +1359,40 @@ extern "C" fn host_open_view(request: *const MzOpenViewRequest) -> MzOpenViewRes
     );
 
     match result {
-        Some(OpenPluginViewOutcome::Opened) => MzOpenViewResult {
-            status: MzStatus::OK,
-            disposition: MzViewOpenDisposition::Opened,
-        },
-        Some(OpenPluginViewOutcome::FocusedExisting) => MzOpenViewResult {
-            status: MzStatus::OK,
-            disposition: MzViewOpenDisposition::FocusedExisting,
-        },
-        None => MzOpenViewResult {
-            status: MzStatus::new(MzStatusCode::NotFound),
-            disposition: MzViewOpenDisposition::Opened,
-        },
+        Some(OpenPluginViewOutcome::Opened) => {
+            runtime.emit_host_event(
+                "maruzzella.view.opened",
+                Some(plugin_id.as_str()),
+                Some(view_id.as_str()),
+                bytes_to_slice(request.payload),
+            );
+            MzOpenViewResult {
+                status: MzStatus::OK,
+                disposition: MzViewOpenDisposition::Opened,
+            }
+        }
+        Some(OpenPluginViewOutcome::FocusedExisting) => {
+            runtime.emit_host_event(
+                "maruzzella.view.focused",
+                Some(plugin_id.as_str()),
+                Some(view_id.as_str()),
+                bytes_to_slice(request.payload),
+            );
+            MzOpenViewResult {
+                status: MzStatus::OK,
+                disposition: MzViewOpenDisposition::FocusedExisting,
+            }
+        }
+        None => {
+            runtime.push_diagnostic(
+                Some(plugin_id.clone()),
+                format!("open view failed: {}", view_id),
+            );
+            MzOpenViewResult {
+                status: MzStatus::new(MzStatusCode::NotFound),
+                disposition: MzViewOpenDisposition::Opened,
+            }
+        }
     }
 }
 
@@ -1172,8 +1419,22 @@ extern "C" fn host_focus_view(query: *const MzViewQuery) -> MzStatus {
         &resolve_plugin_view_id(&plugin_id, &view_id),
         empty_to_none(instance_key).as_deref(),
     ) {
+        if let Some(runtime) = shell_host.runtime.upgrade() {
+            runtime.emit_host_event(
+                "maruzzella.view.focused",
+                Some(plugin_id.as_str()),
+                Some(view_id.as_str()),
+                &[],
+            );
+        }
         MzStatus::OK
     } else {
+        if let Some(runtime) = shell_host.runtime.upgrade() {
+            runtime.push_diagnostic(
+                Some(plugin_id.clone()),
+                format!("focus view failed: {}", view_id),
+            );
+        }
         MzStatus::new(MzStatusCode::NotFound)
     }
 }
@@ -1241,8 +1502,22 @@ extern "C" fn host_update_view_title(query: *const MzViewQuery, title: MzStr) ->
         empty_to_none(instance_key).as_deref(),
         &title,
     ) {
+        if let Some(runtime) = shell_host.runtime.upgrade() {
+            runtime.emit_host_event(
+                "maruzzella.view.title_updated",
+                Some(plugin_id.as_str()),
+                Some(view_id.as_str()),
+                title.as_bytes(),
+            );
+        }
         MzStatus::OK
     } else {
+        if let Some(runtime) = shell_host.runtime.upgrade() {
+            runtime.push_diagnostic(
+                Some(plugin_id.clone()),
+                format!("update view title failed: {}", view_id),
+            );
+        }
         MzStatus::new(MzStatusCode::NotFound)
     }
 }
@@ -1350,6 +1625,89 @@ extern "C" fn host_read_plugin_state() -> MzBytes {
     snapshot_bytes(&shell_host.plugin_snapshot_buffer, &snapshot)
 }
 
+extern "C" fn host_read_service_catalog() -> MzBytes {
+    if let Some(shell_host) = current_shell_host() {
+        let Some(runtime) = shell_host.runtime.upgrade() else {
+            return MzBytes::empty();
+        };
+        let services = runtime
+            .services()
+            .iter()
+            .map(|service| MzServiceSummary {
+                plugin_id: service.plugin_id.clone(),
+                service_id: service.service_id.clone(),
+                version: service.version.clone(),
+                summary: service.summary.clone(),
+                payload: service.payload.clone(),
+            })
+            .collect::<Vec<_>>();
+        return snapshot_bytes(
+            &shell_host.service_snapshot_buffer,
+            &MzServiceCatalog { services },
+        );
+    }
+    let Some(state) = current_host_state() else {
+        return MzBytes::empty();
+    };
+    let catalog = MzServiceCatalog {
+        services: state
+            .services
+            .iter()
+            .map(|service| MzServiceSummary {
+                plugin_id: service.plugin_id.clone(),
+                service_id: service.service_id.clone(),
+                version: service.version.clone(),
+                summary: service.summary.clone(),
+                payload: service.payload.clone(),
+            })
+            .collect(),
+    };
+    state.read_service_catalog_buffer = catalog.to_bytes().unwrap_or_default();
+    MzBytes {
+        ptr: state.read_service_catalog_buffer.as_ptr(),
+        len: state.read_service_catalog_buffer.len(),
+    }
+}
+
+extern "C" fn host_read_service(query: MzServiceQuery) -> MzBytes {
+    let Ok(service_id) = decode_runtime_str("service_query.service_id", query.service_id) else {
+        return MzBytes::empty();
+    };
+    if let Some(shell_host) = current_shell_host() {
+        let Some(runtime) = shell_host.runtime.upgrade() else {
+            return MzBytes::empty();
+        };
+        let Some(service) = runtime
+            .services()
+            .iter()
+            .find(|service| service.service_id == service_id)
+        else {
+            return MzBytes::empty();
+        };
+        let mut buffer = shell_host.service_payload_buffer.borrow_mut();
+        *buffer = service.payload.clone();
+        return MzBytes {
+            ptr: buffer.as_ptr(),
+            len: buffer.len(),
+        };
+    }
+    let Some(state) = current_host_state() else {
+        return MzBytes::empty();
+    };
+    let Some(service) = state
+        .services
+        .iter()
+        .find(|service| service.service_id == service_id)
+    else {
+        return MzBytes::empty();
+    };
+    state.read_service_buffer = service.payload.clone();
+    MzBytes {
+        ptr: state.read_service_buffer.as_ptr(),
+        len: state.read_service_buffer.len(),
+    }
+}
+
 extern "C" fn host_read_settings_catalog() -> MzBytes {
     let Some(shell_host) = current_shell_host() else {
         return MzBytes::empty();
@@ -1365,6 +1723,15 @@ extern "C" fn host_read_settings_catalog() -> MzBytes {
         })
         .filter_map(|contribution| {
             MzSettingsPage::from_bytes(&contribution.payload)
+                .map_err(|_| {
+                    runtime.push_diagnostic_once(
+                        Some(contribution.plugin_id.clone()),
+                        format!(
+                            "invalid settings contribution payload: {}",
+                            contribution.contribution_id
+                        ),
+                    )
+                })
                 .ok()
                 .map(|page| MzSettingsPageSummary {
                     plugin_id: contribution.plugin_id.clone(),
@@ -1488,7 +1855,19 @@ extern "C" fn host_read_about_catalog() -> MzBytes {
         .surface_contributions()
         .iter()
         .filter(|contribution| contribution.surface == Some(MzContributionSurface::AboutSections))
-        .filter_map(|contribution| MzAboutSection::from_bytes(&contribution.payload).ok())
+        .filter_map(|contribution| {
+            MzAboutSection::from_bytes(&contribution.payload)
+                .map_err(|_| {
+                    runtime.push_diagnostic_once(
+                        Some(contribution.plugin_id.clone()),
+                        format!(
+                            "invalid about contribution payload: {}",
+                            contribution.contribution_id
+                        ),
+                    )
+                })
+                .ok()
+        })
         .collect::<Vec<_>>();
     snapshot_bytes(
         &shell_host.about_snapshot_buffer,
@@ -1696,6 +2075,7 @@ mod tests {
     static STARTED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);
     static REGISTERED_PLUGIN_B: AtomicUsize = AtomicUsize::new(0);
     static INVOKED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);
+    static OBSERVED_HOST_EVENTS: AtomicUsize = AtomicUsize::new(0);
 
     extern "C" fn test_descriptor() -> MzPluginDescriptorView {
         MzPluginDescriptorView::empty()
@@ -1743,11 +2123,24 @@ mod tests {
                 len: br#"{"title":"Base"}"#.len(),
             },
         };
+        let service = maruzzella_api::MzServiceSpec {
+            plugin_id: MzStr::from_static("maruzzella.base"),
+            service_id: MzStr::from_static("maruzzella.base.runtime"),
+            version: MzStr::from_static("1.0.0"),
+            summary: MzStr::from_static("Base runtime service"),
+            payload: MzBytes {
+                ptr: br#"{"kind":"base"}"#.as_ptr(),
+                len: br#"{"kind":"base"}"#.len(),
+            },
+        };
 
         host.register_command.expect("command registrar")(&command);
         host.register_menu_item.expect("menu registrar")(&menu);
         host.register_surface_contribution
             .expect("surface registrar")(&surface);
+        host.register_service.expect("service registrar")(&service);
+        host.register_host_event_subscriber
+            .expect("event registrar")(MzStr::from_static("maruzzella.command.dispatched"), observe_host_event);
         maruzzella_api::MzStatus::OK
     }
 
@@ -1783,6 +2176,16 @@ mod tests {
 
     extern "C" fn plugin_a_invoke(_: MzBytes) -> maruzzella_api::MzStatus {
         INVOKED_PLUGIN_A.fetch_add(1, Ordering::SeqCst);
+        maruzzella_api::MzStatus::OK
+    }
+
+    extern "C" fn observe_host_event(payload: MzBytes) -> maruzzella_api::MzStatus {
+        let Ok(event) = serde_json::from_slice::<MzHostEvent>(bytes_to_slice(payload)) else {
+            return maruzzella_api::MzStatus::new(MzStatusCode::InvalidArgument);
+        };
+        if event.event_id == "maruzzella.command.dispatched" {
+            OBSERVED_HOST_EVENTS.fetch_add(1, Ordering::SeqCst);
+        }
         maruzzella_api::MzStatus::OK
     }
 
@@ -1903,6 +2306,7 @@ mod tests {
         STARTED_PLUGIN_A.store(0, Ordering::SeqCst);
         REGISTERED_PLUGIN_B.store(0, Ordering::SeqCst);
         INVOKED_PLUGIN_A.store(0, Ordering::SeqCst);
+        OBSERVED_HOST_EVENTS.store(0, Ordering::SeqCst);
 
         let base = LoadedPlugin {
             path: PathBuf::from("base.so"),
@@ -2000,11 +2404,14 @@ mod tests {
         assert_eq!(runtime.commands().len(), 1);
         assert_eq!(runtime.menu_items().len(), 2);
         assert_eq!(runtime.surface_contributions().len(), 1);
+        assert_eq!(runtime.services().len(), 1);
+        assert_eq!(runtime.services()[0].service_id, "maruzzella.base.runtime");
         assert_eq!(runtime.logs().len(), 1);
         assert_eq!(runtime.logs()[0].message, "base plugin started");
         runtime
             .dispatch_command("shell.plugins", &[])
             .expect("plugin command should dispatch");
         assert_eq!(INVOKED_PLUGIN_A.load(Ordering::SeqCst), 1);
+        assert_eq!(OBSERVED_HOST_EVENTS.load(Ordering::SeqCst), 1);
     }
 }

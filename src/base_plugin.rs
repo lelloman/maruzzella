@@ -8,8 +8,8 @@ use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec,
     MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
     MzMenuSurface, MzOpenViewRequest, MzPluginDescriptorView, MzPluginSnapshot, MzPluginVTable,
-    MzSettingsCatalog, MzSettingsCategory, MzSettingsPage, MzStartupTab, MzStatus, MzStr,
-    MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec,
+    MzServiceCatalog, MzSettingsCatalog, MzSettingsCategory, MzSettingsPage, MzStartupTab,
+    MzStatus, MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec,
     MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 
@@ -878,6 +878,7 @@ fn registered_views_view(host: &MzHostApi) -> gtk::Widget {
 fn plugins_view(host: &MzHostApi) -> gtk::Widget {
     let root = view_root();
     let snapshot = read_plugin_state(host);
+    let service_catalog = read_service_catalog(host);
     let settings_catalog = read_settings_catalog(host);
     let diagnostic_catalog = read_diagnostic_catalog(host);
     root.append(&hero(
@@ -980,6 +981,17 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
                     .collect::<Vec<_>>(),
                 true,
             ));
+        }
+
+        let plugin_services = service_catalog
+            .services
+            .iter()
+            .filter(|service| service.plugin_id == plugin.plugin_id)
+            .map(|service| format!("{}  [{}] {}", service.service_id, service.version, service.summary))
+            .collect::<Vec<_>>();
+        if !plugin_services.is_empty() {
+            card.append(&section("Services", &[]));
+            card.append(&summary_list(&plugin_services, true));
         }
 
         let plugin_settings = settings_catalog
@@ -1422,6 +1434,15 @@ fn read_settings_catalog(host: &MzHostApi) -> MzSettingsCatalog {
     };
     let bytes = read();
     MzSettingsCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+        .unwrap_or_default()
+}
+
+fn read_service_catalog(host: &MzHostApi) -> MzServiceCatalog {
+    let Some(read) = host.read_service_catalog else {
+        return MzServiceCatalog::default();
+    };
+    let bytes = read();
+    MzServiceCatalog::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
         .unwrap_or_default()
 }
 

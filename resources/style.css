@@ -82,7 +82,6 @@ undershoot.left {
 .topbar-masthead {
   min-height: {{window_strip_height}};
   padding: 0 {{space_window_strip_inline}};
-  spacing: 0;
   background: {{color_topbar}};
   border-bottom: {{window_strip_border}};
 }
@@ -119,7 +118,6 @@ undershoot.left {
   background: {{color_toolbar_bg}};
   border-top: 0;
   border-bottom: {{toolbar_bottom_border}};
-  spacing: {{space_md}};
 }
 
 .toolbar-search-cluster {
@@ -168,7 +166,6 @@ button:active {
 
 .toolbar-actions,
 .toolbar-utility-group {
-  spacing: {{space_sm}};
 }
 
 .toolbar-actions .toolbar-button {
@@ -198,7 +195,6 @@ button:active {
 }
 
 .nav-rail-group {
-  spacing: {{space_nav_rail_group}};
 }
 
 .nav-rail separator {
@@ -248,7 +244,6 @@ entry {
 
 .toolbar-search {
   min-width: {{search_width_min}};
-  max-width: {{search_width_max}};
   background: {{color_search_bg}};
   border: {{search_border}};
   border-radius: {{radius_large}};
@@ -276,7 +271,6 @@ entry {
 }
 
 .toolbar-utility-group {
-  spacing: {{space_utility_group}};
 }
 
 entry selection,
@@ -474,8 +468,6 @@ notebook.bottom-tabs > header tabs tab:checked {
 }
 
 .tab-header {
-  spacing: {{space_tab_header}};
-  align-items: center;
 }
 
 .tab-label {
@@ -525,7 +517,6 @@ notebook.bottom-tabs > header tabs tab:checked {
 .workbench-tab-strip {
   min-height: {{tab_strip_height}};
   padding: 0 8px;
-  spacing: 0;
   background: transparent;
 }
 

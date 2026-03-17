@@ -1244,6 +1244,29 @@ fn settings_page_list(
             row.append(&summary);
         }
 
+        if let Some(config_state) = &page_summary.config_state {
+            let detail = Label::new(Some(&format!(
+                "Config Status: {}. {}",
+                config_state.state.label(),
+                config_state.message
+            )));
+            detail.set_xalign(0.0);
+            detail.set_wrap(true);
+            detail.add_css_class("muted");
+            row.append(&detail);
+
+            if let Some(migration_hook) = &config_state.migration_hook {
+                let hook = Label::new(Some(&format!(
+                    "Reserved Migration Hook: {}",
+                    migration_hook
+                )));
+                hook.set_xalign(0.0);
+                hook.set_wrap(true);
+                hook.add_css_class("muted");
+                row.append(&hook);
+            }
+        }
+
         if let (Some(host), Some(view_id)) = (host, page_summary.page.view_id.as_deref()) {
             let button = action_button("Open Settings Page", Some("go-next-symbolic"));
             let host_copy = *host;

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use maruzzella_api::MzConfigRecord;
 use serde::{Deserialize, Serialize};
 
 use crate::product::default_product_spec;
@@ -18,9 +19,23 @@ pub struct PersistedShell {
     pub panes: PanePositions,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default)]
 pub struct PluginConfigs {
-    pub entries: HashMap<String, Vec<u8>>,
+    pub entries: HashMap<String, PluginConfigEntry>,
+    pub invalid_entries: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PluginConfigEntry {
+    pub schema_version: Option<u32>,
+    pub payload: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum StoredPluginConfigEntry {
+    Legacy(Vec<u8>),
+    Versioned(MzConfigRecord),
 }
 
 impl Default for PersistedShell {
@@ -68,7 +83,38 @@ pub fn load_plugin_configs(persistence_id: &str) -> PluginConfigs {
     let Ok(raw) = fs::read_to_string(&path) else {
         return PluginConfigs::default();
     };
-    serde_json::from_str(&raw).unwrap_or_default()
+    let Ok(decoded) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&raw) else {
+        return PluginConfigs::default();
+    };
+    let mut configs = PluginConfigs::default();
+    for (plugin_id, value) in decoded {
+        match serde_json::from_value::<StoredPluginConfigEntry>(value) {
+            Ok(StoredPluginConfigEntry::Legacy(payload)) => {
+                configs.entries.insert(
+                    plugin_id,
+                    PluginConfigEntry {
+                        schema_version: None,
+                        payload,
+                    },
+                );
+            }
+            Ok(StoredPluginConfigEntry::Versioned(record)) => {
+                configs.entries.insert(
+                    plugin_id,
+                    PluginConfigEntry {
+                        schema_version: record.schema_version,
+                        payload: record.payload,
+                    },
+                );
+            }
+            Err(error) => {
+                configs
+                    .invalid_entries
+                    .insert(plugin_id, format!("stored plugin config is unreadable: {error}"));
+            }
+        }
+    }
+    configs
 }
 
 pub fn save_plugin_configs(persistence_id: &str, configs: &PluginConfigs) {
@@ -76,7 +122,20 @@ pub fn save_plugin_configs(persistence_id: &str, configs: &PluginConfigs) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    if let Ok(raw) = serde_json::to_string_pretty(configs) {
+    let serializable = configs
+        .entries
+        .iter()
+        .map(|(plugin_id, entry)| {
+            (
+                plugin_id.clone(),
+                StoredPluginConfigEntry::Versioned(MzConfigRecord {
+                    schema_version: entry.schema_version,
+                    payload: entry.payload.clone(),
+                }),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    if let Ok(raw) = serde_json::to_string_pretty(&serializable) {
         let _ = fs::write(path, raw);
     }
 }

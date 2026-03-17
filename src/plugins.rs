@@ -10,13 +10,14 @@ use gtk::Widget;
 use libloading::{Library, Symbol};
 use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzCommandSummary,
-    MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
-    MzMenuSurface, MzOpenViewRequest, MzOpenViewResult, MzPluginDependency,
-    MzPluginDependencySummary, MzPluginDescriptorView, MzPluginDiagnosticSummary,
-    MzPluginLogSummary, MzPluginSnapshot, MzPluginSummary, MzPluginVTable, MzSettingsCatalog,
-    MzSettingsPage, MzSettingsPageSummary, MzStatus, MzStatusCode, MzStr, MzSurfaceContribution,
-    MzViewCatalog, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement, MzViewQuery,
-    MzViewQueryResult, MzViewSummary, MZ_ABI_VERSION_V1,
+    MzConfigRecord, MzConfigState, MzConfigStateSummary, MzContributionSurface,
+    MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec, MzMenuSurface,
+    MzOpenViewRequest, MzOpenViewResult, MzPluginDependency, MzPluginDependencySummary,
+    MzPluginDescriptorView, MzPluginDiagnosticSummary, MzPluginLogSummary, MzPluginSnapshot,
+    MzPluginSummary, MzPluginVTable, MzSettingsCatalog, MzSettingsPage, MzSettingsPageSummary,
+    MzStatus, MzStatusCode, MzStr, MzSurfaceContribution, MzViewCatalog, MzViewFactorySpec,
+    MzViewOpenDisposition, MzViewPlacement, MzViewQuery, MzViewQueryResult, MzViewSummary,
+    MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -399,6 +400,8 @@ impl PluginRuntime {
             read_about_catalog: Some(host_read_about_catalog),
             read_config: None,
             write_config: None,
+            read_config_record: None,
+            write_config_record: None,
         };
         let plugin_id = MzStr {
             ptr: factory.plugin_id.as_ptr(),
@@ -742,6 +745,14 @@ fn dependency_slice<'a>(ptr: *const MzPluginDependency, len: usize) -> &'a [MzPl
     }
 }
 
+fn bytes_to_slice<'a>(bytes: MzBytes) -> &'a [u8] {
+    if bytes.ptr.is_null() || bytes.len == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) }
+    }
+}
+
 #[derive(Default)]
 struct HostState {
     persistence_id: String,
@@ -758,6 +769,7 @@ struct HostState {
     logs: Vec<PluginLogEntry>,
     plugin_configs: layout::PluginConfigs,
     read_config_buffer: Vec<u8>,
+    read_config_record_buffer: Vec<u8>,
 }
 
 impl HostState {
@@ -783,6 +795,8 @@ impl HostState {
             read_about_catalog: None,
             read_config: Some(host_read_config),
             write_config: Some(host_write_config),
+            read_config_record: Some(host_read_config_record),
+            write_config_record: Some(host_write_config_record),
         }
     }
 
@@ -971,7 +985,7 @@ extern "C" fn host_read_config() -> MzBytes {
         .plugin_configs
         .entries
         .get(&plugin_id)
-        .cloned()
+        .map(|entry| entry.payload.clone())
         .unwrap_or_default();
     MzBytes {
         ptr: state.read_config_buffer.as_ptr(),
@@ -985,7 +999,55 @@ extern "C" fn host_write_config(payload: MzBytes) -> MzStatus {
     };
     let plugin_id = state.plugin_id().to_string();
     let bytes = bytes_to_vec(payload);
-    state.plugin_configs.entries.insert(plugin_id, bytes);
+    state.plugin_configs.entries.insert(
+        plugin_id.clone(),
+        layout::PluginConfigEntry {
+            schema_version: None,
+            payload: bytes,
+        },
+    );
+    state.plugin_configs.invalid_entries.remove(&plugin_id);
+    layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs);
+    MzStatus::OK
+}
+
+extern "C" fn host_read_config_record() -> MzBytes {
+    let Some(state) = current_host_state() else {
+        return MzBytes::empty();
+    };
+    let plugin_id = state.plugin_id().to_string();
+    let record = state
+        .plugin_configs
+        .entries
+        .get(&plugin_id)
+        .map(|entry| MzConfigRecord {
+            schema_version: entry.schema_version,
+            payload: entry.payload.clone(),
+        })
+        .unwrap_or_default();
+    state.read_config_record_buffer = record.to_bytes().unwrap_or_default();
+    MzBytes {
+        ptr: state.read_config_record_buffer.as_ptr(),
+        len: state.read_config_record_buffer.len(),
+    }
+}
+
+extern "C" fn host_write_config_record(payload: MzBytes) -> MzStatus {
+    let Some(state) = current_host_state() else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let plugin_id = state.plugin_id().to_string();
+    let Ok(record) = MzConfigRecord::from_bytes(bytes_to_slice(payload)) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    state.plugin_configs.entries.insert(
+        plugin_id.clone(),
+        layout::PluginConfigEntry {
+            schema_version: record.schema_version,
+            payload: record.payload,
+        },
+    );
+    state.plugin_configs.invalid_entries.remove(&plugin_id);
     layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs);
     MzStatus::OK
 }
@@ -1275,6 +1337,11 @@ extern "C" fn host_read_settings_catalog() -> MzBytes {
                 .map(|page| MzSettingsPageSummary {
                     plugin_id: contribution.plugin_id.clone(),
                     contribution_id: contribution.contribution_id.clone(),
+                    config_state: config_state_summary(
+                        &shell_host.persistence_id,
+                        &contribution.plugin_id,
+                        page.config.as_ref(),
+                    ),
                     page,
                 })
         })
@@ -1283,6 +1350,72 @@ extern "C" fn host_read_settings_catalog() -> MzBytes {
         &shell_host.settings_snapshot_buffer,
         &MzSettingsCatalog { pages },
     )
+}
+
+fn config_state_summary(
+    persistence_id: &str,
+    plugin_id: &str,
+    contract: Option<&maruzzella_api::MzConfigContract>,
+) -> Option<MzConfigStateSummary> {
+    let contract = contract?;
+    let configs = layout::load_plugin_configs(persistence_id);
+    if let Some(message) = configs.invalid_entries.get(plugin_id) {
+        return Some(MzConfigStateSummary {
+            state: MzConfigState::Invalid,
+            stored_schema_version: None,
+            expected_schema_version: Some(contract.schema_version),
+            migration_hook: contract.migration_hook.clone(),
+            message: message.clone(),
+        });
+    }
+    let Some(entry) = configs.entries.get(plugin_id) else {
+        return Some(MzConfigStateSummary {
+            state: MzConfigState::Missing,
+            stored_schema_version: None,
+            expected_schema_version: Some(contract.schema_version),
+            migration_hook: contract.migration_hook.clone(),
+            message: "No persisted plugin config found yet.".to_string(),
+        });
+    };
+    match entry.schema_version {
+        Some(version) if version == contract.schema_version => Some(MzConfigStateSummary {
+            state: MzConfigState::Ready,
+            stored_schema_version: Some(version),
+            expected_schema_version: Some(contract.schema_version),
+            migration_hook: contract.migration_hook.clone(),
+            message: format!("Config schema v{} loaded.", version),
+        }),
+        Some(version) if version < contract.schema_version => Some(MzConfigStateSummary {
+            state: MzConfigState::MigrationRequired,
+            stored_schema_version: Some(version),
+            expected_schema_version: Some(contract.schema_version),
+            migration_hook: contract.migration_hook.clone(),
+            message: format!(
+                "Stored config schema v{} needs migration to v{}.",
+                version, contract.schema_version
+            ),
+        }),
+        Some(version) => Some(MzConfigStateSummary {
+            state: MzConfigState::Invalid,
+            stored_schema_version: Some(version),
+            expected_schema_version: Some(contract.schema_version),
+            migration_hook: contract.migration_hook.clone(),
+            message: format!(
+                "Stored config schema v{} is newer than the expected v{}.",
+                version, contract.schema_version
+            ),
+        }),
+        None => Some(MzConfigStateSummary {
+            state: MzConfigState::MigrationRequired,
+            stored_schema_version: None,
+            expected_schema_version: Some(contract.schema_version),
+            migration_hook: contract.migration_hook.clone(),
+            message: format!(
+                "Stored config predates schema-aware persistence; expected schema v{}.",
+                contract.schema_version
+            ),
+        }),
+    }
 }
 
 extern "C" fn host_read_diagnostic_catalog() -> MzBytes {

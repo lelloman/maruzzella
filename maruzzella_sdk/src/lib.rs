@@ -1,7 +1,8 @@
 pub use maruzzella_api as ffi;
 pub use maruzzella_api::{
-    MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzContributionSurface, MzDiagnosticCatalog,
-    MzLogLevel, MzMenuSurface, MzPluginDependencySummary, MzPluginSnapshot, MzSettingsCatalog,
+    MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzConfigContract, MzConfigRecord,
+    MzConfigState, MzConfigStateSummary, MzContributionSurface, MzDiagnosticCatalog, MzLogLevel,
+    MzMenuSurface, MzPluginDependencySummary, MzPluginSnapshot, MzSettingsCatalog,
     MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarItem, MzViewCatalog,
     MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
 };
@@ -10,6 +11,7 @@ use maruzzella_api::{
     MzPluginDescriptorView, MzPluginVTable, MzStatus, MzStr, MzSurfaceContribution, MzVersion,
     MzViewFactorySpec, MzViewQuery, MZ_ABI_VERSION_V1,
 };
+use serde::{de::DeserializeOwned, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Version(pub MzVersion);
@@ -689,6 +691,56 @@ impl<'a> HostApi<'a> {
         } else {
             Err(status.code)
         }
+    }
+
+    pub fn read_config_record(&self) -> Result<MzConfigRecord, MzStatusCode> {
+        let Some(read) = self.raw.read_config_record else {
+            let payload = self.read_config()?;
+            return Ok(MzConfigRecord::new(payload));
+        };
+        let bytes = read();
+        if bytes.ptr.is_null() || bytes.len == 0 {
+            return Ok(MzConfigRecord::default());
+        }
+        MzConfigRecord::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn write_config_record(&self, record: &MzConfigRecord) -> Result<(), MzStatusCode> {
+        let Some(write) = self.raw.write_config_record else {
+            return self.write_config(&record.payload);
+        };
+        let payload = record.to_bytes().map_err(|_| MzStatusCode::InternalError)?;
+        let status = write(MzBytes {
+            ptr: payload.as_ptr(),
+            len: payload.len(),
+        });
+        if status.is_ok() {
+            Ok(())
+        } else {
+            Err(status.code)
+        }
+    }
+
+    pub fn read_json_config<T: DeserializeOwned + Default>(&self) -> Result<T, MzStatusCode> {
+        let record = self.read_config_record()?;
+        if record.payload.is_empty() {
+            return Ok(T::default());
+        }
+        serde_json::from_slice(&record.payload).map_err(|_| MzStatusCode::InternalError)
+    }
+
+    pub fn write_json_config<T: Serialize>(
+        &self,
+        value: &T,
+        schema_version: Option<u32>,
+    ) -> Result<(), MzStatusCode> {
+        let payload = serde_json::to_vec(value).map_err(|_| MzStatusCode::InternalError)?;
+        let mut record = MzConfigRecord::new(payload);
+        if let Some(schema_version) = schema_version {
+            record = record.with_schema_version(schema_version);
+        }
+        self.write_config_record(&record)
     }
 }
 

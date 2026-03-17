@@ -2,13 +2,16 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
-    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzMenuSurface, MzSettingsCategory,
-    MzStatusCode, MzViewPlacement, Plugin, PluginDependency, PluginDescriptor,
-    SurfaceContributionSpec, Version, ViewFactorySpec,
+    export_plugin, CommandSpec, HostApi, MenuItemSpec, MzConfigContract, MzMenuSurface,
+    MzSettingsCategory, MzStatusCode, MzViewPlacement, Plugin, PluginDependency,
+    PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
 };
 use serde::{Deserialize, Serialize};
 
 struct ExamplePlugin;
+
+const CONFIG_SCHEMA_VERSION: u32 = 1;
+const CONFIG_MIGRATION_HOOK: &str = "com.example.hello.config.v1";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct ExamplePluginConfig {
@@ -45,14 +48,9 @@ impl Plugin for ExamplePlugin {
             "Registering example Maruzzella plugin",
         );
 
-        let mut config = host
-            .read_config()
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<ExamplePluginConfig>(&bytes).ok())
-            .unwrap_or_default();
+        let mut config = host.read_json_config::<ExamplePluginConfig>()?;
         config.launches += 1;
-        let config_bytes = serde_json::to_vec(&config).map_err(|_| MzStatusCode::InternalError)?;
-        host.write_config(&config_bytes)?;
+        host.write_json_config(&config, Some(CONFIG_SCHEMA_VERSION))?;
 
         host.register_command(
             CommandSpec::new(
@@ -99,6 +97,10 @@ impl Plugin for ExamplePlugin {
                 "Open a plugin-owned settings view backed by persisted config.",
                 MzSettingsCategory::Integrations,
             )
+            .with_config(
+                MzConfigContract::new(CONFIG_SCHEMA_VERSION)
+                    .with_migration_hook(CONFIG_MIGRATION_HOOK),
+            )
             .with_view("com.example.hello.settings", MzViewPlacement::Workbench)
             .with_instance_key("plugin:com.example.hello")
             .with_requested_title("Example Plugin Settings"),
@@ -125,14 +127,18 @@ impl Plugin for ExamplePlugin {
 }
 
 fn load_config(host: &maruzzella_sdk::ffi::MzHostApi) -> ExamplePluginConfig {
-    let Some(read) = host.read_config else {
+    let Some(read) = host.read_config_record else {
         return ExamplePluginConfig::default();
     };
     let bytes = read();
     if bytes.ptr.is_null() || bytes.len == 0 {
         return ExamplePluginConfig::default();
     }
-    serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+    let record = maruzzella_sdk::MzConfigRecord::from_bytes(unsafe {
+        std::slice::from_raw_parts(bytes.ptr, bytes.len)
+    })
+    .unwrap_or_default();
+    serde_json::from_slice(&record.payload)
         .unwrap_or_default()
 }
 
@@ -140,10 +146,15 @@ fn save_config(
     host: &maruzzella_sdk::ffi::MzHostApi,
     config: &ExamplePluginConfig,
 ) -> Result<(), MzStatusCode> {
-    let Some(write) = host.write_config else {
+    let Some(write) = host.write_config_record else {
         return Err(MzStatusCode::NotFound);
     };
-    let payload = serde_json::to_vec(config).map_err(|_| MzStatusCode::InternalError)?;
+    let payload = maruzzella_sdk::MzConfigRecord::new(
+        serde_json::to_vec(config).map_err(|_| MzStatusCode::InternalError)?,
+    )
+    .with_schema_version(CONFIG_SCHEMA_VERSION)
+    .to_bytes()
+    .map_err(|_| MzStatusCode::InternalError)?;
     let status = write(maruzzella_sdk::ffi::MzBytes {
         ptr: payload.as_ptr(),
         len: payload.len(),

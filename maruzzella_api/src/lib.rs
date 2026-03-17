@@ -226,6 +226,7 @@ pub struct MzSettingsPage {
     pub placement: Option<MzViewPlacement>,
     pub instance_key: Option<String>,
     pub requested_title: Option<String>,
+    pub config: Option<MzConfigContract>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -233,6 +234,37 @@ pub struct MzSettingsPageSummary {
     pub plugin_id: String,
     pub contribution_id: String,
     pub page: MzSettingsPage,
+    pub config_state: Option<MzConfigStateSummary>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzConfigContract {
+    pub schema_version: u32,
+    pub migration_hook: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MzConfigState {
+    #[default]
+    Missing,
+    Ready,
+    MigrationRequired,
+    Invalid,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzConfigStateSummary {
+    pub state: MzConfigState,
+    pub stored_schema_version: Option<u32>,
+    pub expected_schema_version: Option<u32>,
+    pub migration_hook: Option<String>,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzConfigRecord {
+    pub schema_version: Option<u32>,
+    pub payload: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -466,6 +498,7 @@ impl MzSettingsPage {
             placement: None,
             instance_key: None,
             requested_title: None,
+            config: None,
         }
     }
 
@@ -482,6 +515,58 @@ impl MzSettingsPage {
 
     pub fn with_requested_title(mut self, requested_title: impl Into<String>) -> Self {
         self.requested_title = Some(requested_title.into());
+        self
+    }
+
+    pub fn with_config(mut self, config: MzConfigContract) -> Self {
+        self.config = Some(config);
+        self
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+impl MzConfigContract {
+    pub fn new(schema_version: u32) -> Self {
+        Self {
+            schema_version,
+            migration_hook: None,
+        }
+    }
+
+    pub fn with_migration_hook(mut self, migration_hook: impl Into<String>) -> Self {
+        self.migration_hook = Some(migration_hook.into());
+        self
+    }
+}
+
+impl MzConfigState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Missing => "Missing",
+            Self::Ready => "Ready",
+            Self::MigrationRequired => "Migration Required",
+            Self::Invalid => "Invalid",
+        }
+    }
+}
+
+impl MzConfigRecord {
+    pub fn new(payload: impl Into<Vec<u8>>) -> Self {
+        Self {
+            schema_version: None,
+            payload: payload.into(),
+        }
+    }
+
+    pub fn with_schema_version(mut self, schema_version: u32) -> Self {
+        self.schema_version = Some(schema_version);
         self
     }
 
@@ -689,6 +774,8 @@ pub type MzReadDiagnosticCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadAboutCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadConfigFn = extern "C" fn() -> MzBytes;
 pub type MzWriteConfigFn = extern "C" fn(payload: MzBytes) -> MzStatus;
+pub type MzReadConfigRecordFn = extern "C" fn() -> MzBytes;
+pub type MzWriteConfigRecordFn = extern "C" fn(payload: MzBytes) -> MzStatus;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -713,6 +800,8 @@ pub struct MzHostApi {
     pub read_about_catalog: Option<MzReadAboutCatalogFn>,
     pub read_config: Option<MzReadConfigFn>,
     pub write_config: Option<MzWriteConfigFn>,
+    pub read_config_record: Option<MzReadConfigRecordFn>,
+    pub write_config_record: Option<MzWriteConfigRecordFn>,
 }
 
 impl MzHostApi {
@@ -738,6 +827,8 @@ impl MzHostApi {
             read_about_catalog: None,
             read_config: None,
             write_config: None,
+            read_config_record: None,
+            write_config_record: None,
         }
     }
 }
@@ -797,7 +888,8 @@ mod tests {
             "General",
             "Example plugin settings",
             MzSettingsCategory::General,
-        );
+        )
+        .with_config(MzConfigContract::new(1).with_migration_hook("example.config.v1"));
         let bytes = page.to_bytes().expect("settings page should serialize");
         let decoded = MzSettingsPage::from_bytes(&bytes).expect("settings page should decode");
         assert_eq!(decoded, page);
@@ -815,6 +907,13 @@ mod tests {
                     "Example plugin settings",
                     MzSettingsCategory::General,
                 ),
+                config_state: Some(MzConfigStateSummary {
+                    state: MzConfigState::Ready,
+                    stored_schema_version: Some(1),
+                    expected_schema_version: Some(1),
+                    migration_hook: Some("example.config.v1".to_string()),
+                    message: "Config schema v1 loaded.".to_string(),
+                }),
             }],
         };
         let bytes = catalog
@@ -864,6 +963,19 @@ mod tests {
     #[test]
     fn settings_category_labels_are_stable() {
         assert_eq!(MzSettingsCategory::Workspace.label(), "Workspace");
+    }
+
+    #[test]
+    fn config_state_labels_are_stable() {
+        assert_eq!(MzConfigState::MigrationRequired.label(), "Migration Required");
+    }
+
+    #[test]
+    fn config_record_roundtrips_through_json_bytes() {
+        let record = MzConfigRecord::new(vec![1, 2, 3]).with_schema_version(7);
+        let bytes = record.to_bytes().expect("config record should serialize");
+        let decoded = MzConfigRecord::from_bytes(&bytes).expect("config record should decode");
+        assert_eq!(decoded, record);
     }
 
     #[test]

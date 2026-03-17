@@ -78,6 +78,9 @@ pub fn merge_runtime_startup_tabs(spec: &mut ShellSpec, runtime: &PluginRuntime)
         let Some(group) = find_group_mut(spec, &tab.group_id) else {
             continue;
         };
+        if !group.tabs.is_empty() {
+            continue;
+        }
         if group.tabs.iter().any(|existing| existing.id == tab.tab_id) {
             continue;
         }

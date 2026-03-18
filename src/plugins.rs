@@ -227,6 +227,7 @@ struct PluginShellHost {
     shell_state: ShellState,
     group_handles: GroupHandles,
     runtime: Weak<PluginRuntime>,
+    view_api: Box<MzHostApi>,
     command_snapshot_buffer: RefCell<Vec<u8>>,
     view_snapshot_buffer: RefCell<Vec<u8>>,
     plugin_snapshot_buffer: RefCell<Vec<u8>>,
@@ -326,11 +327,39 @@ impl PluginRuntime {
         shell_state: ShellState,
         group_handles: GroupHandles,
     ) {
-        let shell_host = Rc::new(PluginShellHost {
+        let shell_host = Rc::new_cyclic(|weak| PluginShellHost {
             persistence_id,
             shell_state,
             group_handles,
             runtime: Rc::downgrade(self),
+            view_api: Box::new(MzHostApi {
+                abi_version: MZ_ABI_VERSION_V1,
+                host_context: weak.as_ptr() as *mut _,
+                log: None,
+                register_command: None,
+                register_menu_item: None,
+                register_surface_contribution: None,
+                register_view_factory: None,
+                register_service: None,
+                register_host_event_subscriber: None,
+                dispatch_command: Some(runtime_dispatch_command),
+                open_view: Some(host_open_view),
+                focus_view: Some(host_focus_view),
+                is_view_open: Some(host_is_view_open),
+                update_view_title: Some(host_update_view_title),
+                read_command_catalog: Some(host_read_command_catalog),
+                read_view_catalog: Some(host_read_view_catalog),
+                read_plugin_state: Some(host_read_plugin_state),
+                read_service_catalog: Some(host_read_service_catalog),
+                read_service: Some(host_read_service),
+                read_settings_catalog: Some(host_read_settings_catalog),
+                read_diagnostic_catalog: Some(host_read_diagnostic_catalog),
+                read_about_catalog: Some(host_read_about_catalog),
+                read_config: None,
+                write_config: None,
+                read_config_record: None,
+                write_config_record: None,
+            }),
             command_snapshot_buffer: RefCell::new(Vec::new()),
             view_snapshot_buffer: RefCell::new(Vec::new()),
             plugin_snapshot_buffer: RefCell::new(Vec::new()),
@@ -520,37 +549,7 @@ impl PluginRuntime {
 
         let _scope = ActiveRuntimeScope::enter(self);
         let view_host = self.view_host.borrow().clone();
-        let host_api = MzHostApi {
-            abi_version: MZ_ABI_VERSION_V1,
-            host_context: view_host
-                .as_ref()
-                .map(|host| Rc::as_ptr(host) as *mut _)
-                .unwrap_or(std::ptr::null_mut()),
-            log: None,
-            register_command: None,
-            register_menu_item: None,
-            register_surface_contribution: None,
-            register_view_factory: None,
-            register_service: None,
-            register_host_event_subscriber: None,
-            dispatch_command: Some(runtime_dispatch_command),
-            open_view: Some(host_open_view),
-            focus_view: Some(host_focus_view),
-            is_view_open: Some(host_is_view_open),
-            update_view_title: Some(host_update_view_title),
-            read_command_catalog: Some(host_read_command_catalog),
-            read_view_catalog: Some(host_read_view_catalog),
-            read_plugin_state: Some(host_read_plugin_state),
-            read_service_catalog: Some(host_read_service_catalog),
-            read_service: Some(host_read_service),
-            read_settings_catalog: Some(host_read_settings_catalog),
-            read_diagnostic_catalog: Some(host_read_diagnostic_catalog),
-            read_about_catalog: Some(host_read_about_catalog),
-            read_config: None,
-            write_config: None,
-            read_config_record: None,
-            write_config_record: None,
-        };
+        let host_api = view_host.as_ref().map(|host| host.view_api.as_ref());
         let plugin_id = MzStr {
             ptr: factory.plugin_id.as_ptr(),
             len: factory.plugin_id.len(),
@@ -569,7 +568,10 @@ impl PluginRuntime {
             },
         };
 
-        let widget_ptr = (factory.create)(&host_api, &request);
+        let widget_ptr = (factory.create)(
+            host_api.map_or(std::ptr::null(), |host| host as *const _),
+            &request,
+        );
         if widget_ptr.is_null() {
             self.push_diagnostic(
                 Some(factory.plugin_id.clone()),

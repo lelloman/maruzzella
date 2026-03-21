@@ -151,6 +151,10 @@ impl CustomWorkbenchGroupHandle {
         let header = page.tab_header.clone();
         let drag_title = page.tab_label.text().to_string();
 
+        page.widget.set_hexpand(true);
+        page.widget.set_vexpand(true);
+        page.widget.set_halign(Align::Fill);
+        page.widget.set_valign(Align::Fill);
         self.stack.add_named(&page.widget, Some(&page_name));
         self.tab_strip.append(&header);
         self.install_header_controllers(&header, &tab_id, &drag_title);
@@ -635,11 +639,15 @@ pub fn build_group(
     plugin_runtime: Option<Rc<PluginRuntime>>,
 ) -> BuiltCustomWorkbenchGroup {
     let overlay = Overlay::new();
+    overlay.set_halign(Align::Fill);
+    overlay.set_valign(Align::Fill);
     overlay.set_hexpand(true);
     overlay.set_vexpand(true);
     overlay.add_css_class("custom-workbench-group");
 
     let root = GtkBox::new(Orientation::Vertical, 0);
+    root.set_halign(Align::Fill);
+    root.set_valign(Align::Fill);
     root.set_hexpand(true);
     root.set_vexpand(true);
     root.add_css_class("workspace-pane");
@@ -659,6 +667,8 @@ pub fn build_group(
     tab_scroller.add_css_class("workbench-tab-strip-scroller");
 
     let stack = Stack::new();
+    stack.set_halign(Align::Fill);
+    stack.set_valign(Align::Fill);
     stack.set_hexpand(true);
     stack.set_vexpand(true);
     stack.set_transition_type(StackTransitionType::None);

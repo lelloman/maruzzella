@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{
-    Box as GtkBox, Button, Entry, Label, ListBox, Notebook, Orientation, SelectionMode, TextBuffer,
-    TextView,
+    Align, Box as GtkBox, Button, Entry, Label, ListBox, Notebook, Orientation, SelectionMode,
+    TextBuffer, TextView,
 };
 
 use crate::plugins::PluginRuntime;
@@ -42,8 +42,20 @@ pub fn build(
     plugin_runtime: Option<Rc<PluginRuntime>>,
 ) -> BuiltNotebook {
     let (root, content) = bare_pane_container(css_class);
+    root.set_hexpand(true);
+    root.set_vexpand(true);
+    root.set_halign(Align::Fill);
+    root.set_valign(Align::Fill);
+    content.set_hexpand(true);
+    content.set_vexpand(true);
+    content.set_halign(Align::Fill);
+    content.set_valign(Align::Fill);
     let notebook = Notebook::new();
     notebook.add_css_class("workbench-tabs");
+    notebook.set_hexpand(true);
+    notebook.set_vexpand(true);
+    notebook.set_halign(Align::Fill);
+    notebook.set_valign(Align::Fill);
     match css_class {
         "workbench" => notebook.add_css_class("editor-tabs"),
         "console-pane" => notebook.add_css_class("bottom-tabs"),
@@ -215,7 +227,20 @@ fn build_plugin_widget(
     };
 
     match plugin_runtime.create_view(plugin_view_id, tab.instance_key.as_deref(), &tab.payload) {
-        Ok(widget) => widget,
+        Ok(widget) => {
+            widget.set_hexpand(true);
+            widget.set_vexpand(true);
+            widget.set_halign(Align::Fill);
+            widget.set_valign(Align::Fill);
+
+            let wrapper = GtkBox::new(Orientation::Vertical, 0);
+            wrapper.set_hexpand(true);
+            wrapper.set_vexpand(true);
+            wrapper.set_halign(Align::Fill);
+            wrapper.set_valign(Align::Fill);
+            wrapper.append(&widget);
+            wrapper.upcast::<gtk::Widget>()
+        }
         Err(error) => plugin_fallback_widget(&format!(
             "Failed to build plugin view '{plugin_view_id}': {error:?}\n\n{}",
             tab.placeholder

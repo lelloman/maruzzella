@@ -160,6 +160,7 @@ fn build_shell(
     density: &theme::ThemeDensity,
 ) -> gtk::Widget {
     let spec = state.borrow().spec.clone();
+    let has_right_panel = !spec.right_panel.tabs.is_empty();
     let left = build_group(
         &spec.left_panel,
         state.clone(),
@@ -170,18 +171,19 @@ fn build_shell(
         .borrow_mut()
         .insert(spec.left_panel.id.clone(), left.handle.clone());
     left.root.set_size_request(density.min_side_panel_width, -1);
-    let right = build_group(
-        &spec.right_panel,
-        state.clone(),
-        persistence_id.clone(),
-        plugin_runtime.clone(),
-    );
-    group_handles
-        .borrow_mut()
-        .insert(spec.right_panel.id.clone(), right.handle.clone());
-    right
-        .root
-        .set_size_request(density.min_side_panel_width, -1);
+    let right = has_right_panel.then(|| {
+        let right = build_group(
+            &spec.right_panel,
+            state.clone(),
+            persistence_id.clone(),
+            plugin_runtime.clone(),
+        );
+        group_handles
+            .borrow_mut()
+            .insert(spec.right_panel.id.clone(), right.handle.clone());
+        right.root.set_size_request(density.min_side_panel_width, -1);
+        right
+    });
     let bottom = build_group(
         &spec.bottom_panel,
         state.clone(),
@@ -235,27 +237,36 @@ fn build_shell(
                 "shell.vertical",
             );
 
-            let outer = Paned::new(Orientation::Horizontal);
-            outer.set_wide_handle(true);
-            outer.set_resize_start_child(true);
-            outer.set_resize_end_child(true);
-            outer.set_shrink_end_child(false);
-            outer.set_start_child(Some(&vertical));
-            outer.set_end_child(Some(&right.root));
-            restore_pane_position(&outer, &state, "shell.outer", 1260);
-            persist_pane_position(&outer, state, persistence_id, "shell.outer");
-            outer.upcast::<gtk::Widget>()
+            if let Some(right) = right {
+                let outer = Paned::new(Orientation::Horizontal);
+                outer.set_wide_handle(true);
+                outer.set_resize_start_child(true);
+                outer.set_resize_end_child(true);
+                outer.set_shrink_end_child(false);
+                outer.set_start_child(Some(&vertical));
+                outer.set_end_child(Some(&right.root));
+                restore_pane_position(&outer, &state, "shell.outer", 1260);
+                persist_pane_position(&outer, state, persistence_id, "shell.outer");
+                outer.upcast::<gtk::Widget>()
+            } else {
+                vertical.upcast::<gtk::Widget>()
+            }
         }
         BottomPanelLayout::FullWidth => {
-            let upper = Paned::new(Orientation::Horizontal);
-            upper.set_wide_handle(true);
-            upper.set_resize_start_child(true);
-            upper.set_resize_end_child(true);
-            upper.set_shrink_end_child(false);
-            upper.set_start_child(Some(&left_center));
-            upper.set_end_child(Some(&right.root));
-            restore_pane_position(&upper, &state, "shell.outer", 1260);
-            persist_pane_position(&upper, state.clone(), persistence_id.clone(), "shell.outer");
+            let upper = if let Some(right) = right {
+                let upper = Paned::new(Orientation::Horizontal);
+                upper.set_wide_handle(true);
+                upper.set_resize_start_child(true);
+                upper.set_resize_end_child(true);
+                upper.set_shrink_end_child(false);
+                upper.set_start_child(Some(&left_center));
+                upper.set_end_child(Some(&right.root));
+                restore_pane_position(&upper, &state, "shell.outer", 1260);
+                persist_pane_position(&upper, state.clone(), persistence_id.clone(), "shell.outer");
+                upper.upcast::<gtk::Widget>()
+            } else {
+                left_center.upcast::<gtk::Widget>()
+            };
 
             let vertical = Paned::new(Orientation::Vertical);
             vertical.set_wide_handle(true);

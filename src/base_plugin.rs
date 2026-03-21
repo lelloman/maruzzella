@@ -281,28 +281,6 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             ),
         ),
         (
-            "selection-inspector",
-            startup_tab_payload(
-                "panel-right",
-                "selection-inspector",
-                "Inspector",
-                VIEW_PANEL_INSPECTOR,
-                false,
-                true,
-            ),
-        ),
-        (
-            "delivery-checklist",
-            startup_tab_payload(
-                "panel-right",
-                "delivery-checklist",
-                "Release",
-                VIEW_PANEL_DELIVERY,
-                false,
-                false,
-            ),
-        ),
-        (
             "runtime-activity",
             startup_tab_payload(
                 "panel-bottom",

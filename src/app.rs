@@ -292,6 +292,7 @@ fn build_group(
         &group.id,
         &group.tabs,
         group.active_tab_id.as_deref(),
+        group.show_tab_strip,
         plugin_runtime,
     );
     install_group_persistence(&built.handle, state, persistence_id);

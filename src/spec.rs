@@ -41,6 +41,8 @@ pub struct TabSpec {
 pub struct TabGroupSpec {
     pub id: String,
     pub active_tab_id: Option<String>,
+    #[serde(default = "default_show_tab_strip")]
+    pub show_tab_strip: bool,
     pub tabs: Vec<TabSpec>,
 }
 
@@ -107,9 +109,19 @@ impl TabGroupSpec {
         Self {
             id: id.to_string(),
             active_tab_id: active_tab_id.map(str::to_string),
+            show_tab_strip: true,
             tabs,
         }
     }
+
+    pub fn with_tab_strip_hidden(mut self) -> Self {
+        self.show_tab_strip = false;
+        self
+    }
+}
+
+fn default_show_tab_strip() -> bool {
+    true
 }
 
 pub fn command_name(command_id: &str) -> String {

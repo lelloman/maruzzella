@@ -636,6 +636,7 @@ pub fn build_group(
     group_id: &str,
     tabs: &[TabSpec],
     active_tab_id: Option<&str>,
+    show_tab_strip: bool,
     plugin_runtime: Option<Rc<PluginRuntime>>,
 ) -> BuiltCustomWorkbenchGroup {
     let overlay = Overlay::new();
@@ -665,6 +666,7 @@ pub fn build_group(
         .child(&tab_strip)
         .build();
     tab_scroller.add_css_class("workbench-tab-strip-scroller");
+    tab_scroller.set_visible(show_tab_strip);
 
     let stack = Stack::new();
     stack.set_halign(Align::Fill);

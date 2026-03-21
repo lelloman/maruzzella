@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use maruzzella_api::MzConfigRecord;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::product::default_product_spec;
 use crate::spec::ShellSpec;
@@ -55,7 +56,14 @@ pub fn load(persistence_id: &str, default_spec: &ShellSpec) -> PersistedShell {
             panes: PanePositions::default(),
         };
     };
-    serde_json::from_str(&raw).unwrap_or_else(|_| PersistedShell {
+    let Ok(mut value) = serde_json::from_str::<Value>(&raw) else {
+        return PersistedShell {
+            spec: default_spec.clone(),
+            panes: PanePositions::default(),
+        };
+    };
+    inject_missing_tab_strip_flags(&mut value, default_spec);
+    serde_json::from_value(value).unwrap_or_else(|_| PersistedShell {
         spec: default_spec.clone(),
         panes: PanePositions::default(),
     })
@@ -157,4 +165,65 @@ fn config_root() -> PathBuf {
         return path;
     }
     PathBuf::from(".")
+}
+
+fn inject_missing_tab_strip_flags(root: &mut Value, default_spec: &ShellSpec) {
+    let Some(spec) = root.get_mut("spec").and_then(Value::as_object_mut) else {
+        return;
+    };
+
+    merge_group_show_tab_strip(spec.get_mut("left_panel"), Some(&default_spec.left_panel));
+    merge_group_show_tab_strip(spec.get_mut("right_panel"), Some(&default_spec.right_panel));
+    merge_group_show_tab_strip(spec.get_mut("bottom_panel"), Some(&default_spec.bottom_panel));
+    merge_workbench_show_tab_strip(spec.get_mut("workbench"), Some(&default_spec.workbench));
+}
+
+fn merge_group_show_tab_strip(current: Option<&mut Value>, default: Option<&crate::spec::TabGroupSpec>) {
+    let (Some(current), Some(default)) = (current, default) else {
+        return;
+    };
+    let Some(object) = current.as_object_mut() else {
+        return;
+    };
+    if !object.contains_key("show_tab_strip") {
+        object.insert(
+            "show_tab_strip".to_string(),
+            Value::Bool(default.show_tab_strip),
+        );
+    }
+}
+
+fn merge_workbench_show_tab_strip(
+    current: Option<&mut Value>,
+    default: Option<&crate::spec::WorkbenchNodeSpec>,
+) {
+    let (Some(current), Some(default)) = (current, default) else {
+        return;
+    };
+
+    match (current, default) {
+        (Value::Object(current_obj), crate::spec::WorkbenchNodeSpec::Group(default_group)) => {
+            if let Some(group_value) = current_obj.get_mut("Group") {
+                merge_group_show_tab_strip(Some(group_value), Some(default_group));
+            }
+        }
+        (
+            Value::Object(current_obj),
+            crate::spec::WorkbenchNodeSpec::Split {
+                children: default_children,
+                ..
+            },
+        ) => {
+            let Some(split_obj) = current_obj.get_mut("Split").and_then(Value::as_object_mut) else {
+                return;
+            };
+            let Some(current_children) = split_obj.get_mut("children").and_then(Value::as_array_mut) else {
+                return;
+            };
+            for (child, default_child) in current_children.iter_mut().zip(default_children.iter()) {
+                merge_workbench_show_tab_strip(Some(child), Some(default_child));
+            }
+        }
+        _ => {}
+    }
 }

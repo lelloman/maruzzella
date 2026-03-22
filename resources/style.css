@@ -145,9 +145,9 @@ undershoot.left {
 button {
   min-height: {{control_height_button}};
   padding: 0 {{space_button_inline}};
-  border-radius: {{radius_medium}};
+  border-radius: {{button_radius}};
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   color: {{color_button_text}};
   box-shadow: none;
   font-size: {{font_size_ui}};
@@ -162,6 +162,11 @@ button:hover {
 .toolbar-button:active,
 button:active {
   background: {{color_button_active}};
+}
+
+button > box,
+.toolbar-button > box {
+  background: transparent;
 }
 
 .toolbar-actions,
@@ -237,8 +242,8 @@ entry {
   padding: 0 {{space_entry_inline}};
   background: {{color_entry_bg}};
   color: @text_0;
-  border: {{search_border}};
-  border-radius: {{radius_medium}};
+  border: 0;
+  border-radius: {{search_radius}};
   font-size: {{font_size_ui}};
 }
 
@@ -246,7 +251,7 @@ entry {
   min-width: {{search_width_min}};
   background: {{color_search_bg}};
   border: {{search_border}};
-  border-radius: {{radius_large}};
+  border-radius: {{search_radius}};
   padding: 0 {{space_search_inline}};
 }
 
@@ -390,7 +395,7 @@ notebook.workbench-tabs > header tabs tab {
   min-height: {{control_height_medium}};
   padding: {{notebook_tab_padding}};
   margin: 4px 4px 4px 0;
-  border-radius: {{radius_medium}};
+  border-radius: {{tab_radius}};
   border-right: 0;
   border-top: 0;
   border-bottom: {{notebook_tab_border_width}} solid transparent;
@@ -529,7 +534,7 @@ notebook.bottom-tabs > header tabs tab:checked {
   border-left: 0;
   border-right: 0;
   border-bottom: {{workbench_tab_border_width}} solid transparent;
-  border-radius: {{radius_medium}};
+  border-radius: {{tab_radius}};
   background: {{color_workbench_tab_bg}};
   color: {{color_workbench_tab_text}};
 }
@@ -708,6 +713,10 @@ textview text,
 text {
   background: @workbench;
   color: {{color_textview_text}};
+}
+
+entry > text {
+  background: transparent;
 }
 
 .workbench textview,

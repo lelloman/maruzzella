@@ -242,7 +242,6 @@ fn build_shell(
             vertical.set_wide_handle(true);
             vertical.set_resize_start_child(true);
             vertical.set_resize_end_child(true);
-            vertical.set_shrink_start_child(false);
             vertical.set_shrink_end_child(false);
             vertical.set_start_child(Some(&left_center));
             vertical.set_end_child(Some(&bottom.root));
@@ -289,7 +288,6 @@ fn build_shell(
             vertical.set_wide_handle(true);
             vertical.set_resize_start_child(true);
             vertical.set_resize_end_child(true);
-            vertical.set_shrink_start_child(false);
             vertical.set_shrink_end_child(false);
             vertical.set_start_child(Some(&upper));
             vertical.set_end_child(Some(&bottom.root));

@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{
-    Align, Box as GtkBox, Button, Entry, Label, ListBox, Notebook, Orientation, SelectionMode,
-    TextBuffer, TextView,
+    Align, Box as GtkBox, Button, Entry, Label, ListBox, Notebook, Orientation, PolicyType,
+    ScrolledWindow, SelectionMode, TextBuffer, TextView,
 };
 
 use crate::plugins::PluginRuntime;
@@ -233,13 +233,16 @@ fn build_plugin_widget(
             widget.set_halign(Align::Fill);
             widget.set_valign(Align::Fill);
 
-            let wrapper = GtkBox::new(Orientation::Vertical, 0);
-            wrapper.set_hexpand(true);
-            wrapper.set_vexpand(true);
-            wrapper.set_halign(Align::Fill);
-            wrapper.set_valign(Align::Fill);
-            wrapper.append(&widget);
-            wrapper.upcast::<gtk::Widget>()
+            let scroller = ScrolledWindow::builder()
+                .hexpand(true)
+                .vexpand(true)
+                .hscrollbar_policy(PolicyType::Never)
+                .vscrollbar_policy(PolicyType::Automatic)
+                .child(&widget)
+                .build();
+            scroller.set_halign(Align::Fill);
+            scroller.set_valign(Align::Fill);
+            scroller.upcast::<gtk::Widget>()
         }
         Err(error) => plugin_fallback_widget(&format!(
             "Failed to build plugin view '{plugin_view_id}': {error:?}\n\n{}",

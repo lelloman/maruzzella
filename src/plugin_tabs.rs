@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use gtk::prelude::ButtonExt;
 use maruzzella_api::MzViewPlacement;
 
 use crate::layout::PersistedShell;
@@ -109,6 +110,28 @@ pub fn update_plugin_view_title(
     true
 }
 
+pub fn close_plugin_view_tab(
+    shell_state: &ShellState,
+    persistence_id: &str,
+    handle: &CustomWorkbenchGroupHandle,
+    group_id: &str,
+    tab_id: &str,
+) -> bool {
+    handle.remove_tab(tab_id);
+    let active_tab_id = handle.active_tab_id();
+    let remaining_tab_ids = handle.tab_ids();
+
+    let mut shell = shell_state.borrow_mut();
+    let Some(group) = find_group_mut(&mut shell.spec, group_id) else {
+        return false;
+    };
+    group.tabs.retain(|tab| tab.id != tab_id);
+    group.active_tab_id = active_tab_id
+        .filter(|active| remaining_tab_ids.iter().any(|tab| tab == active));
+    crate::layout::save(persistence_id, &shell.clone());
+    true
+}
+
 pub fn open_or_focus_plugin_view(
     runtime: &Rc<PluginRuntime>,
     persistence_id: &str,
@@ -170,6 +193,22 @@ pub fn open_or_focus_plugin_view(
     };
 
     let page = tabbed_panel::build_tab_page(pane_css_class(&group_id), &tab, Some(runtime));
+    if let Some(close_button) = page.close_button.clone() {
+        let shell_state = shell_state.clone();
+        let persistence_id = persistence_id.to_string();
+        let handle = handle.clone();
+        let group_id = group_id.clone();
+        let tab_id = tab.id.clone();
+        close_button.connect_clicked(move |_| {
+            close_plugin_view_tab(
+                &shell_state,
+                &persistence_id,
+                &handle,
+                &group_id,
+                &tab_id,
+            );
+        });
+    }
     handle.append_page(page, true);
     Some(OpenPluginViewOutcome::Opened)
 }

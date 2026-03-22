@@ -8,7 +8,7 @@ use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
 use crate::base_plugin;
 use crate::commands;
 use crate::layout::{self, PersistedShell};
-use crate::plugin_tabs::GroupHandles;
+use crate::plugin_tabs::{self, GroupHandles};
 use crate::plugins::{
     diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginDiagnostic,
     PluginDiagnosticLevel, PluginHost, PluginRuntime,
@@ -295,6 +295,22 @@ fn build_group(
         group.show_tab_strip,
         plugin_runtime,
     );
+    for (tab_id, button) in &built.close_buttons {
+        let shell_state = state.clone();
+        let handle = built.handle.clone();
+        let group_id = group.id.clone();
+        let persistence_id = persistence_id.clone();
+        let tab_id = tab_id.clone();
+        button.connect_clicked(move |_| {
+            plugin_tabs::close_plugin_view_tab(
+                &shell_state,
+                &persistence_id,
+                &handle,
+                &group_id,
+                &tab_id,
+            );
+        });
+    }
     install_group_persistence(&built.handle, state, persistence_id);
     built
 }

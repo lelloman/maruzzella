@@ -793,8 +793,14 @@ fn install_header_activation(
     active_changed_handler: Rc<RefCell<Option<Rc<dyn Fn(String)>>>>,
 ) {
     let gesture = GestureClick::new();
+    let header_widget = header.clone();
     let tab_id = tab_id.to_string();
-    gesture.connect_pressed(move |_, _, _, _| {
+    gesture.connect_pressed(move |_, _, x, y| {
+        if let Some(picked) = header_widget.pick(x, y, gtk::PickFlags::DEFAULT) {
+            if widget_or_ancestor_has_css_class(&picked, "tab-close-button") {
+                return;
+            }
+        }
         *active_tab_id.borrow_mut() = Some(tab_id.clone());
         stack.set_visible_child_name(&page_name(&tab_id));
         for (candidate, header) in headers.borrow().iter() {

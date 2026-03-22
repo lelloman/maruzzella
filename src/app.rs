@@ -34,6 +34,11 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
         &config.product.shell_spec(),
     )));
     let mut spec = state.borrow().spec.clone();
+    let product_spec = config.product.shell_spec();
+    spec.title = product_spec.title;
+    spec.search_placeholder = product_spec.search_placeholder;
+    spec.search_command_id = product_spec.search_command_id;
+    spec.status_text = product_spec.status_text;
     let plugin_host = Rc::new(build_plugin_host(config));
     if let Some(runtime) = plugin_host.runtime() {
         product::merge_plugin_runtime(&mut spec, runtime);
@@ -75,9 +80,20 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
     );
     topbar::install_actions(&window, &spec, &registry);
 
+    let topbar = topbar::build(&spec);
+
+    if let Some(search_command_id) = &spec.search_command_id {
+        if let Some(handler) = registry.handler_for(search_command_id) {
+            topbar.search.connect_changed(move |entry| {
+                let text = entry.text();
+                handler(text.as_bytes());
+            });
+        }
+    }
+
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("app-root");
-    root.append(&topbar::build(&spec).root);
+    root.append(&topbar.root);
     root.append(&shell);
     window.set_child(Some(&root));
     unsafe {

@@ -494,6 +494,7 @@ mod tests {
         let spec = ShellSpec {
             title: String::new(),
             search_placeholder: String::new(),
+            search_command_id: None,
             status_text: String::new(),
             bottom_panel_layout: crate::spec::BottomPanelLayout::CenterOnly,
             menu_roots: Vec::new(),
@@ -531,6 +532,7 @@ mod tests {
         let spec = ShellSpec {
             title: String::new(),
             search_placeholder: String::new(),
+            search_command_id: None,
             status_text: String::new(),
             bottom_panel_layout: crate::spec::BottomPanelLayout::CenterOnly,
             menu_roots: Vec::new(),
@@ -565,6 +567,7 @@ mod tests {
         let spec = ShellSpec {
             title: String::new(),
             search_placeholder: String::new(),
+            search_command_id: None,
             status_text: String::new(),
             bottom_panel_layout: crate::spec::BottomPanelLayout::CenterOnly,
             menu_roots: Vec::new(),

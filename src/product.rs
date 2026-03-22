@@ -12,6 +12,7 @@ use crate::spec::{
 pub struct BrandingSpec {
     pub title: String,
     pub search_placeholder: String,
+    pub search_command_id: Option<String>,
     pub status_text: String,
 }
 
@@ -39,6 +40,7 @@ impl ProductSpec {
         ShellSpec {
             title: self.branding.title.clone(),
             search_placeholder: self.branding.search_placeholder.clone(),
+            search_command_id: self.branding.search_command_id.clone(),
             status_text: self.branding.status_text.clone(),
             bottom_panel_layout: self.layout.bottom_panel_layout,
             menu_roots: self.menu_roots.clone(),
@@ -219,6 +221,7 @@ pub fn default_product_spec() -> ProductSpec {
     let branding = BrandingSpec {
         title: "Maruzzella".to_string(),
         search_placeholder: "Search Maruzzella".to_string(),
+        search_command_id: None,
         status_text: "Neutral GTK workspace shell".to_string(),
     };
     let commands = vec![CommandSpec {

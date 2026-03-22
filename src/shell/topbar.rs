@@ -7,6 +7,7 @@ use crate::spec::{command_name, menu_action_ref, MenuItemSpec, ShellSpec, Toolba
 
 pub struct TopBar {
     pub root: GtkBox,
+    pub search: Entry,
 }
 
 pub fn build(spec: &ShellSpec) -> TopBar {
@@ -54,7 +55,7 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     toolbar.append(&utility_group);
 
     root.append(&toolbar);
-    TopBar { root }
+    TopBar { root, search }
 }
 
 fn action_bar_item_button(item: &ToolbarItemSpec) -> Button {

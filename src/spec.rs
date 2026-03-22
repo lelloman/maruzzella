@@ -50,6 +50,7 @@ pub struct TabGroupSpec {
 pub struct ShellSpec {
     pub title: String,
     pub search_placeholder: String,
+    pub search_command_id: Option<String>,
     pub status_text: String,
     pub bottom_panel_layout: BottomPanelLayout,
     pub menu_roots: Vec<MenuRootSpec>,

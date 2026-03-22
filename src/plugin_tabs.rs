@@ -5,6 +5,7 @@ use std::rc::Rc;
 use gtk::prelude::ButtonExt;
 use maruzzella_api::MzViewPlacement;
 
+use crate::base_plugin;
 use crate::layout::PersistedShell;
 use crate::plugins::PluginRuntime;
 use crate::shell::{tabbed_panel, workbench_custom::CustomWorkbenchGroupHandle};
@@ -26,6 +27,16 @@ pub struct OpenPluginViewRequest {
     pub instance_key: Option<String>,
     pub payload: Vec<u8>,
     pub requested_title: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActivePluginTab {
+    pub plugin_view_id: String,
+    pub instance_key: Option<String>,
+}
+
+thread_local! {
+    static LAST_ACTIVE_PLUGIN_TAB: RefCell<Option<ActivePluginTab>> = const { RefCell::new(None) };
 }
 
 impl OpenPluginViewRequest {
@@ -117,6 +128,21 @@ pub fn close_plugin_view_tab(
     group_id: &str,
     tab_id: &str,
 ) -> bool {
+    {
+        let shell = shell_state.borrow();
+        let Some(group) = find_group(&shell.spec, group_id) else {
+            return false;
+        };
+        let Some(tab) = group.tabs.iter().find(|tab| tab.id == tab_id) else {
+            return false;
+        };
+        if !base_plugin::can_close_editor_tab(
+            tab.plugin_view_id.as_deref(),
+            tab.instance_key.as_deref(),
+        ) {
+            return false;
+        }
+    }
     handle.remove_tab(tab_id);
     let active_tab_id = handle.active_tab_id();
     let remaining_tab_ids = handle.tab_ids();
@@ -194,6 +220,11 @@ pub fn open_or_focus_plugin_view(
 
     let page = tabbed_panel::build_tab_page(pane_css_class(&group_id), &tab, Some(runtime));
     if let Some(close_button) = page.close_button.clone() {
+        base_plugin::bind_editor_close_button(
+            tab.plugin_view_id.as_deref(),
+            tab.instance_key.as_deref(),
+            &close_button,
+        );
         let shell_state = shell_state.clone();
         let persistence_id = persistence_id.to_string();
         let handle = handle.clone();
@@ -211,6 +242,27 @@ pub fn open_or_focus_plugin_view(
     }
     handle.append_page(page, true);
     Some(OpenPluginViewOutcome::Opened)
+}
+
+pub fn remember_active_plugin_tab(shell_state: &ShellState, group_id: &str, tab_id: &str) {
+    let active = {
+        let shell = shell_state.borrow();
+        find_group(&shell.spec, group_id)
+            .and_then(|group| group.tabs.iter().find(|tab| tab.id == tab_id))
+            .and_then(|tab| {
+                tab.plugin_view_id.as_ref().map(|plugin_view_id| ActivePluginTab {
+                    plugin_view_id: plugin_view_id.clone(),
+                    instance_key: tab.instance_key.clone(),
+                })
+            })
+    };
+    LAST_ACTIVE_PLUGIN_TAB.with(|slot| {
+        *slot.borrow_mut() = active;
+    });
+}
+
+pub fn last_active_plugin_tab() -> Option<ActivePluginTab> {
+    LAST_ACTIVE_PLUGIN_TAB.with(|slot| slot.borrow().clone())
 }
 
 fn find_plugin_view_tab(
@@ -294,6 +346,31 @@ fn find_plugin_view_in_group(
 
         instance_matches.then(|| (group.id.clone(), tab.id.clone()))
     })
+}
+
+fn find_group<'a>(spec: &'a ShellSpec, group_id: &str) -> Option<&'a TabGroupSpec> {
+    if spec.left_panel.id == group_id {
+        return Some(&spec.left_panel);
+    }
+    if spec.right_panel.id == group_id {
+        return Some(&spec.right_panel);
+    }
+    if spec.bottom_panel.id == group_id {
+        return Some(&spec.bottom_panel);
+    }
+    find_group_in_workbench(&spec.workbench, group_id)
+}
+
+fn find_group_in_workbench<'a>(
+    node: &'a WorkbenchNodeSpec,
+    group_id: &str,
+) -> Option<&'a TabGroupSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => (group.id == group_id).then_some(group),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter()
+            .find_map(|child| find_group_in_workbench(child, group_id)),
+    }
 }
 
 fn target_group_id_for_placement(

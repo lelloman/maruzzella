@@ -1,10 +1,13 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::rc::Rc;
 
 use gtk::ApplicationWindow;
 
+use crate::base_plugin;
 use crate::plugin_tabs::{
-    open_or_focus_plugin_view, GroupHandles, OpenPluginViewRequest, ShellState,
+    last_active_plugin_tab, open_or_focus_plugin_view, GroupHandles, OpenPluginViewRequest,
+    ShellState,
 };
 use crate::plugins::PluginHost;
 use crate::spec::ShellSpec;
@@ -15,6 +18,7 @@ const BASE_PLUGINS_VIEW_ID: &str = "maruzzella.base.workspace.plugins";
 const BASE_SETTINGS_VIEW_ID: &str = "maruzzella.base.workspace.settings";
 const BASE_COMMANDS_VIEW_ID: &str = "maruzzella.base.workspace.commands";
 const BASE_REGISTERED_VIEWS_VIEW_ID: &str = "maruzzella.base.workspace.registered_views";
+const BASE_EDITOR_VIEW_ID: &str = base_plugin::VIEW_WORKSPACE_EDITOR;
 
 type CommandHandler = Rc<dyn Fn(&[u8])>;
 
@@ -130,6 +134,96 @@ pub fn shell_registry(
         );
     });
 
+    let host_for_new_buffer = plugin_host.clone();
+    let persistence_id_for_new_buffer = persistence_id.to_string();
+    let state_for_new_buffer = shell_state.clone();
+    let handles_for_new_buffer = group_handles.clone();
+    registry.register(base_plugin::CMD_NEW_BUFFER, move |_| {
+        let Some(shell_state) = state_for_new_buffer.as_ref() else {
+            return;
+        };
+        let Some(group_handles) = handles_for_new_buffer.as_ref() else {
+            return;
+        };
+        let Some(runtime) = host_for_new_buffer.as_ref().and_then(|host| host.runtime()) else {
+            return;
+        };
+        let document_id = next_untitled_document_id(shell_state);
+        let mut request = OpenPluginViewRequest::new(
+            BASE_EDITOR_VIEW_ID,
+            maruzzella_api::MzViewPlacement::Workbench,
+        );
+        request.instance_key = Some(base_plugin::editor_instance_key(&document_id));
+        request.payload = base_plugin::new_untitled_editor_payload(&document_id);
+        request.requested_title = Some(untitled_title(&document_id));
+        let _ = open_or_focus_plugin_view(
+            runtime,
+            &persistence_id_for_new_buffer,
+            shell_state,
+            group_handles,
+            &request,
+        );
+    });
+
+    let host_for_open_file = plugin_host.clone();
+    let persistence_id_for_open_file = persistence_id.to_string();
+    let state_for_open_file = shell_state.clone();
+    let handles_for_open_file = group_handles.clone();
+    registry.register(base_plugin::CMD_OPEN_FILE_EDITOR, move |payload| {
+        let Some(shell_state) = state_for_open_file.as_ref() else {
+            return;
+        };
+        let Some(group_handles) = handles_for_open_file.as_ref() else {
+            return;
+        };
+        let Some(runtime) = host_for_open_file.as_ref().and_then(|host| host.runtime()) else {
+            return;
+        };
+        let Ok(path) = std::str::from_utf8(payload) else {
+            eprintln!("shell.open_file_editor payload must be valid UTF-8");
+            return;
+        };
+        let path = path.trim();
+        if path.is_empty() {
+            return;
+        }
+        let Ok((document_id, requested_title, view_payload)) =
+            base_plugin::file_editor_request(Path::new(path))
+        else {
+            eprintln!("shell.open_file_editor failed for path: {path}");
+            return;
+        };
+        let mut request = OpenPluginViewRequest::new(
+            BASE_EDITOR_VIEW_ID,
+            maruzzella_api::MzViewPlacement::Workbench,
+        );
+        request.instance_key = Some(base_plugin::editor_instance_key(&document_id));
+        request.payload = view_payload;
+        request.requested_title = Some(requested_title);
+        let _ = open_or_focus_plugin_view(
+            runtime,
+            &persistence_id_for_open_file,
+            shell_state,
+            group_handles,
+            &request,
+        );
+    });
+
+    registry.register(base_plugin::CMD_SAVE_BUFFER, move |_| {
+        let Some(active) = last_active_plugin_tab() else {
+            return;
+        };
+        if !base_plugin::is_editor_view(Some(&active.plugin_view_id)) {
+            return;
+        }
+        let Some(instance_key) = active.instance_key.as_deref() else {
+            return;
+        };
+        if let Err(error) = base_plugin::save_editor_by_instance_key(instance_key) {
+            eprintln!("shell.save_buffer failed: {error}");
+        }
+    });
+
     if let Some(plugin_host) = plugin_host {
         let Some(plugin_runtime) = plugin_host.runtime().cloned() else {
             return registry;
@@ -174,6 +268,57 @@ pub fn shell_registry(
     }
 
     registry
+}
+
+fn next_untitled_document_id(shell_state: &ShellState) -> String {
+    let shell = shell_state.borrow();
+    let mut next_index = 1usize;
+    for tab in all_tabs(&shell.spec) {
+        let Some(instance_key) = tab.instance_key.as_deref() else {
+            continue;
+        };
+        let Some(document_id) = base_plugin::editor_document_id_from_instance_key(instance_key) else {
+            continue;
+        };
+        if let Some(index) = document_id
+            .strip_prefix("untitled:")
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            next_index = next_index.max(index + 1);
+        }
+    }
+    format!("untitled:{next_index}")
+}
+
+fn untitled_title(document_id: &str) -> String {
+    document_id
+        .strip_prefix("untitled:")
+        .map(|index| format!("Untitled {index}"))
+        .unwrap_or_else(|| "Untitled".to_string())
+}
+
+fn all_tabs<'a>(
+    spec: &'a crate::spec::ShellSpec,
+) -> Box<dyn Iterator<Item = &'a crate::spec::TabSpec> + 'a> {
+    Box::new(
+        spec.left_panel
+            .tabs
+            .iter()
+            .chain(spec.right_panel.tabs.iter())
+            .chain(spec.bottom_panel.tabs.iter())
+            .chain(workbench_tabs(&spec.workbench)),
+    )
+}
+
+fn workbench_tabs<'a>(
+    node: &'a crate::spec::WorkbenchNodeSpec,
+) -> Box<dyn Iterator<Item = &'a crate::spec::TabSpec> + 'a> {
+    match node {
+        crate::spec::WorkbenchNodeSpec::Group(group) => Box::new(group.tabs.iter()),
+        crate::spec::WorkbenchNodeSpec::Split { children, .. } => {
+            Box::new(children.iter().flat_map(|child| workbench_tabs(child)))
+        }
+    }
 }
 
 fn open_base_view(

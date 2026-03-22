@@ -226,6 +226,7 @@ fn build_shell(
             vertical.set_wide_handle(true);
             vertical.set_resize_start_child(true);
             vertical.set_resize_end_child(true);
+            vertical.set_shrink_start_child(false);
             vertical.set_shrink_end_child(false);
             vertical.set_start_child(Some(&left_center));
             vertical.set_end_child(Some(&bottom.root));
@@ -272,6 +273,7 @@ fn build_shell(
             vertical.set_wide_handle(true);
             vertical.set_resize_start_child(true);
             vertical.set_resize_end_child(true);
+            vertical.set_shrink_start_child(false);
             vertical.set_shrink_end_child(false);
             vertical.set_start_child(Some(&upper));
             vertical.set_end_child(Some(&bottom.root));
@@ -295,6 +297,15 @@ fn build_group(
         group.show_tab_strip,
         plugin_runtime,
     );
+    for tab in &group.tabs {
+        if let Some(button) = built.close_buttons.get(&tab.id) {
+            crate::base_plugin::bind_editor_close_button(
+                tab.plugin_view_id.as_deref(),
+                tab.instance_key.as_deref(),
+                button,
+            );
+        }
+    }
     for (tab_id, button) in &built.close_buttons {
         let shell_state = state.clone();
         let handle = built.handle.clone();
@@ -376,12 +387,14 @@ fn install_group_persistence(
     let handle_for_active = handle.clone();
     let state_for_active = state.clone();
     let persistence_id_for_active = persistence_id.clone();
-    handle.set_active_changed_handler(move |_| {
+    let group_id_for_active = handle.group_id().to_string();
+    handle.set_active_changed_handler(move |tab_id| {
         sync_group_into_state(
             &state_for_active,
             &handle_for_active,
             &persistence_id_for_active,
         );
+        plugin_tabs::remember_active_plugin_tab(&state_for_active, &group_id_for_active, &tab_id);
     });
 
     let handle_for_drag = handle.clone();

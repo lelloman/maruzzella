@@ -1,9 +1,16 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::c_void;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
-use gtk::{Align, Box as GtkBox, Button, Label, Orientation, Separator};
+use gtk::{
+    Align, Box as GtkBox, Button, Label, Orientation, ScrolledWindow, Separator, TextBuffer,
+    TextView,
+};
 use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec,
     MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
@@ -12,6 +19,7 @@ use maruzzella_api::{
     MzStatus, MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec,
     MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::plugins::{LoadedPlugin, PluginDescriptor, Version};
 
@@ -26,12 +34,46 @@ const VIEW_WORKSPACE_REGISTERED_VIEWS: &str = "maruzzella.base.workspace.registe
 const VIEW_WORKSPACE_PLUGINS: &str = "maruzzella.base.workspace.plugins";
 const VIEW_WORKSPACE_SETTINGS: &str = "maruzzella.base.workspace.settings";
 const VIEW_WORKSPACE_ABOUT: &str = "maruzzella.base.workspace.about";
+pub const VIEW_WORKSPACE_EDITOR: &str = "maruzzella.base.workspace.editor";
 const VIEW_PANEL_NAVIGATOR: &str = "maruzzella.base.panel.navigator";
 const VIEW_PANEL_RESOURCES: &str = "maruzzella.base.panel.resources";
 const VIEW_PANEL_INSPECTOR: &str = "maruzzella.base.panel.inspector";
 const VIEW_PANEL_DELIVERY: &str = "maruzzella.base.panel.delivery";
 const VIEW_PANEL_ACTIVITY: &str = "maruzzella.base.panel.activity";
 const VIEW_PANEL_EXTENSIONS: &str = "maruzzella.base.panel.extensions";
+
+pub const CMD_NEW_BUFFER: &str = "shell.new_buffer";
+pub const CMD_OPEN_FILE_EDITOR: &str = "shell.open_file_editor";
+pub const CMD_SAVE_BUFFER: &str = "shell.save_buffer";
+const EDITOR_INSTANCE_PREFIX: &str = "document:";
+const UNTITLED_TITLE_PREFIX: &str = "Untitled";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorDocumentKind {
+    Untitled,
+    File,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EditorDocumentPayload {
+    pub kind: EditorDocumentKind,
+    pub document_id: String,
+    pub display_name: String,
+    pub file_path: Option<String>,
+    #[serde(default)]
+    pub initial_text: String,
+}
+
+struct EditorSession {
+    save: Box<dyn Fn() -> Result<(), String>>,
+    dirty: bool,
+    close_buttons: Vec<Button>,
+}
+
+thread_local! {
+    static EDITOR_SESSIONS: RefCell<HashMap<String, EditorSession>> = RefCell::new(HashMap::new());
+}
 
 pub fn load() -> LoadedPlugin {
     LoadedPlugin::from_static_vtable(
@@ -117,6 +159,24 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             title: MzStr::from_static("Settings"),
             invoke: None,
         },
+        MzCommandSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            command_id: MzStr::from_static(CMD_NEW_BUFFER),
+            title: MzStr::from_static("New Buffer"),
+            invoke: None,
+        },
+        MzCommandSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            command_id: MzStr::from_static(CMD_OPEN_FILE_EDITOR),
+            title: MzStr::from_static("Open File In Editor"),
+            invoke: None,
+        },
+        MzCommandSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            command_id: MzStr::from_static(CMD_SAVE_BUFFER),
+            title: MzStr::from_static("Save Active Buffer"),
+            invoke: None,
+        },
     ];
 
     let menu_items = [
@@ -158,6 +218,22 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             parent_id: MzStr::from_static(MzMenuSurface::FileItems.as_str()),
             title: MzStr::from_static("Settings"),
             command_id: MzStr::from_static("shell.settings"),
+            payload: MzBytes::empty(),
+        },
+        MzMenuItemSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            menu_id: MzStr::from_static("new-buffer"),
+            parent_id: MzStr::from_static(MzMenuSurface::FileItems.as_str()),
+            title: MzStr::from_static("New Buffer"),
+            command_id: MzStr::from_static(CMD_NEW_BUFFER),
+            payload: MzBytes::empty(),
+        },
+        MzMenuItemSpec {
+            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+            menu_id: MzStr::from_static("save-buffer"),
+            parent_id: MzStr::from_static(MzMenuSurface::FileItems.as_str()),
+            title: MzStr::from_static("Save Buffer"),
+            command_id: MzStr::from_static(CMD_SAVE_BUFFER),
             payload: MzBytes::empty(),
         },
         MzMenuItemSpec {
@@ -254,6 +330,26 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
                 None,
                 "shell.settings",
                 true,
+            ),
+        ),
+        (
+            "new-buffer",
+            toolbar_item_payload(
+                "new-buffer",
+                Some("document-new-symbolic"),
+                Some("New Buffer"),
+                CMD_NEW_BUFFER,
+                false,
+            ),
+        ),
+        (
+            "save-buffer",
+            toolbar_item_payload(
+                "save-buffer",
+                Some("document-save-symbolic"),
+                Some("Save"),
+                CMD_SAVE_BUFFER,
+                false,
             ),
         ),
     ];
@@ -357,6 +453,7 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
         view_factory(VIEW_WORKSPACE_PLUGINS),
         view_factory(VIEW_WORKSPACE_SETTINGS),
         view_factory(VIEW_WORKSPACE_ABOUT),
+        view_factory(VIEW_WORKSPACE_EDITOR),
         view_factory(VIEW_PANEL_NAVIGATOR),
         view_factory(VIEW_PANEL_RESOURCES),
         view_factory(VIEW_PANEL_INSPECTOR),
@@ -471,6 +568,7 @@ fn view_factory(view_id: &'static str) -> MzViewFactorySpec {
         VIEW_WORKSPACE_PLUGINS => ("Plugins", MzViewPlacement::Workbench),
         VIEW_WORKSPACE_SETTINGS => ("Settings", MzViewPlacement::Workbench),
         VIEW_WORKSPACE_ABOUT => ("About", MzViewPlacement::Workbench),
+        VIEW_WORKSPACE_EDITOR => ("Editor", MzViewPlacement::Workbench),
         VIEW_PANEL_NAVIGATOR => ("Workspace", MzViewPlacement::SidePanel),
         VIEW_PANEL_RESOURCES => ("Resources", MzViewPlacement::SidePanel),
         VIEW_PANEL_INSPECTOR => ("Inspector", MzViewPlacement::SidePanel),
@@ -514,6 +612,7 @@ extern "C" fn create_base_view(
         VIEW_WORKSPACE_PLUGINS => plugins_view(host),
         VIEW_WORKSPACE_SETTINGS => settings_view(host, instance_key.as_deref()),
         VIEW_WORKSPACE_ABOUT => about_view(host),
+        VIEW_WORKSPACE_EDITOR => editor_view(host, request),
         VIEW_PANEL_NAVIGATOR => navigator_view(),
         VIEW_PANEL_RESOURCES => resources_view(),
         VIEW_PANEL_INSPECTOR => inspector_view(),
@@ -1085,6 +1184,149 @@ fn about_view(host: &MzHostApi) -> gtk::Widget {
     root.upcast()
 }
 
+fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
+    let instance_key = match decode_optional_str(request.instance_key) {
+        Some(instance_key) => instance_key,
+        None => return fallback_view("Editor view requires a document instance key."),
+    };
+    let document = match decode_editor_payload(request.payload) {
+        Ok(document) => document,
+        Err(error) => {
+            return fallback_view(&format!("Editor payload is invalid: {error}"));
+        }
+    };
+
+    let root = view_root();
+    let status = Label::new(None);
+    status.set_xalign(0.0);
+    status.add_css_class("muted");
+
+    let detail = Label::new(None);
+    detail.set_xalign(0.0);
+    detail.set_wrap(true);
+    detail.add_css_class("muted");
+
+    let error_label = Label::new(None);
+    error_label.set_xalign(0.0);
+    error_label.set_wrap(true);
+    error_label.add_css_class("status-badge");
+    error_label.add_css_class("status-idle");
+    error_label.set_visible(false);
+
+    let buffer = TextBuffer::new(None);
+    let text_view = TextView::builder()
+        .buffer(&buffer)
+        .monospace(true)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    let scrolled = ScrolledWindow::builder()
+        .hexpand(true)
+        .vexpand(true)
+        .min_content_height(320)
+        .child(&text_view)
+        .build();
+
+    let save_button = action_button("Save", Some("document-save-symbolic"));
+
+    let title_clean = document.display_name.clone();
+    let title_dirty = format!("*{}", title_clean);
+    let instance_key_for_status = instance_key.clone();
+    let document_for_ui = document.clone();
+    let host_for_ui = *host;
+    let status_for_ui = status.clone();
+    let detail_for_ui = detail.clone();
+    let error_for_ui = error_label.clone();
+    let save_button_for_ui = save_button.clone();
+    let refresh_state = Rc::new(move |dirty: bool, message: Option<&str>| {
+        if dirty {
+            status_for_ui.set_label("Status: Dirty");
+            detail_for_ui.set_label(&editor_detail_message(&document_for_ui, true));
+        } else {
+            status_for_ui.set_label("Status: Clean");
+            detail_for_ui.set_label(&editor_detail_message(&document_for_ui, false));
+        }
+        save_button_for_ui.set_sensitive(document_for_ui.kind == EditorDocumentKind::File);
+        if let Some(update) = host_for_ui.update_view_title {
+            let _ = update(
+                &maruzzella_api::MzViewQuery {
+                    plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
+                    view_id: MzStr::from_static(VIEW_WORKSPACE_EDITOR),
+                    instance_key: str_to_mzstr(&instance_key_for_status),
+                },
+                str_to_mzstr(if dirty { &title_dirty } else { &title_clean }),
+            );
+        }
+        if let Some(message) = message {
+            error_for_ui.set_label(message);
+            error_for_ui.set_visible(true);
+        } else {
+            error_for_ui.set_visible(false);
+        }
+        set_editor_dirty(&instance_key_for_status, dirty);
+    });
+
+    match load_editor_text(&document) {
+        Ok(text) => buffer.set_text(&text),
+        Err(error) => {
+            buffer.set_text("");
+            refresh_state(false, Some(&error));
+        }
+    }
+
+    let buffer_for_save = buffer.clone();
+    let document_for_save = document.clone();
+    let refresh_for_save = refresh_state.clone();
+    let save = Rc::new(move || match save_editor_document(&document_for_save, &buffer_for_save) {
+        Ok(()) => {
+            refresh_for_save(false, None);
+            Ok(())
+        }
+        Err(error) => {
+            refresh_for_save(true, Some(&error));
+            Err(error)
+        }
+    });
+
+    register_editor_session(&instance_key, Box::new({
+        let save = save.clone();
+        move || save()
+    }));
+    refresh_state(false, None);
+
+    {
+        let refresh_state = refresh_state.clone();
+        buffer.connect_changed(move |_| {
+            refresh_state(true, None);
+        });
+    }
+
+    {
+        let save = save.clone();
+        save_button.connect_clicked(move |_| {
+            let _ = save();
+        });
+    }
+
+    let button_row = GtkBox::new(Orientation::Horizontal, 8);
+    button_row.append(&save_button);
+
+    root.append(&hero(
+        &document.display_name,
+        &editor_body_message(&document),
+        Some(("Editable", "status-running")),
+    ));
+    root.append(&status);
+    root.append(&detail);
+    root.append(&error_label);
+    root.append(&button_row);
+    root.append(&scrolled);
+
+    let instance_key_for_destroy = instance_key.clone();
+    root.connect_destroy(move |_| unregister_editor_session(&instance_key_for_destroy));
+    root.upcast()
+}
+
 fn fallback_view(message: &str) -> gtk::Widget {
     let root = view_root();
     root.append(&hero(
@@ -1093,6 +1335,69 @@ fn fallback_view(message: &str) -> gtk::Widget {
         Some(("Error", "status-idle")),
     ));
     root.upcast()
+}
+
+fn load_editor_text(document: &EditorDocumentPayload) -> Result<String, String> {
+    match document.kind {
+        EditorDocumentKind::Untitled => Ok(document.initial_text.clone()),
+        EditorDocumentKind::File => {
+            let Some(path) = document.file_path.as_deref() else {
+                return Err("File-backed document is missing a file path.".to_string());
+            };
+            fs::read_to_string(path).map_err(|error| format!("Failed to read {path}: {error}"))
+        }
+    }
+}
+
+fn save_editor_document(document: &EditorDocumentPayload, buffer: &TextBuffer) -> Result<(), String> {
+    match document.kind {
+        EditorDocumentKind::Untitled => Err("Untitled buffers cannot be saved in v1.".to_string()),
+        EditorDocumentKind::File => {
+            let Some(path) = document.file_path.as_deref() else {
+                return Err("File-backed document is missing a file path.".to_string());
+            };
+            let text = buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), true)
+                .to_string();
+            fs::write(path, text).map_err(|error| format!("Failed to write {path}: {error}"))
+        }
+    }
+}
+
+fn editor_body_message(document: &EditorDocumentPayload) -> String {
+    match document.kind {
+        EditorDocumentKind::Untitled => {
+            "This is an in-memory editor buffer. Save As is intentionally not implemented yet."
+                .to_string()
+        }
+        EditorDocumentKind::File => format!(
+            "This editor tab is backed by a file on disk and can be saved in place.\n{}",
+            document.file_path.as_deref().unwrap_or_default()
+        ),
+    }
+}
+
+fn editor_detail_message(document: &EditorDocumentPayload, dirty: bool) -> String {
+    let prefix = match document.kind {
+        EditorDocumentKind::Untitled => "Buffer: In-memory untitled document".to_string(),
+        EditorDocumentKind::File => format!(
+            "Buffer: {}",
+            document.file_path.as_deref().unwrap_or_default()
+        ),
+    };
+    if dirty {
+        format!("{prefix}\nClose is blocked until the buffer is saved or reset.")
+    } else {
+        prefix
+    }
+}
+
+fn decode_editor_payload(payload: MzBytes) -> Result<EditorDocumentPayload, String> {
+    if payload.ptr.is_null() || payload.len == 0 {
+        return Err("empty payload".to_string());
+    }
+    serde_json::from_slice(unsafe { std::slice::from_raw_parts(payload.ptr, payload.len) })
+        .map_err(|error| error.to_string())
 }
 
 fn view_root() -> GtkBox {
@@ -1338,6 +1643,151 @@ fn str_to_mzstr(value: &str) -> MzStr {
     }
 }
 
+pub fn new_untitled_editor_payload(document_id: &str) -> Vec<u8> {
+    EditorDocumentPayload {
+        kind: EditorDocumentKind::Untitled,
+        document_id: document_id.to_string(),
+        display_name: untitled_display_name(document_id),
+        file_path: None,
+        initial_text: String::new(),
+    }
+    .to_bytes()
+    .expect("untitled editor payload should serialize")
+}
+
+pub fn file_editor_request(path: &Path) -> Result<(String, String, Vec<u8>), String> {
+    let absolute = absolute_existing_path(path)?;
+    let display_name = absolute
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| absolute.display().to_string());
+    let document_id = format!("file:{}", absolute.display());
+    let payload = EditorDocumentPayload {
+        kind: EditorDocumentKind::File,
+        document_id: document_id.clone(),
+        display_name: display_name.clone(),
+        file_path: Some(absolute.display().to_string()),
+        initial_text: String::new(),
+    }
+    .to_bytes()
+    .map_err(|error| error.to_string())?;
+    Ok((document_id, display_name, payload))
+}
+
+pub fn editor_instance_key(document_id: &str) -> String {
+    format!("{EDITOR_INSTANCE_PREFIX}{document_id}")
+}
+
+pub fn editor_document_id_from_instance_key(instance_key: &str) -> Option<&str> {
+    instance_key.strip_prefix(EDITOR_INSTANCE_PREFIX)
+}
+
+pub fn is_editor_view(plugin_view_id: Option<&str>) -> bool {
+    plugin_view_id == Some(VIEW_WORKSPACE_EDITOR)
+}
+
+pub fn bind_editor_close_button(plugin_view_id: Option<&str>, instance_key: Option<&str>, button: &Button) {
+    if !is_editor_view(plugin_view_id) {
+        return;
+    }
+    let Some(instance_key) = instance_key else {
+        return;
+    };
+    EDITOR_SESSIONS.with(|sessions| {
+        let mut sessions = sessions.borrow_mut();
+        let Some(session) = sessions.get_mut(instance_key) else {
+            button.set_sensitive(true);
+            return;
+        };
+        button.set_sensitive(!session.dirty);
+        session.close_buttons.push(button.clone());
+    });
+}
+
+pub fn can_close_editor_tab(plugin_view_id: Option<&str>, instance_key: Option<&str>) -> bool {
+    if !is_editor_view(plugin_view_id) {
+        return true;
+    }
+    let Some(instance_key) = instance_key else {
+        return true;
+    };
+    EDITOR_SESSIONS.with(|sessions| {
+        sessions
+            .borrow()
+            .get(instance_key)
+            .map(|session| !session.dirty)
+            .unwrap_or(true)
+    })
+}
+
+pub fn save_editor_by_instance_key(instance_key: &str) -> Result<bool, String> {
+    EDITOR_SESSIONS.with(|sessions| {
+        let sessions = sessions.borrow();
+        let Some(session) = sessions.get(instance_key) else {
+            return Ok(false);
+        };
+        (session.save)().map(|_| true)
+    })
+}
+
+fn register_editor_session(instance_key: &str, save: Box<dyn Fn() -> Result<(), String>>) {
+    EDITOR_SESSIONS.with(|sessions| {
+        sessions.borrow_mut().insert(
+            instance_key.to_string(),
+            EditorSession {
+                save,
+                dirty: false,
+                close_buttons: Vec::new(),
+            },
+        );
+    });
+}
+
+fn unregister_editor_session(instance_key: &str) {
+    EDITOR_SESSIONS.with(|sessions| {
+        sessions.borrow_mut().remove(instance_key);
+    });
+}
+
+fn set_editor_dirty(instance_key: &str, dirty: bool) {
+    EDITOR_SESSIONS.with(|sessions| {
+        let mut sessions = sessions.borrow_mut();
+        let Some(session) = sessions.get_mut(instance_key) else {
+            return;
+        };
+        session.dirty = dirty;
+        for button in &session.close_buttons {
+            button.set_sensitive(!dirty);
+        }
+    });
+}
+
+fn absolute_existing_path(path: &Path) -> Result<PathBuf, String> {
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("failed to read current directory: {error}"))?
+            .join(path)
+    };
+    path.canonicalize()
+        .map_err(|error| format!("failed to resolve {}: {error}", path.display()))
+}
+
+fn untitled_display_name(document_id: &str) -> String {
+    document_id
+        .strip_prefix("untitled:")
+        .map(|suffix| format!("{UNTITLED_TITLE_PREFIX} {suffix}"))
+        .unwrap_or_else(|| UNTITLED_TITLE_PREFIX.to_string())
+}
+
+impl EditorDocumentPayload {
+    fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+}
+
 fn parse_plugin_instance_key(value: &str) -> Option<&str> {
     value.strip_prefix("plugin:")
 }
@@ -1444,6 +1894,8 @@ fn read_about_catalog(host: &MzHostApi) -> MzAboutCatalog {
 mod tests {
     use super::*;
     use crate::plugins::PluginRuntime;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn base_plugin_registers_views_and_surfaces() {
@@ -1481,5 +1933,66 @@ mod tests {
             .view_factories()
             .iter()
             .any(|factory| factory.view_id == VIEW_PANEL_EXTENSIONS));
+        assert!(runtime
+            .view_factories()
+            .iter()
+            .any(|factory| factory.view_id == VIEW_WORKSPACE_EDITOR));
+        assert!(runtime
+            .commands()
+            .iter()
+            .any(|command| command.command_id == CMD_NEW_BUFFER));
+    }
+
+    #[test]
+    fn untitled_editor_payload_serializes_expected_identity() {
+        let payload = serde_json::from_slice::<EditorDocumentPayload>(
+            &new_untitled_editor_payload("untitled:3"),
+        )
+        .expect("untitled payload should decode");
+
+        assert_eq!(payload.kind, EditorDocumentKind::Untitled);
+        assert_eq!(payload.document_id, "untitled:3");
+        assert_eq!(payload.display_name, "Untitled 3");
+        assert!(payload.file_path.is_none());
+    }
+
+    #[test]
+    fn file_editor_request_uses_canonical_path_identity() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should work")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("maruzzella-editor-{stamp}.txt"));
+        fs::write(&path, "hello").expect("temp file should be writable");
+
+        let canonical = path.canonicalize().expect("path should canonicalize");
+        let (_, title, payload) =
+            file_editor_request(&path).expect("file editor request should build");
+        let payload =
+            serde_json::from_slice::<EditorDocumentPayload>(&payload).expect("payload decode");
+
+        assert_eq!(title, payload.display_name);
+        assert_eq!(payload.kind, EditorDocumentKind::File);
+        assert_eq!(
+            payload.file_path.as_deref(),
+            Some(canonical.display().to_string().as_str())
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn editor_session_tracks_dirty_and_saveability() {
+        let instance_key = editor_instance_key("untitled:test");
+        register_editor_session(&instance_key, Box::new(|| Ok(())));
+        assert!(can_close_editor_tab(Some(VIEW_WORKSPACE_EDITOR), Some(&instance_key)));
+
+        set_editor_dirty(&instance_key, true);
+        assert!(!can_close_editor_tab(Some(VIEW_WORKSPACE_EDITOR), Some(&instance_key)));
+
+        let saved = save_editor_by_instance_key(&instance_key).expect("save should succeed");
+        assert!(saved);
+
+        unregister_editor_session(&instance_key);
     }
 }

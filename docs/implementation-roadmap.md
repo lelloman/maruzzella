@@ -33,6 +33,7 @@ Implemented so far:
 23. plugin discovery conventions for explicit paths and discovery directories
 24. plugin author workflow and packaging/versioning documentation
 25. SDK ergonomics helpers for typed JSON payload, config, and service handling
+26. built-in base-plugin editor tabs with untitled buffers, file-backed documents, native open/save-as flows, and host-backed draft restore
 
 These pieces are enough to prove the basic architecture:
 

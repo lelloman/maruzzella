@@ -17,6 +17,7 @@ Today the project is in an intermediate but coherent state:
 - the default app now boots into a coherent base-plugin-backed shell slice instead of placeholder-first `ProductSpec` text tabs
 - plugin configuration persistence and plugin settings-summary surfaces are wired through the host
 - plugin runtime services, host events, and discovery conventions are now available to downstreams
+- the built-in base plugin now ships a real editor tab with untitled buffers, file-backed documents, native open/save-as flows, and draft restore for dirty buffers
 
 That means the plugin architecture is proven and the shell now exercises it in its default startup experience, but many shared shell contracts are still not formalized.
 
@@ -26,8 +27,20 @@ That means the plugin architecture is proven and the shell now exercises it in i
 - uses custom tab groups instead of `GtkNotebook`
 - supports tab activation, reordering, and workbench split previews
 - persists tab arrangement and pane sizes to a local JSON layout file
-- exposes a small command surface for theme reload and command palette style actions
+- exposes shell commands for theme reload, command palette style actions, and editor buffer workflows
 - ships with a built-in workspace slice that can be replaced or extended by downstream products
+
+## Editor Tabs
+
+The built-in `maruzzella.base` plugin now includes an editor workbench view.
+
+- `New Buffer` opens an untitled in-memory buffer
+- `Open File In Editor` accepts an explicit path payload or uses the native file picker when invoked without one
+- `Save Buffer` saves file-backed documents in place and falls back to `Save As` for untitled buffers
+- `Save Buffer As` uses the native save dialog and converts the current tab into a file-backed document
+- dirty editor drafts are stored through the host-backed plugin config record and restored on restart
+
+This is still a text editor slice, not a full document system: there is no syntax highlighting, multi-document search, or conflict resolution yet.
 
 ## Project Structure
 

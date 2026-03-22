@@ -169,6 +169,16 @@ button > box,
   background: transparent;
 }
 
+.linked > button:checked {
+  background: {{color_button_active}};
+  color: @text_0;
+}
+
+.linked > button:checked:hover {
+  background: {{color_button_active}};
+  color: @text_0;
+}
+
 .toolbar-actions,
 .toolbar-utility-group {
 }

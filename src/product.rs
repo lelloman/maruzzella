@@ -32,6 +32,7 @@ pub struct ProductSpec {
     pub menu_items: Vec<MenuItemSpec>,
     pub commands: Vec<CommandSpec>,
     pub toolbar_items: Vec<ToolbarItemSpec>,
+    pub include_base_toolbar_items: bool,
     pub layout: LayoutContribution,
 }
 
@@ -55,10 +56,14 @@ impl ProductSpec {
     }
 }
 
-pub fn merge_plugin_runtime(spec: &mut ShellSpec, runtime: &PluginRuntime) {
+pub fn merge_plugin_runtime(
+    spec: &mut ShellSpec,
+    runtime: &PluginRuntime,
+    include_base_toolbar_items: bool,
+) {
     merge_runtime_commands(spec, runtime);
     merge_runtime_menus(spec, runtime);
-    merge_runtime_toolbar(spec, runtime);
+    merge_runtime_toolbar(spec, runtime, include_base_toolbar_items);
 }
 
 pub fn merge_runtime_startup_tabs(spec: &mut ShellSpec, runtime: &PluginRuntime) {
@@ -171,7 +176,11 @@ fn merge_runtime_menus(spec: &mut ShellSpec, runtime: &PluginRuntime) {
     spec.menu_roots.sort_by_key(|root| menu_root_rank(&root.id));
 }
 
-fn merge_runtime_toolbar(spec: &mut ShellSpec, runtime: &PluginRuntime) {
+fn merge_runtime_toolbar(
+    spec: &mut ShellSpec,
+    runtime: &PluginRuntime,
+    include_base_toolbar_items: bool,
+) {
     let mut known_toolbar_ids = spec
         .toolbar_items
         .iter()
@@ -183,6 +192,9 @@ fn merge_runtime_toolbar(spec: &mut ShellSpec, runtime: &PluginRuntime) {
         .iter()
         .filter(|contribution| contribution.surface == Some(MzContributionSurface::ToolbarItems))
     {
+        if !include_base_toolbar_items && contribution.plugin_id == "maruzzella.base" {
+            continue;
+        }
         let Ok(item) = MzToolbarItem::from_bytes(&contribution.payload) else {
             runtime.push_diagnostic(
                 Some(contribution.plugin_id.clone()),
@@ -255,6 +267,7 @@ pub fn default_product_spec() -> ProductSpec {
         menu_items,
         commands,
         toolbar_items,
+        include_base_toolbar_items: true,
         layout,
     }
 }
@@ -320,7 +333,7 @@ mod tests {
         }];
 
         let mut spec = default_product_spec().shell_spec();
-        merge_plugin_runtime(&mut spec, &runtime);
+        merge_plugin_runtime(&mut spec, &runtime, true);
 
         assert!(spec
             .commands

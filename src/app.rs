@@ -41,7 +41,11 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
     spec.status_text = product_spec.status_text;
     let plugin_host = Rc::new(build_plugin_host(config));
     if let Some(runtime) = plugin_host.runtime() {
-        product::merge_plugin_runtime(&mut spec, runtime);
+        product::merge_plugin_runtime(
+            &mut spec,
+            runtime,
+            config.product.include_base_toolbar_items,
+        );
         if !has_persisted_layout {
             product::merge_runtime_startup_tabs(&mut spec, runtime);
         }

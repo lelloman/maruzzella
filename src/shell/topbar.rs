@@ -110,8 +110,19 @@ fn build_menu_model(spec: &ShellSpec) -> gio::Menu {
 
 fn submenu(items: &[MenuItemSpec]) -> gio::Menu {
     let submenu = gio::Menu::new();
+    let mut section = gio::Menu::new();
     for item in items {
-        submenu.append(Some(&item.label), Some(&menu_action_ref(&item.id)));
+        if item.command_id.is_empty() {
+            if section.n_items() > 0 {
+                submenu.append_section(None, &section);
+                section = gio::Menu::new();
+            }
+            continue;
+        }
+        section.append(Some(&item.label), Some(&menu_action_ref(&item.id)));
+    }
+    if section.n_items() > 0 {
+        submenu.append_section(None, &section);
     }
     submenu
 }

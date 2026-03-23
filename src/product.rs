@@ -173,7 +173,6 @@ fn merge_runtime_menus(spec: &mut ShellSpec, runtime: &PluginRuntime) {
         }
     }
 
-    spec.menu_roots.sort_by_key(|root| menu_root_rank(&root.id));
 }
 
 fn merge_runtime_toolbar(
@@ -216,17 +215,6 @@ fn merge_runtime_toolbar(
             });
         }
     }
-}
-
-fn menu_root_rank(root_id: &str) -> (usize, String) {
-    let rank = match root_id {
-        "file" => 0,
-        "app" => 1,
-        "view" => 2,
-        "help" => 3,
-        _ => 10,
-    };
-    (rank, root_id.to_string())
 }
 
 pub fn default_product_spec() -> ProductSpec {

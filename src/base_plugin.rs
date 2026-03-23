@@ -273,14 +273,6 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             command_id: MzStr::from_static(CMD_SAVE_BUFFER_AS),
             payload: MzBytes::empty(),
         },
-        MzMenuItemSpec {
-            plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
-            menu_id: MzStr::from_static("about"),
-            parent_id: MzStr::from_static(MzMenuSurface::HelpItems.as_str()),
-            title: MzStr::from_static("About Maruzzella"),
-            command_id: MzStr::from_static("shell.about"),
-            payload: MzBytes::empty(),
-        },
     ];
 
     let about_payload = MzAboutSection::new(

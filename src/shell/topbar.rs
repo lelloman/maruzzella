@@ -20,11 +20,8 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     let menu_model = build_menu_model(spec);
     let menu_bar = PopoverMenuBar::from_model(Some(&menu_model));
     menu_bar.add_css_class("menu-bar");
+    menu_bar.set_hexpand(true);
     masthead.append(&menu_bar);
-
-    let masthead_spacer = GtkBox::new(Orientation::Horizontal, 0);
-    masthead_spacer.set_hexpand(true);
-    masthead.append(&masthead_spacer);
     root.append(&masthead);
 
     let toolbar = GtkBox::new(Orientation::Horizontal, 12);

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use gtk::gdk::Display;
-use gtk::{CssProvider, STYLE_PROVIDER_PRIORITY_APPLICATION};
+use gtk::{CssProvider, STYLE_PROVIDER_PRIORITY_USER};
 
 const STYLE_TEMPLATE: &str = include_str!("../resources/style.css");
 
@@ -216,7 +216,7 @@ fn load_into_provider(provider: &CssProvider, spec: &ThemeSpec) {
         gtk::style_context_add_provider_for_display(
             &display,
             provider,
-            STYLE_PROVIDER_PRIORITY_APPLICATION,
+            STYLE_PROVIDER_PRIORITY_USER,
         );
     }
 }

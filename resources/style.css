@@ -842,18 +842,35 @@ scrollbar slider:hover {
 popover.menu,
 popover.background.menu,
 popover.background {
-  background: {{color_popover_bg}};
+  background: transparent;
   color: @text_1;
-  border: {{popover_border}};
+  border: 0;
   box-shadow: none;
+  padding: 0;
+  margin: 0;
 }
 
-popover.menu contents,
-popover.background.menu contents,
-popover.background contents {
+popover.menu > arrow,
+popover.background.menu > arrow,
+popover.background > arrow {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+popover.menu > contents,
+popover.background.menu > contents,
+popover.background > contents {
   background: {{color_popover_bg}};
-  padding: {{popover_content_padding}};
-  border-radius: {{radius_none}};
+  border: {{popover_border}};
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 popover.menu modelbutton,
@@ -883,5 +900,6 @@ popover.menu separator,
 popover.background.menu separator,
 popover.background separator {
   background: {{color_popover_separator}};
+  min-height: 1px;
   margin: {{popover_separator_margin}};
 }

@@ -15,7 +15,9 @@ use crate::plugins::{
 };
 use crate::product;
 use crate::shell::topbar;
-use crate::shell::workbench_custom::{self, BuiltCustomWorkbenchGroup, CustomWorkbenchGroupHandle};
+use crate::shell::workbench_custom::{
+    self, BuiltCustomWorkbenchGroup, CustomWorkbenchGroupHandle, SplitPreviewSide,
+};
 use crate::spec::{
     BottomPanelLayout, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec,
 };
@@ -23,6 +25,13 @@ use crate::theme;
 use crate::MaruzzellaConfig;
 
 type ShellState = Rc<RefCell<PersistedShell>>;
+
+#[derive(Default)]
+struct WorkbenchDragContext {
+    source_group_id: Option<String>,
+    target_group_id: Option<String>,
+    target_index: Option<usize>,
+}
 
 pub fn build(application: &Application, config: &MaruzzellaConfig) {
     theme::install(config.theme.clone());
@@ -186,6 +195,7 @@ fn build_shell(
         state.clone(),
         persistence_id.clone(),
         plugin_runtime.clone(),
+        group_handles.clone(),
     );
     group_handles
         .borrow_mut()
@@ -197,6 +207,7 @@ fn build_shell(
             state.clone(),
             persistence_id.clone(),
             plugin_runtime.clone(),
+            group_handles.clone(),
         );
         group_handles
             .borrow_mut()
@@ -209,6 +220,7 @@ fn build_shell(
         state.clone(),
         persistence_id.clone(),
         plugin_runtime.clone(),
+        group_handles.clone(),
     );
     group_handles
         .borrow_mut()
@@ -221,8 +233,17 @@ fn build_shell(
         state.clone(),
         persistence_id.clone(),
         "workbench-root",
-        plugin_runtime,
+        plugin_runtime.clone(),
         &group_handles,
+    );
+    let workbench_drag_context = Rc::new(RefCell::new(WorkbenchDragContext::default()));
+    install_workbench_interactions_for_handles(
+        &group_handles,
+        &workbench,
+        state.clone(),
+        persistence_id.clone(),
+        plugin_runtime.clone(),
+        workbench_drag_context,
     );
 
     let left_center = Paned::new(Orientation::Horizontal);
@@ -307,6 +328,7 @@ fn build_group(
     state: ShellState,
     persistence_id: String,
     plugin_runtime: Option<Rc<PluginRuntime>>,
+    group_handles: GroupHandles,
 ) -> BuiltCustomWorkbenchGroup {
     let built = workbench_custom::build_group(
         &group.id,
@@ -326,18 +348,23 @@ fn build_group(
     }
     for (tab_id, button) in &built.close_buttons {
         let shell_state = state.clone();
+        let group_handles = group_handles.clone();
         let handle = built.handle.clone();
         let group_id = group.id.clone();
         let persistence_id = persistence_id.clone();
         let tab_id = tab_id.clone();
         button.connect_clicked(move |_| {
-            plugin_tabs::close_plugin_view_tab(
+            let closed = plugin_tabs::close_plugin_view_tab(
                 &shell_state,
                 &persistence_id,
+                Some(&group_handles),
                 &handle,
                 &group_id,
                 &tab_id,
             );
+            if closed && handle.tab_ids().is_empty() && group_id.starts_with("workbench") {
+                collapse_empty_group_widget(&handle.widget());
+            }
         });
     }
     install_group_persistence(&built.handle, state, persistence_id);
@@ -354,7 +381,13 @@ fn build_workbench_node(
 ) -> gtk::Widget {
     match node {
         WorkbenchNodeSpec::Group(group) => {
-            let built = build_group(group, state, persistence_id, plugin_runtime);
+            let built = build_group(
+                group,
+                state.clone(),
+                persistence_id.clone(),
+                plugin_runtime.clone(),
+                group_handles.clone(),
+            );
             group_handles
                 .borrow_mut()
                 .insert(group.id.clone(), built.handle.clone());
@@ -421,6 +454,551 @@ fn install_group_persistence(
     handle.set_drag_end_handler(move || {
         sync_group_into_state(&state_for_drag, &handle_for_drag, &persistence_id_for_drag);
     });
+}
+
+fn install_workbench_group_interactions(
+    handle: &CustomWorkbenchGroupHandle,
+    workbench_root: &gtk::Widget,
+    state: ShellState,
+    persistence_id: String,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
+    group_handles: GroupHandles,
+    drag_context: Rc<RefCell<WorkbenchDragContext>>,
+) {
+    let source_handle = handle.clone();
+    let source_handle_for_hover = handle.clone();
+    let source_handle_for_drop = handle.clone();
+    let workbench_root_for_split = workbench_root.clone();
+    let workbench_root_for_hover = workbench_root.clone();
+    let group_handles_for_hover = group_handles.clone();
+    let group_handles_for_split = group_handles.clone();
+    let group_handles_for_drop = group_handles.clone();
+    let drag_context_for_hover = drag_context.clone();
+    let drag_context_for_split = drag_context.clone();
+    let drag_context_for_drop = drag_context.clone();
+    let state_for_split = state.clone();
+    let state_for_drop = state.clone();
+    let persistence_id_for_split = persistence_id.clone();
+    let persistence_id_for_drop = persistence_id.clone();
+    let plugin_runtime_for_split = plugin_runtime.clone();
+    let plugin_runtime_for_drop = plugin_runtime.clone();
+
+    handle.set_drag_hover_handler(move |tab_id, pointer_x, pointer_y, _drag_height| {
+        update_cross_group_drop_target(
+            &source_handle_for_hover,
+            &tab_id,
+            pointer_x,
+            pointer_y,
+            &workbench_root_for_hover,
+            &group_handles_for_hover,
+            &drag_context_for_hover,
+        );
+    });
+
+    handle.set_split_drop_handler(move |tab_id, side| {
+        let source_group_id = source_handle.group_id().to_string();
+        let Some((new_group, split_position)) = split_workbench_group_in_state(
+            &state_for_split,
+            &persistence_id_for_split,
+            &source_group_id,
+            &tab_id,
+            side,
+        ) else {
+            return;
+        };
+
+        clear_drop_placeholders(&group_handles_for_split);
+        reset_drag_context(&drag_context_for_split);
+
+        source_handle.remove_tab(&tab_id);
+
+        let built = build_group(
+            &new_group,
+            state_for_split.clone(),
+            persistence_id_for_split.clone(),
+            plugin_runtime_for_split.clone(),
+            group_handles_for_split.clone(),
+        );
+        install_workbench_group_interactions(
+            &built.handle,
+            &workbench_root_for_split,
+            state_for_split.clone(),
+            persistence_id_for_split.clone(),
+            plugin_runtime_for_split.clone(),
+            group_handles_for_split.clone(),
+            drag_context_for_split.clone(),
+        );
+        group_handles_for_split
+            .borrow_mut()
+            .insert(new_group.id.clone(), built.handle.clone());
+
+        replace_group_widget_with_split(&source_handle.widget(), &built.root, split_position);
+    });
+
+    handle.set_tab_drop_handler(move |tab_id| {
+        let (target_group_id, target_index) = {
+            let context = drag_context_for_drop.borrow();
+            match (
+                context.source_group_id.as_deref(),
+                context.target_group_id.as_ref(),
+                context.target_index,
+            ) {
+                (Some(source_group_id), Some(target_group_id), Some(target_index))
+                    if source_group_id == source_handle_for_drop.group_id()
+                        && target_group_id != source_group_id =>
+                {
+                    (target_group_id.clone(), target_index)
+                }
+                _ => {
+                    clear_drop_placeholders(&group_handles_for_drop);
+                    reset_drag_context(&drag_context_for_drop);
+                    return;
+                }
+            }
+        };
+
+        clear_drop_placeholders(&group_handles_for_drop);
+        reset_drag_context(&drag_context_for_drop);
+
+        let Some(target_handle) = group_handles_for_drop
+            .borrow()
+            .get(&target_group_id)
+            .cloned()
+        else {
+            return;
+        };
+        let Some((moved_tab, source_became_empty)) = move_workbench_tab_between_groups_in_state(
+            &state_for_drop,
+            &persistence_id_for_drop,
+            source_handle_for_drop.group_id(),
+            &target_group_id,
+            &tab_id,
+            target_index,
+        ) else {
+            return;
+        };
+
+        source_handle_for_drop.remove_tab(&tab_id);
+        let page = crate::shell::tabbed_panel::build_tab_page(
+            "workbench",
+            &moved_tab,
+            plugin_runtime_for_drop.as_ref(),
+        );
+        if let Some(close_button) = page.close_button.clone() {
+            crate::base_plugin::bind_editor_close_button(
+                moved_tab.plugin_view_id.as_deref(),
+                moved_tab.instance_key.as_deref(),
+                &close_button,
+            );
+            let shell_state = state_for_drop.clone();
+            let persistence_id = persistence_id_for_drop.clone();
+            let group_handles = group_handles_for_drop.clone();
+            let handle = target_handle.clone();
+            let group_id = target_group_id.clone();
+            let tab_id = moved_tab.id.clone();
+            close_button.connect_clicked(move |_| {
+                plugin_tabs::close_plugin_view_tab(
+                    &shell_state,
+                    &persistence_id,
+                    Some(&group_handles),
+                    &handle,
+                    &group_id,
+                    &tab_id,
+                );
+            });
+        }
+        target_handle.append_page(page, true);
+        target_handle.move_tab_to_index(&moved_tab.id, target_index);
+        target_handle.set_active_tab(&moved_tab.id);
+
+        if source_became_empty {
+            group_handles_for_drop
+                .borrow_mut()
+                .remove(source_handle_for_drop.group_id());
+            collapse_empty_group_widget(&source_handle_for_drop.widget());
+        }
+    });
+}
+
+fn install_workbench_interactions_for_handles(
+    group_handles: &GroupHandles,
+    workbench_root: &gtk::Widget,
+    state: ShellState,
+    persistence_id: String,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
+    drag_context: Rc<RefCell<WorkbenchDragContext>>,
+) {
+    for handle in group_handles.borrow().values() {
+        if handle.group_id().starts_with("workbench") {
+            install_workbench_group_interactions(
+                handle,
+                workbench_root,
+                state.clone(),
+                persistence_id.clone(),
+                plugin_runtime.clone(),
+                group_handles.clone(),
+                drag_context.clone(),
+            );
+        }
+    }
+}
+
+fn update_cross_group_drop_target(
+    source_handle: &CustomWorkbenchGroupHandle,
+    tab_id: &str,
+    pointer_x: f64,
+    pointer_y: f64,
+    workbench_root: &gtk::Widget,
+    group_handles: &GroupHandles,
+    drag_context: &Rc<RefCell<WorkbenchDragContext>>,
+) {
+    let Some((source_x, source_y, _, _)) = source_handle.bounds_in(workbench_root) else {
+        clear_drop_placeholders(group_handles);
+        reset_drag_context(drag_context);
+        return;
+    };
+    let host_x = source_x + pointer_x;
+    let host_y = source_y + pointer_y;
+
+    let mut hovered_target = None;
+    for handle in group_handles.borrow().values() {
+        if !handle.group_id().starts_with("workbench") {
+            continue;
+        }
+        let Some((group_x, group_y, group_width, _)) = handle.bounds_in(workbench_root) else {
+            continue;
+        };
+        let local_x = host_x - group_x;
+        let local_y = host_y - group_y;
+        if local_x < 0.0 || local_x > group_width {
+            continue;
+        }
+        if local_y >= 0.0 && local_y <= handle.strip_band_height() {
+            hovered_target = Some((handle.clone(), local_x));
+            break;
+        }
+    }
+
+    clear_drop_placeholders(group_handles);
+    let mut context = drag_context.borrow_mut();
+    context.source_group_id = Some(source_handle.group_id().to_string());
+    context.target_group_id = None;
+    context.target_index = None;
+
+    let Some((target_handle, local_x)) = hovered_target else {
+        return;
+    };
+    if target_handle.group_id() == source_handle.group_id() {
+        return;
+    }
+
+    let target_index = target_handle.insertion_index_for_local_x(tab_id, local_x);
+    target_handle.show_drop_placeholder(target_index, 120);
+    context.target_group_id = Some(target_handle.group_id().to_string());
+    context.target_index = Some(target_index);
+}
+
+fn clear_drop_placeholders(group_handles: &GroupHandles) {
+    for handle in group_handles.borrow().values() {
+        if handle.group_id().starts_with("workbench") {
+            handle.hide_drop_placeholder();
+        }
+    }
+}
+
+fn reset_drag_context(drag_context: &Rc<RefCell<WorkbenchDragContext>>) {
+    if let Ok(mut context) = drag_context.try_borrow_mut() {
+        *context = WorkbenchDragContext::default();
+    }
+}
+
+fn split_workbench_group_in_state(
+    state: &ShellState,
+    persistence_id: &str,
+    group_id: &str,
+    tab_id: &str,
+    side: SplitPreviewSide,
+) -> Option<(TabGroupSpec, SplitPreviewSide)> {
+    let mut shell = state.borrow_mut();
+    let new_group_id = next_split_group_id(&shell.spec.workbench, group_id);
+    let new_group = split_workbench_node(
+        &mut shell.spec.workbench,
+        group_id,
+        tab_id,
+        side,
+        &new_group_id,
+    )?;
+    let snapshot = shell.clone();
+    drop(shell);
+    layout::save(persistence_id, &snapshot);
+    Some((new_group, side))
+}
+
+fn move_workbench_tab_between_groups_in_state(
+    state: &ShellState,
+    persistence_id: &str,
+    source_group_id: &str,
+    target_group_id: &str,
+    tab_id: &str,
+    target_index: usize,
+) -> Option<(TabSpec, bool)> {
+    let mut shell = state.borrow_mut();
+    let mut moved_tab = {
+        let source_group = find_workbench_group_mut(&mut shell.spec.workbench, source_group_id)?;
+        let source_index = source_group.tabs.iter().position(|tab| tab.id == tab_id)?;
+        let moved_tab = source_group.tabs.remove(source_index);
+        if source_group.active_tab_id.as_deref() == Some(tab_id) {
+            source_group.active_tab_id = source_group.tabs.first().map(|tab| tab.id.clone());
+        }
+        moved_tab
+    };
+
+    moved_tab.panel_id = target_group_id.to_string();
+    {
+        let target_group = find_workbench_group_mut(&mut shell.spec.workbench, target_group_id)?;
+        let insert_at = target_index.min(target_group.tabs.len());
+        target_group.tabs.insert(insert_at, moved_tab.clone());
+        target_group.active_tab_id = Some(moved_tab.id.clone());
+    }
+    normalize_workbench_node(&mut shell.spec.workbench);
+    let source_became_empty = find_workbench_group(&shell.spec.workbench, source_group_id)
+        .is_none_or(|group| group.tabs.is_empty());
+    let snapshot = shell.clone();
+    drop(shell);
+    layout::save(persistence_id, &snapshot);
+    Some((moved_tab, source_became_empty))
+}
+
+fn next_split_group_id(node: &WorkbenchNodeSpec, base_group_id: &str) -> String {
+    let mut suffix = 2usize;
+    loop {
+        let candidate = format!("{base_group_id}-split-{suffix}");
+        if !workbench_group_id_exists(node, &candidate) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
+fn workbench_group_id_exists(node: &WorkbenchNodeSpec, group_id: &str) -> bool {
+    match node {
+        WorkbenchNodeSpec::Group(group) => group.id == group_id,
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter()
+            .any(|child| workbench_group_id_exists(child, group_id)),
+    }
+}
+
+fn find_workbench_group<'a>(
+    node: &'a WorkbenchNodeSpec,
+    group_id: &str,
+) -> Option<&'a TabGroupSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => (group.id == group_id).then_some(group),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter()
+            .find_map(|child| find_workbench_group(child, group_id)),
+    }
+}
+
+fn find_workbench_group_mut<'a>(
+    node: &'a mut WorkbenchNodeSpec,
+    group_id: &str,
+) -> Option<&'a mut TabGroupSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => (group.id == group_id).then_some(group),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter_mut()
+            .find_map(|child| find_workbench_group_mut(child, group_id)),
+    }
+}
+
+fn normalize_workbench_node(node: &mut WorkbenchNodeSpec) -> bool {
+    match node {
+        WorkbenchNodeSpec::Group(group) => group.tabs.is_empty(),
+        WorkbenchNodeSpec::Split { children, .. } => {
+            let mut index = 0usize;
+            while index < children.len() {
+                if normalize_workbench_node(&mut children[index]) {
+                    children.remove(index);
+                } else {
+                    index += 1;
+                }
+            }
+            if children.is_empty() {
+                true
+            } else if children.len() == 1 {
+                *node = children.remove(0);
+                false
+            } else {
+                false
+            }
+        }
+    }
+}
+
+fn split_workbench_node(
+    node: &mut WorkbenchNodeSpec,
+    group_id: &str,
+    tab_id: &str,
+    side: SplitPreviewSide,
+    new_group_id: &str,
+) -> Option<TabGroupSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => {
+            if group.id != group_id || group.tabs.len() <= 1 {
+                return None;
+            }
+
+            let dragged_index = group.tabs.iter().position(|tab| tab.id == tab_id)?;
+            let mut dragged_tab = group.tabs.remove(dragged_index);
+            dragged_tab.panel_id = new_group_id.to_string();
+
+            if group.active_tab_id.as_deref() == Some(tab_id) {
+                group.active_tab_id = group.tabs.first().map(|tab| tab.id.clone());
+            }
+
+            let new_group = TabGroupSpec {
+                id: new_group_id.to_string(),
+                active_tab_id: Some(dragged_tab.id.clone()),
+                show_tab_strip: group.show_tab_strip,
+                tabs: vec![dragged_tab],
+            };
+            let existing_group = group.clone();
+            let split = match side {
+                SplitPreviewSide::Left => WorkbenchNodeSpec::Split {
+                    axis: SplitAxis::Horizontal,
+                    children: vec![
+                        WorkbenchNodeSpec::Group(new_group.clone()),
+                        WorkbenchNodeSpec::Group(existing_group),
+                    ],
+                },
+                SplitPreviewSide::Right => WorkbenchNodeSpec::Split {
+                    axis: SplitAxis::Horizontal,
+                    children: vec![
+                        WorkbenchNodeSpec::Group(existing_group),
+                        WorkbenchNodeSpec::Group(new_group.clone()),
+                    ],
+                },
+                SplitPreviewSide::Bottom => WorkbenchNodeSpec::Split {
+                    axis: SplitAxis::Vertical,
+                    children: vec![
+                        WorkbenchNodeSpec::Group(existing_group),
+                        WorkbenchNodeSpec::Group(new_group.clone()),
+                    ],
+                },
+            };
+            *node = split;
+            Some(new_group)
+        }
+        WorkbenchNodeSpec::Split { children, .. } => children.iter_mut().find_map(|child| {
+            split_workbench_node(child, group_id, tab_id, side, new_group_id)
+        }),
+    }
+}
+
+fn replace_group_widget_with_split<W: IsA<gtk::Widget>, N: IsA<gtk::Widget>>(
+    current_group: &W,
+    new_group: &N,
+    side: SplitPreviewSide,
+) {
+    let current_widget = current_group.clone().upcast::<gtk::Widget>();
+    let new_widget = new_group.clone().upcast::<gtk::Widget>();
+    let Some(parent) = current_widget.parent() else {
+        return;
+    };
+    let Ok(parent_paned) = parent.downcast::<Paned>() else {
+        return;
+    };
+    let is_start_child = parent_paned
+        .start_child()
+        .map(|child| child.as_ptr() == current_widget.as_ptr())
+        .unwrap_or(false);
+
+    let axis = match side {
+        SplitPreviewSide::Left | SplitPreviewSide::Right => Orientation::Horizontal,
+        SplitPreviewSide::Bottom => Orientation::Vertical,
+    };
+    let split = Paned::new(axis);
+    split.set_wide_handle(true);
+    split.set_resize_start_child(true);
+    split.set_resize_end_child(true);
+    split.set_shrink_start_child(false);
+    split.set_shrink_end_child(false);
+
+    let default_position = match axis {
+        Orientation::Horizontal => (current_widget.width() / 2).max(220),
+        Orientation::Vertical => (current_widget.height() / 2).max(180),
+        _ => 220,
+    };
+    if is_start_child {
+        parent_paned.set_start_child(None::<&gtk::Widget>);
+    } else {
+        parent_paned.set_end_child(None::<&gtk::Widget>);
+    }
+
+    match side {
+        SplitPreviewSide::Left => {
+            split.set_start_child(Some(&new_widget));
+            split.set_end_child(Some(&current_widget));
+        }
+        SplitPreviewSide::Right | SplitPreviewSide::Bottom => {
+            split.set_start_child(Some(&current_widget));
+            split.set_end_child(Some(&new_widget));
+        }
+    }
+
+    split.set_position(default_position);
+
+    if is_start_child {
+        parent_paned.set_start_child(Some(&split));
+    } else {
+        parent_paned.set_end_child(Some(&split));
+    }
+}
+
+fn collapse_empty_group_widget<W: IsA<gtk::Widget>>(empty_group: &W) {
+    let empty_widget = empty_group.clone().upcast::<gtk::Widget>();
+    let Some(parent) = empty_widget.parent() else {
+        return;
+    };
+    let Ok(parent_paned) = parent.downcast::<Paned>() else {
+        return;
+    };
+    let sibling = if parent_paned
+        .start_child()
+        .map(|child| child.as_ptr() == empty_widget.as_ptr())
+        .unwrap_or(false)
+    {
+        parent_paned.end_child()
+    } else {
+        parent_paned.start_child()
+    };
+    let Some(sibling) = sibling else {
+        return;
+    };
+    let Some(grandparent) = parent_paned.parent() else {
+        return;
+    };
+
+    let Ok(grandparent_paned) = grandparent.downcast::<Paned>() else {
+        return;
+    };
+    let parent_is_start_child = grandparent_paned
+        .start_child()
+        .map(|child| child.as_ptr() == parent_paned.clone().upcast::<gtk::Widget>().as_ptr())
+        .unwrap_or(false);
+
+    parent_paned.set_start_child(None::<&gtk::Widget>);
+    parent_paned.set_end_child(None::<&gtk::Widget>);
+
+    if parent_is_start_child {
+        grandparent_paned.set_start_child(None::<&gtk::Widget>);
+        grandparent_paned.set_start_child(Some(&sibling));
+    } else {
+        grandparent_paned.set_end_child(None::<&gtk::Widget>);
+        grandparent_paned.set_end_child(Some(&sibling));
+    }
 }
 
 fn sync_group_into_state(

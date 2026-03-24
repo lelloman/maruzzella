@@ -303,6 +303,10 @@ impl CustomWorkbenchGroupHandle {
         }
     }
 
+    pub fn move_tab_to_index(&self, tab_id: &str, target_index: usize) {
+        self.reorder_to_index(tab_id, target_index);
+    }
+
     fn refresh_active_header_state(&self) {
         let active = self.active_tab_id.borrow().clone();
         for (tab_id, header) in self.headers.borrow().iter() {

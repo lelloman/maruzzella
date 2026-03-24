@@ -124,6 +124,7 @@ pub fn update_plugin_view_title(
 pub fn close_plugin_view_tab(
     shell_state: &ShellState,
     persistence_id: &str,
+    group_handles: Option<&GroupHandles>,
     handle: &CustomWorkbenchGroupHandle,
     group_id: &str,
     tab_id: &str,
@@ -155,6 +156,13 @@ pub fn close_plugin_view_tab(
     group.active_tab_id = active_tab_id
         .filter(|active| remaining_tab_ids.iter().any(|tab| tab == active));
     crate::layout::save(persistence_id, &shell.clone());
+    drop(shell);
+
+    if remaining_tab_ids.is_empty() && group_id.starts_with("workbench") {
+        if let Some(group_handles) = group_handles {
+            group_handles.borrow_mut().remove(group_id);
+        }
+    }
     true
 }
 
@@ -227,6 +235,7 @@ pub fn open_or_focus_plugin_view(
         );
         let shell_state = shell_state.clone();
         let persistence_id = persistence_id.to_string();
+        let group_handles = group_handles.clone();
         let handle = handle.clone();
         let group_id = group_id.clone();
         let tab_id = tab.id.clone();
@@ -234,6 +243,7 @@ pub fn open_or_focus_plugin_view(
             close_plugin_view_tab(
                 &shell_state,
                 &persistence_id,
+                Some(&group_handles),
                 &handle,
                 &group_id,
                 &tab_id,

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Paned};
+use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Overlay, Paned};
 
 use crate::base_plugin;
 use crate::commands;
@@ -108,7 +108,12 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
     root.add_css_class("app-root");
     root.append(&topbar.root);
     root.append(&shell);
-    window.set_child(Some(&root));
+
+    let app_overlay = Overlay::new();
+    app_overlay.set_child(Some(&root));
+    topbar.install_tooltip_overlay(&app_overlay);
+
+    window.set_child(Some(&app_overlay));
     unsafe {
         window.set_data("maruzzella-plugin-host", plugin_host);
     }

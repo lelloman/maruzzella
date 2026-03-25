@@ -316,6 +316,14 @@ pub struct MzConfigRecord {
     pub payload: Vec<u8>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MzToolbarDisplayMode {
+    IconOnly,
+    #[default]
+    IconAndText,
+    TextOnly,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MzToolbarItem {
     pub item_id: String,
@@ -325,6 +333,8 @@ pub struct MzToolbarItem {
     #[serde(default)]
     pub payload: Vec<u8>,
     pub secondary: bool,
+    #[serde(default)]
+    pub display_mode: MzToolbarDisplayMode,
 }
 
 impl MzToolbarItem {
@@ -342,7 +352,13 @@ impl MzToolbarItem {
             command_id: command_id.into(),
             payload: Vec::new(),
             secondary,
+            display_mode: MzToolbarDisplayMode::default(),
         }
+    }
+
+    pub fn with_display_mode(mut self, mode: MzToolbarDisplayMode) -> Self {
+        self.display_mode = mode;
+        self
     }
 
     pub fn with_payload(mut self, payload: impl Into<Vec<u8>>) -> Self {

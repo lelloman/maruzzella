@@ -839,6 +839,13 @@ scrollbar slider:hover {
   padding: {{plugin_footer_padding}};
 }
 
+.icon-button-tooltip-label {
+  padding: 4px 8px;
+  background: {{color_popover_bg}};
+  color: @text_1;
+  font-size: {{font_size_small}};
+}
+
 popover.menu,
 popover.background.menu,
 popover.background {

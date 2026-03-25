@@ -4,7 +4,8 @@ pub use maruzzella_api::{
     MzConfigState, MzConfigStateSummary, MzContributionSurface, MzDiagnosticCatalog, MzLogLevel,
     MzHostEvent, MzMenuSurface, MzPluginDependencySummary, MzPluginSnapshot, MzServiceCatalog,
     MzServiceSummary, MzSettingsCatalog, MzSettingsCategory, MzStartupTab, MzStatusCode,
-    MzToolbarItem, MzViewCatalog, MzViewOpenDisposition, MzViewPlacement, MzViewSummary,
+    MzToolbarDisplayMode, MzToolbarItem, MzViewCatalog, MzViewOpenDisposition, MzViewPlacement,
+    MzViewSummary,
 };
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,

@@ -212,6 +212,17 @@ fn merge_runtime_toolbar(
                 command_id: item.command_id,
                 payload: item.payload,
                 secondary: item.secondary,
+                display_mode: match item.display_mode {
+                    maruzzella_api::MzToolbarDisplayMode::IconOnly => {
+                        crate::spec::ToolbarDisplayMode::IconOnly
+                    }
+                    maruzzella_api::MzToolbarDisplayMode::IconAndText => {
+                        crate::spec::ToolbarDisplayMode::IconAndText
+                    }
+                    maruzzella_api::MzToolbarDisplayMode::TextOnly => {
+                        crate::spec::ToolbarDisplayMode::TextOnly
+                    }
+                },
             });
         }
     }

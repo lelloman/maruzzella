@@ -1,13 +1,72 @@
 use gtk::gio;
 use gtk::prelude::*;
-use gtk::{Box as GtkBox, Button, Entry, Image, Label, Orientation, PopoverMenuBar};
+use gtk::{
+    Box as GtkBox, Button, Entry, EventControllerMotion, Fixed, Image, Label, Orientation,
+    Overlay, PopoverMenuBar,
+};
 
 use crate::commands::CommandRegistry;
-use crate::spec::{command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarItemSpec};
+use crate::spec::{
+    command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarDisplayMode, ToolbarItemSpec,
+};
+
+struct IconButtonTooltip {
+    button: Button,
+    label: Label,
+}
 
 pub struct TopBar {
     pub root: GtkBox,
     pub search: Entry,
+    tooltips: Vec<IconButtonTooltip>,
+}
+
+impl TopBar {
+    pub fn install_tooltip_overlay(&self, app_overlay: &Overlay) {
+        if self.tooltips.is_empty() {
+            return;
+        }
+
+        let fixed = Fixed::new();
+        fixed.set_can_target(false);
+        fixed.set_overflow(gtk::Overflow::Visible);
+
+        for tooltip in &self.tooltips {
+            tooltip.label.set_visible(false);
+            tooltip.label.set_can_target(false);
+            fixed.put(&tooltip.label, 0.0, 0.0);
+        }
+
+        app_overlay.add_overlay(&fixed);
+
+        for tooltip in &self.tooltips {
+            let button = tooltip.button.clone();
+            let label = tooltip.label.clone();
+            let fixed_ref = fixed.clone();
+
+            let hover = EventControllerMotion::new();
+            let label_enter = label.clone();
+            let button_enter = button.clone();
+            let fixed_enter = fixed_ref.clone();
+            hover.connect_enter(move |_, _, _| {
+                if let Some((bx, by)) = button_enter.translate_coordinates(&fixed_enter, 0.0, 0.0)
+                {
+                    let bw = button_enter.width() as f64;
+                    let bh = button_enter.height() as f64;
+                    let lw = label_enter.preferred_size().1.width() as f64;
+                    let x = bx + (bw - lw) / 2.0;
+                    let y = by + bh + 4.0;
+                    fixed_enter.move_(&label_enter, x, y);
+                }
+                label_enter.set_visible(true);
+            });
+            let label_leave = label.clone();
+            hover.connect_leave(move |_| {
+                label_leave.set_visible(false);
+            });
+            button.add_controller(hover);
+        }
+    }
 }
 
 pub fn build(spec: &ShellSpec) -> TopBar {
@@ -37,31 +96,56 @@ pub fn build(spec: &ShellSpec) -> TopBar {
     search_cluster.append(&search);
     toolbar.append(&search_cluster);
 
+    let mut tooltips = Vec::new();
+
     let actions_group = GtkBox::new(Orientation::Horizontal, 8);
     actions_group.add_css_class("toolbar-actions");
     for item in spec.toolbar_items.iter().filter(|item| !item.secondary) {
-        actions_group.append(&action_bar_item_button(item));
+        actions_group.append(&action_bar_item_button(item, &mut tooltips));
     }
     toolbar.append(&actions_group);
 
     let utility_group = GtkBox::new(Orientation::Horizontal, 6);
     utility_group.add_css_class("toolbar-utility-group");
     for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
-        utility_group.append(&action_bar_item_button(item));
+        utility_group.append(&action_bar_item_button(item, &mut tooltips));
     }
     toolbar.append(&utility_group);
 
     root.append(&toolbar);
-    TopBar { root, search }
+    TopBar {
+        root,
+        search,
+        tooltips,
+    }
 }
 
-fn action_bar_item_button(item: &ToolbarItemSpec) -> Button {
+fn action_bar_item_button(
+    item: &ToolbarItemSpec,
+    tooltips: &mut Vec<IconButtonTooltip>,
+) -> Button {
     let action_ref = menu_action_ref(&item.id);
-    match (&item.icon_name, &item.label) {
-        (Some(icon_name), Some(label)) => toolbar_button(icon_name, label, &action_ref),
-        (Some(icon_name), None) => icon_button(icon_name, &action_ref, &item.id),
-        (None, Some(label)) => toolbar_button("applications-system-symbolic", label, &action_ref),
-        (None, None) => toolbar_button("applications-system-symbolic", &item.id, &action_ref),
+    match item.display_mode {
+        ToolbarDisplayMode::IconOnly => {
+            let icon_name = item
+                .icon_name
+                .as_deref()
+                .unwrap_or_else(|| panic!("toolbar item '{}' is IconOnly but has no icon", item.id));
+            let tooltip = item.label.as_deref().unwrap_or(&item.id);
+            icon_button(icon_name, &action_ref, tooltip, tooltips)
+        }
+        ToolbarDisplayMode::IconAndText => {
+            let label = item.label.as_deref().unwrap_or(&item.id);
+            let icon_name = item
+                .icon_name
+                .as_deref()
+                .unwrap_or("applications-system-symbolic");
+            toolbar_button(icon_name, label, &action_ref)
+        }
+        ToolbarDisplayMode::TextOnly => {
+            let label = item.label.as_deref().unwrap_or(&item.id);
+            text_button(label, &action_ref)
+        }
     }
 }
 
@@ -81,14 +165,38 @@ fn toolbar_button(icon_name: &str, label: &str, action_name: &str) -> Button {
     button
 }
 
-fn icon_button(icon_name: &str, action_name: &str, tooltip: &str) -> Button {
+fn text_button(label: &str, action_name: &str) -> Button {
+    let button = Button::new();
+    button.add_css_class("toolbar-button");
+    button.set_action_name(Some(action_name));
+    let text = Label::new(Some(label));
+    text.add_css_class("toolbar-button-label");
+    button.set_child(Some(&text));
+    button
+}
+
+fn icon_button(
+    icon_name: &str,
+    action_name: &str,
+    tooltip: &str,
+    tooltips: &mut Vec<IconButtonTooltip>,
+) -> Button {
     let button = Button::new();
     button.add_css_class("toolbar-icon-button");
     button.set_action_name(Some(action_name));
-    button.set_tooltip_text(Some(tooltip));
+
     let icon = Image::from_icon_name(icon_name);
     icon.set_icon_size(gtk::IconSize::Normal);
     button.set_child(Some(&icon));
+
+    let tip_label = Label::new(Some(tooltip));
+    tip_label.add_css_class("icon-button-tooltip-label");
+
+    tooltips.push(IconButtonTooltip {
+        button: button.clone(),
+        label: tip_label,
+    });
+
     button
 }
 

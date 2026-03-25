@@ -78,6 +78,14 @@ pub struct CommandSpec {
     pub title: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolbarDisplayMode {
+    IconOnly,
+    #[default]
+    IconAndText,
+    TextOnly,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolbarItemSpec {
     pub id: String,
@@ -87,6 +95,8 @@ pub struct ToolbarItemSpec {
     #[serde(default)]
     pub payload: Vec<u8>,
     pub secondary: bool,
+    #[serde(default)]
+    pub display_mode: ToolbarDisplayMode,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

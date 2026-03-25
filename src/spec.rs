@@ -21,6 +21,22 @@ pub enum BottomPanelLayout {
     FullWidth,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum PanelResizePolicy {
+    /// Panel resizes proportionally with the window, no cap.
+    Proportional,
+    /// Panel resizes proportionally up to min_size * max_factor, then stops.
+    CappedProportional { max_factor: f64 },
+    /// Panel stays at its minimum size; the workbench takes all extra space.
+    Fixed,
+}
+
+impl Default for PanelResizePolicy {
+    fn default() -> Self {
+        PanelResizePolicy::Proportional
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TabSpec {
     pub id: String,
@@ -61,6 +77,12 @@ pub struct ShellSpec {
     pub right_panel: TabGroupSpec,
     pub bottom_panel: TabGroupSpec,
     pub workbench: WorkbenchNodeSpec,
+    #[serde(default)]
+    pub left_panel_resize: PanelResizePolicy,
+    #[serde(default)]
+    pub right_panel_resize: PanelResizePolicy,
+    #[serde(default)]
+    pub bottom_panel_resize: PanelResizePolicy,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

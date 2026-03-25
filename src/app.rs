@@ -10,6 +10,7 @@ use gtk::{
 use crate::base_plugin;
 use crate::commands;
 use crate::layout::{self, PersistedShell};
+use crate::spec::PanelResizePolicy;
 use crate::plugin_tabs::{self, GroupHandles};
 use crate::plugins::{
     diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginDiagnostic,
@@ -267,11 +268,14 @@ fn build_shell(
 
     let left_center = Paned::new(Orientation::Horizontal);
     left_center.set_wide_handle(true);
-    left_center.set_resize_start_child(true);
-    left_center.set_resize_end_child(true);
     left_center.set_shrink_start_child(false);
     left_center.set_start_child(Some(&left.root));
     left_center.set_end_child(Some(&workbench));
+    apply_start_panel_resize_policy(
+        &left_center,
+        spec.left_panel_resize,
+        density.min_side_panel_width,
+    );
     restore_pane_position(&left_center, &state, "shell.horizontal", 280);
     persist_pane_position(
         &left_center,
@@ -280,15 +284,19 @@ fn build_shell(
         "shell.horizontal",
     );
 
+    let bottom_resize = spec.bottom_panel_resize;
+    let right_resize = spec.right_panel_resize;
+    let min_side = density.min_side_panel_width;
+    let min_bottom = density.min_bottom_panel_height;
+
     let shell = match spec.bottom_panel_layout {
         BottomPanelLayout::CenterOnly => {
             let vertical = Paned::new(Orientation::Vertical);
             vertical.set_wide_handle(true);
-            vertical.set_resize_start_child(true);
-            vertical.set_resize_end_child(true);
             vertical.set_shrink_end_child(false);
             vertical.set_start_child(Some(&left_center));
             vertical.set_end_child(Some(&bottom.root));
+            apply_end_panel_resize_policy(&vertical, bottom_resize, min_bottom);
             restore_pane_position(&vertical, &state, "shell.vertical", 720);
             persist_pane_position(
                 &vertical,
@@ -300,11 +308,10 @@ fn build_shell(
             if let Some(right) = right {
                 let outer = Paned::new(Orientation::Horizontal);
                 outer.set_wide_handle(true);
-                outer.set_resize_start_child(true);
-                outer.set_resize_end_child(true);
                 outer.set_shrink_end_child(false);
                 outer.set_start_child(Some(&vertical));
                 outer.set_end_child(Some(&right.root));
+                apply_end_panel_resize_policy(&outer, right_resize, min_side);
                 restore_pane_position(&outer, &state, "shell.outer", 1260);
                 persist_pane_position(&outer, state, persistence_id, "shell.outer");
                 outer.upcast::<gtk::Widget>()
@@ -316,11 +323,10 @@ fn build_shell(
             let upper = if let Some(right) = right {
                 let upper = Paned::new(Orientation::Horizontal);
                 upper.set_wide_handle(true);
-                upper.set_resize_start_child(true);
-                upper.set_resize_end_child(true);
                 upper.set_shrink_end_child(false);
                 upper.set_start_child(Some(&left_center));
                 upper.set_end_child(Some(&right.root));
+                apply_end_panel_resize_policy(&upper, right_resize, min_side);
                 restore_pane_position(&upper, &state, "shell.outer", 1260);
                 persist_pane_position(&upper, state.clone(), persistence_id.clone(), "shell.outer");
                 upper.upcast::<gtk::Widget>()
@@ -330,11 +336,10 @@ fn build_shell(
 
             let vertical = Paned::new(Orientation::Vertical);
             vertical.set_wide_handle(true);
-            vertical.set_resize_start_child(true);
-            vertical.set_resize_end_child(true);
             vertical.set_shrink_end_child(false);
             vertical.set_start_child(Some(&upper));
             vertical.set_end_child(Some(&bottom.root));
+            apply_end_panel_resize_policy(&vertical, bottom_resize, min_bottom);
             restore_pane_position(&vertical, &state, "shell.vertical", 720);
             persist_pane_position(&vertical, state, persistence_id, "shell.vertical");
             vertical.upcast::<gtk::Widget>()
@@ -1140,6 +1145,78 @@ fn persist_pane_position(paned: &Paned, state: ShellState, persistence_id: Strin
 fn persist_state(state: &ShellState, persistence_id: &str) {
     let snapshot = state.borrow().clone();
     layout::save(persistence_id, &snapshot);
+}
+
+fn paned_total(paned: &Paned) -> i32 {
+    if paned.orientation() == Orientation::Horizontal {
+        paned.width()
+    } else {
+        paned.height()
+    }
+}
+
+/// Configure a Paned where the **start** child is the panel (e.g. left panel).
+/// Position = panel size. On window grow, keep panel at previous size.
+fn apply_start_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _min_size: i32) {
+    paned.set_resize_start_child(true);
+    paned.set_resize_end_child(true);
+    match policy {
+        PanelResizePolicy::Proportional => {}
+        PanelResizePolicy::Fixed | PanelResizePolicy::CappedProportional { .. } => {
+            let prev_total = Rc::new(std::cell::Cell::new(0i32));
+            let prev_pos = Rc::new(std::cell::Cell::new(0i32));
+            paned.connect_position_notify(move |paned| {
+                let total = paned_total(paned);
+                let pos = paned.position();
+                let old_total = prev_total.get();
+                let old_pos = prev_pos.get();
+
+                if old_total > 0 && total > old_total {
+                    // Window grew — restore panel to its previous size.
+                    if pos != old_pos {
+                        paned.set_position(old_pos);
+                        prev_total.set(total);
+                        return;
+                    }
+                }
+
+                prev_total.set(total);
+                prev_pos.set(pos);
+            });
+        }
+    }
+}
+
+/// Configure a Paned where the **end** child is the panel (e.g. bottom or right panel).
+/// Panel size = total - position. On window grow, keep panel at previous size.
+fn apply_end_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _min_size: i32) {
+    paned.set_resize_start_child(true);
+    paned.set_resize_end_child(true);
+    match policy {
+        PanelResizePolicy::Proportional => {}
+        PanelResizePolicy::Fixed | PanelResizePolicy::CappedProportional { .. } => {
+            let prev_total = Rc::new(std::cell::Cell::new(0i32));
+            let prev_panel_size = Rc::new(std::cell::Cell::new(0i32));
+            paned.connect_position_notify(move |paned| {
+                let total = paned_total(paned);
+                let panel_size = total - paned.position();
+                let old_total = prev_total.get();
+                let old_panel_size = prev_panel_size.get();
+
+                if old_total > 0 && total > old_total {
+                    // Window grew — restore panel to its previous size.
+                    if panel_size != old_panel_size {
+                        paned.set_position(total - old_panel_size);
+                        prev_total.set(total);
+                        return;
+                    }
+                }
+
+                prev_total.set(total);
+                prev_panel_size.set(panel_size);
+            });
+        }
+    }
 }
 
 fn install_pane_focus_tracking(panes: &[gtk::Widget]) {

@@ -27,7 +27,7 @@ pub use product::{default_product_spec, BrandingSpec, LayoutContribution, Produc
 pub use spec::{
     plugin_tab, plugin_tab_with_instance, text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec,
     MenuRootSpec, PanelContentKind, ShellSpec, SplitAxis, TabGroupSpec, TabSpec,
-    ToolbarDisplayMode, ToolbarItemSpec,
+    PanelResizePolicy, ToolbarDisplayMode, ToolbarItemSpec,
     WorkbenchNodeSpec,
 };
 pub use theme::{ThemeDensity, ThemePalette, ThemeSpec, ThemeStylesheet, ThemeTypography};

@@ -5,7 +5,7 @@ use maruzzella_api::{MzContributionSurface, MzStartupTab, MzToolbarItem};
 use crate::plugins::PluginRuntime;
 use crate::spec::{
     plugin_tab_with_instance, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec,
-    ShellSpec, SplitAxis, TabGroupSpec, ToolbarItemSpec, WorkbenchNodeSpec,
+    PanelResizePolicy, ShellSpec, SplitAxis, TabGroupSpec, ToolbarItemSpec, WorkbenchNodeSpec,
 };
 
 #[derive(Clone, Debug)]
@@ -23,6 +23,9 @@ pub struct LayoutContribution {
     pub right_panel: TabGroupSpec,
     pub bottom_panel: TabGroupSpec,
     pub workbench: WorkbenchNodeSpec,
+    pub left_panel_resize: PanelResizePolicy,
+    pub right_panel_resize: PanelResizePolicy,
+    pub bottom_panel_resize: PanelResizePolicy,
 }
 
 #[derive(Clone, Debug)]
@@ -52,6 +55,9 @@ impl ProductSpec {
             right_panel: self.layout.right_panel.clone(),
             bottom_panel: self.layout.bottom_panel.clone(),
             workbench: self.layout.workbench.clone(),
+            left_panel_resize: self.layout.left_panel_resize,
+            right_panel_resize: self.layout.right_panel_resize,
+            bottom_panel_resize: self.layout.bottom_panel_resize,
         }
     }
 }
@@ -258,6 +264,9 @@ pub fn default_product_spec() -> ProductSpec {
                 )),
             ],
         },
+        left_panel_resize: PanelResizePolicy::default(),
+        right_panel_resize: PanelResizePolicy::default(),
+        bottom_panel_resize: PanelResizePolicy::default(),
     };
 
     ProductSpec {

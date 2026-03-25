@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk::prelude::*;
+use gtk::gdk;
 use gtk::{
-    Align, Box as GtkBox, Button, Entry, Label, ListBox, Notebook, Orientation, PolicyType,
-    ScrolledWindow, SelectionMode, TextBuffer, TextView,
+    Align, Box as GtkBox, Button, Entry, EventControllerScroll, EventControllerScrollFlags, Label,
+    ListBox, Notebook, Orientation, PolicyType, ScrolledWindow, SelectionMode, TextBuffer, TextView,
 };
 
 use crate::plugins::PluginRuntime;
@@ -236,12 +237,13 @@ fn build_plugin_widget(
             let scroller = ScrolledWindow::builder()
                 .hexpand(true)
                 .vexpand(true)
-                .hscrollbar_policy(PolicyType::Never)
+                .hscrollbar_policy(PolicyType::Automatic)
                 .vscrollbar_policy(PolicyType::Automatic)
                 .child(&widget)
                 .build();
             scroller.set_halign(Align::Fill);
             scroller.set_valign(Align::Fill);
+            install_shift_scroll(&scroller);
             scroller.upcast::<gtk::Widget>()
         }
         Err(error) => plugin_fallback_widget(&format!(
@@ -249,6 +251,27 @@ fn build_plugin_widget(
             tab.placeholder
         )),
     }
+}
+
+fn install_shift_scroll(scroller: &ScrolledWindow) {
+    let scroll_controller =
+        EventControllerScroll::new(EventControllerScrollFlags::VERTICAL);
+    scroll_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let scroller_ref = scroller.clone();
+    scroll_controller.connect_scroll(move |controller, _dx, dy| {
+        let shift = controller
+            .current_event()
+            .map(|e| e.modifier_state().contains(gdk::ModifierType::SHIFT_MASK))
+            .unwrap_or(false);
+        if shift {
+            let hadj = scroller_ref.hadjustment();
+            hadj.set_value(hadj.value() + dy * hadj.step_increment());
+            gtk::glib::Propagation::Stop
+        } else {
+            gtk::glib::Propagation::Proceed
+        }
+    });
+    scroller.add_controller(scroll_controller);
 }
 
 fn plugin_fallback_widget(message: &str) -> gtk::Widget {

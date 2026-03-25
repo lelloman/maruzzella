@@ -356,8 +356,14 @@ fn build_group(
     plugin_runtime: Option<Rc<PluginRuntime>>,
     group_handles: GroupHandles,
 ) -> BuiltCustomWorkbenchGroup {
+    let extra_classes: Vec<&str> = if group.id.starts_with("workbench") || group.id.starts_with("panel-bottom") {
+        vec!["dark-pane"]
+    } else {
+        vec![]
+    };
     let built = workbench_custom::build_group(
         &group.id,
+        &extra_classes,
         &group.tabs,
         group.active_tab_id.as_deref(),
         group.show_tab_strip,

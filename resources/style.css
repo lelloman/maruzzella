@@ -338,6 +338,18 @@ separator {
   background-color: transparent;
 }
 
+.dark-pane box,
+.dark-pane scrolledwindow,
+.dark-pane viewport,
+.dark-pane overlay,
+.dark-pane stack,
+.dark-pane grid,
+.dark-pane list,
+.dark-pane listview,
+.dark-pane row {
+  background-color: transparent;
+}
+
 .tool-window {
   background: @panel_left;
 }

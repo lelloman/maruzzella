@@ -638,6 +638,7 @@ impl CustomWorkbenchGroupHandle {
 
 pub fn build_group(
     group_id: &str,
+    extra_css_classes: &[&str],
     tabs: &[TabSpec],
     active_tab_id: Option<&str>,
     show_tab_strip: bool,
@@ -657,6 +658,9 @@ pub fn build_group(
     root.set_vexpand(true);
     root.add_css_class("workspace-pane");
     root.add_css_class("workbench");
+    for class in extra_css_classes {
+        root.add_css_class(class);
+    }
 
     let tab_strip = GtkBox::new(Orientation::Horizontal, 0);
     tab_strip.add_css_class("workbench-tab-strip");

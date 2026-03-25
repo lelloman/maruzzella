@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::{Application, ApplicationWindow, Box as GtkBox, Orientation, Overlay, Paned};
+use gtk::{
+    Application, ApplicationWindow, Box as GtkBox, GestureClick, Orientation, Overlay, Paned,
+};
 
 use crate::base_plugin;
 use crate::commands;
@@ -76,7 +78,7 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
         .default_height(density.window_default_height)
         .build();
     window.add_css_class("app-window");
-    let shell = build_shell(
+    let (shell, mut pane_roots) = build_shell(
         state.clone(),
         config.persistence_id.clone(),
         group_handles.clone(),
@@ -103,6 +105,9 @@ pub fn build(application: &Application, config: &MaruzzellaConfig) {
             });
         }
     }
+
+    pane_roots.push(topbar.root.clone().upcast());
+    install_pane_focus_tracking(&pane_roots);
 
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("app-root");
@@ -192,7 +197,7 @@ fn build_shell(
     group_handles: GroupHandles,
     plugin_runtime: Option<Rc<PluginRuntime>>,
     density: &theme::ThemeDensity,
-) -> gtk::Widget {
+) -> (gtk::Widget, Vec<gtk::Widget>) {
     let spec = state.borrow().spec.clone();
     let has_right_panel = !spec.right_panel.tabs.is_empty();
     let left = build_group(
@@ -251,6 +256,15 @@ fn build_shell(
         workbench_drag_context,
     );
 
+    let mut pane_roots: Vec<gtk::Widget> = vec![
+        left.root.clone().upcast(),
+        bottom.root.clone().upcast(),
+        workbench.clone(),
+    ];
+    if let Some(ref right) = right {
+        pane_roots.push(right.root.clone().upcast());
+    }
+
     let left_center = Paned::new(Orientation::Horizontal);
     left_center.set_wide_handle(true);
     left_center.set_resize_start_child(true);
@@ -266,7 +280,7 @@ fn build_shell(
         "shell.horizontal",
     );
 
-    match spec.bottom_panel_layout {
+    let shell = match spec.bottom_panel_layout {
         BottomPanelLayout::CenterOnly => {
             let vertical = Paned::new(Orientation::Vertical);
             vertical.set_wide_handle(true);
@@ -325,7 +339,9 @@ fn build_shell(
             persist_pane_position(&vertical, state, persistence_id, "shell.vertical");
             vertical.upcast::<gtk::Widget>()
         }
-    }
+    };
+
+    (shell, pane_roots)
 }
 
 fn build_group(
@@ -1124,4 +1140,24 @@ fn persist_pane_position(paned: &Paned, state: ShellState, persistence_id: Strin
 fn persist_state(state: &ShellState, persistence_id: &str) {
     let snapshot = state.borrow().clone();
     layout::save(persistence_id, &snapshot);
+}
+
+fn install_pane_focus_tracking(panes: &[gtk::Widget]) {
+    let all_panes = Rc::new(panes.to_vec());
+    for pane in panes {
+        let all = all_panes.clone();
+        let this = pane.clone();
+        let click = GestureClick::new();
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        click.connect_pressed(move |_, _, _, _| {
+            for p in all.iter() {
+                if p == &this {
+                    p.add_css_class("pane-focused");
+                } else {
+                    p.remove_css_class("pane-focused");
+                }
+            }
+        });
+        pane.add_controller(click);
+    }
 }

@@ -83,12 +83,6 @@ struct EditorSession {
     document: EditorDocumentPayload,
     host: MzHostApi,
     instance_key: String,
-    header_title: Label,
-    header_body: Label,
-    status: Label,
-    detail: Label,
-    error_label: Label,
-    save_button: Button,
     buffer: TextBuffer,
     dirty: bool,
     close_buttons: Vec<Button>,
@@ -1225,43 +1219,6 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
         }
     };
 
-    let root = view_root();
-    let header = GtkBox::new(Orientation::Vertical, 8);
-    header.add_css_class("plugin-hero");
-    let badge = Label::new(Some("Editable"));
-    badge.set_halign(Align::Start);
-    badge.add_css_class("status-badge");
-    badge.add_css_class("status-running");
-    header.append(&badge);
-
-    let header_title = Label::new(None);
-    header_title.set_xalign(0.0);
-    header_title.set_wrap(true);
-    header_title.add_css_class("plugin-detail-name");
-    header.append(&header_title);
-
-    let header_body = Label::new(None);
-    header_body.set_xalign(0.0);
-    header_body.set_wrap(true);
-    header_body.add_css_class("plugin-detail-description");
-    header.append(&header_body);
-
-    let status = Label::new(None);
-    status.set_xalign(0.0);
-    status.add_css_class("muted");
-
-    let detail = Label::new(None);
-    detail.set_xalign(0.0);
-    detail.set_wrap(true);
-    detail.add_css_class("muted");
-
-    let error_label = Label::new(None);
-    error_label.set_xalign(0.0);
-    error_label.set_wrap(true);
-    error_label.add_css_class("status-badge");
-    error_label.add_css_class("status-idle");
-    error_label.set_visible(false);
-
     let buffer = TextBuffer::new(None);
     let text_view = TextView::builder()
         .buffer(&buffer)
@@ -1272,18 +1229,12 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
     let scrolled = ScrolledWindow::builder()
         .hexpand(true)
         .vexpand(true)
-        .min_content_height(320)
         .child(&text_view)
         .build();
 
-    let save_button = action_button("Save", Some("document-save-symbolic"));
-    let save_as_button = action_button("Save As", Some("document-save-as-symbolic"));
-
-    let (initial_text, initial_dirty, initial_error) = match load_editor_text(host, &document) {
+    let (initial_text, initial_dirty, _initial_error) = match load_editor_text(host, &document) {
         Ok((text, dirty)) => (text, dirty, None),
-        Err(error) => {
-            (String::new(), false, Some(error))
-        }
+        Err(error) => (String::new(), false, Some(error)),
     };
     buffer.set_text(&initial_text);
 
@@ -1293,18 +1244,12 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
             document: document.clone(),
             host: *host,
             instance_key: instance_key.clone(),
-            header_title: header_title.clone(),
-            header_body: header_body.clone(),
-            status: status.clone(),
-            detail: detail.clone(),
-            error_label: error_label.clone(),
-            save_button: save_button.clone(),
             buffer: buffer.clone(),
             dirty: initial_dirty,
             close_buttons: Vec::new(),
         },
     );
-    refresh_editor_session(&instance_key, initial_error.as_deref());
+    refresh_editor_session(&instance_key, None);
 
     {
         let instance_key = instance_key.clone();
@@ -1313,34 +1258,9 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
         });
     }
 
-    {
-        let host = *host;
-        save_button.connect_clicked(move |_| {
-            dispatch_shell_command(&host, CMD_SAVE_BUFFER, &[]);
-        });
-    }
-
-    {
-        let host = *host;
-        save_as_button.connect_clicked(move |_| {
-            dispatch_shell_command(&host, CMD_SAVE_BUFFER_AS, &[]);
-        });
-    }
-
-    let button_row = GtkBox::new(Orientation::Horizontal, 8);
-    button_row.append(&save_button);
-    button_row.append(&save_as_button);
-
-    root.append(&header);
-    root.append(&status);
-    root.append(&detail);
-    root.append(&error_label);
-    root.append(&button_row);
-    root.append(&scrolled);
-
     let instance_key_for_destroy = instance_key.clone();
-    root.connect_destroy(move |_| unregister_editor_session(&instance_key_for_destroy));
-    root.upcast()
+    scrolled.connect_destroy(move |_| unregister_editor_session(&instance_key_for_destroy));
+    scrolled.upcast()
 }
 
 fn fallback_view(message: &str) -> gtk::Widget {
@@ -1370,33 +1290,6 @@ fn load_editor_text(host: &MzHostApi, document: &EditorDocumentPayload) -> Resul
     }
 }
 
-fn editor_body_message(document: &EditorDocumentPayload) -> String {
-    match document.kind {
-        EditorDocumentKind::Untitled => {
-            "This is an in-memory editor buffer. Save As is intentionally not implemented yet."
-                .to_string()
-        }
-        EditorDocumentKind::File => format!(
-            "This editor tab is backed by a file on disk and can be saved in place.\n{}",
-            document.file_path.as_deref().unwrap_or_default()
-        ),
-    }
-}
-
-fn editor_detail_message(document: &EditorDocumentPayload, dirty: bool) -> String {
-    let prefix = match document.kind {
-        EditorDocumentKind::Untitled => "Buffer: In-memory untitled document".to_string(),
-        EditorDocumentKind::File => format!(
-            "Buffer: {}",
-            document.file_path.as_deref().unwrap_or_default()
-        ),
-    };
-    if dirty {
-        format!("{prefix}\nClose is blocked until the buffer is saved or reset.")
-    } else {
-        prefix
-    }
-}
 
 fn decode_editor_payload(payload: MzBytes) -> Result<EditorDocumentPayload, String> {
     if payload.ptr.is_null() || payload.len == 0 {
@@ -1711,19 +1604,19 @@ pub fn bind_editor_close_button(plugin_view_id: Option<&str>, instance_key: Opti
     });
 }
 
-pub fn can_close_editor_tab(plugin_view_id: Option<&str>, instance_key: Option<&str>) -> bool {
+pub fn is_editor_tab_dirty(plugin_view_id: Option<&str>, instance_key: Option<&str>) -> bool {
     if !is_editor_view(plugin_view_id) {
-        return true;
+        return false;
     }
     let Some(instance_key) = instance_key else {
-        return true;
+        return false;
     };
     EDITOR_SESSIONS.with(|sessions| {
         sessions
             .borrow()
             .get(instance_key)
-            .map(|session| !session.dirty)
-            .unwrap_or(true)
+            .map(|session| session.dirty)
+            .unwrap_or(false)
     })
 }
 
@@ -1868,27 +1761,7 @@ pub fn refresh_editor_session(instance_key: &str, message: Option<&str>) -> bool
     })
 }
 
-fn refresh_editor_session_inner(session: &mut EditorSession, message: Option<&str>) {
-    session.header_title.set_label(&session.document.display_name);
-    session
-        .header_body
-        .set_label(&editor_body_message(&session.document));
-    if session.dirty {
-        session.status.set_label("Status: Dirty");
-        session
-            .detail
-            .set_label(&editor_detail_message(&session.document, true));
-    } else {
-        session.status.set_label("Status: Clean");
-        session
-            .detail
-            .set_label(&editor_detail_message(&session.document, false));
-    }
-    if session.document.kind == EditorDocumentKind::Untitled {
-        session.save_button.set_label("Save As");
-    } else {
-        session.save_button.set_label("Save");
-    }
+fn refresh_editor_session_inner(session: &mut EditorSession, _message: Option<&str>) {
     if let Some(update) = session.host.update_view_title {
         let title = if session.dirty {
             format!("*{}", session.document.display_name)
@@ -1903,15 +1776,6 @@ fn refresh_editor_session_inner(session: &mut EditorSession, message: Option<&st
             },
             str_to_mzstr(&title),
         );
-    }
-    if let Some(message) = message {
-        session.error_label.set_label(message);
-        session.error_label.set_visible(true);
-    } else {
-        session.error_label.set_visible(false);
-    }
-    for button in &session.close_buttons {
-        button.set_sensitive(!session.dirty);
     }
 }
 
@@ -1965,18 +1829,6 @@ fn clear_editor_draft(host: &MzHostApi, document_id: &str) {
     }
 }
 
-fn dispatch_shell_command(host: &MzHostApi, command_id: &'static str, payload: &[u8]) {
-    let Some(dispatch) = host.dispatch_command else {
-        return;
-    };
-    let _ = dispatch(
-        MzStr::from_static(command_id),
-        MzBytes {
-            ptr: payload.as_ptr(),
-            len: payload.len(),
-        },
-    );
-}
 
 pub fn file_editor_payload_for_path(path: &Path) -> Result<EditorDocumentPayload, String> {
     let absolute = absolute_existing_path(path)?;
@@ -2272,21 +2124,15 @@ mod tests {
                 document: untitled_editor_payload("untitled:test"),
                 host: MzHostApi::empty(),
                 instance_key: instance_key.clone(),
-                header_title: Label::new(None),
-                header_body: Label::new(None),
-                status: Label::new(None),
-                detail: Label::new(None),
-                error_label: Label::new(None),
-                save_button: Button::with_label("Save"),
                 buffer: TextBuffer::new(None),
                 dirty: false,
                 close_buttons: Vec::new(),
             },
         );
-        assert!(can_close_editor_tab(Some(VIEW_WORKSPACE_EDITOR), Some(&instance_key)));
+        assert!(!is_editor_tab_dirty(Some(VIEW_WORKSPACE_EDITOR), Some(&instance_key)));
 
         set_editor_dirty(&instance_key, true);
-        assert!(!can_close_editor_tab(Some(VIEW_WORKSPACE_EDITOR), Some(&instance_key)));
+        assert!(is_editor_tab_dirty(Some(VIEW_WORKSPACE_EDITOR), Some(&instance_key)));
 
         unregister_editor_session(&instance_key);
     }

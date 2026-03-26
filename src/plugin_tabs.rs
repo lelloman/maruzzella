@@ -137,10 +137,27 @@ pub fn close_plugin_view_tab(
         let Some(tab) = group.tabs.iter().find(|tab| tab.id == tab_id) else {
             return false;
         };
-        if !base_plugin::can_close_editor_tab(
+        if base_plugin::is_editor_tab_dirty(
             tab.plugin_view_id.as_deref(),
             tab.instance_key.as_deref(),
         ) {
+            let display_name = if tab.title.is_empty() { tab.id.clone() } else { tab.title.clone() };
+            let shell_state = shell_state.clone();
+            let persistence_id = persistence_id.to_string();
+            let group_handles = group_handles.cloned();
+            let handle = handle.clone();
+            let group_id = group_id.to_string();
+            let tab_id = tab_id.to_string();
+            confirm_close_dirty_tab(display_name, move || {
+                force_close_plugin_view_tab(
+                    &shell_state,
+                    &persistence_id,
+                    group_handles.as_ref(),
+                    &handle,
+                    &group_id,
+                    &tab_id,
+                );
+            });
             return false;
         }
     }
@@ -164,6 +181,59 @@ pub fn close_plugin_view_tab(
         }
     }
     true
+}
+
+fn force_close_plugin_view_tab(
+    shell_state: &ShellState,
+    persistence_id: &str,
+    group_handles: Option<&GroupHandles>,
+    handle: &CustomWorkbenchGroupHandle,
+    group_id: &str,
+    tab_id: &str,
+) {
+    handle.remove_tab(tab_id);
+    let active_tab_id = handle.active_tab_id();
+    let remaining_tab_ids = handle.tab_ids();
+
+    let mut shell = shell_state.borrow_mut();
+    let Some(group) = find_group_mut(&mut shell.spec, group_id) else {
+        return;
+    };
+    group.tabs.retain(|tab| tab.id != tab_id);
+    group.active_tab_id = active_tab_id
+        .filter(|active| remaining_tab_ids.iter().any(|tab| tab == active));
+    crate::layout::save(persistence_id, &shell.clone());
+    drop(shell);
+
+    if remaining_tab_ids.is_empty() && group_id.starts_with("workbench") {
+        if let Some(group_handles) = group_handles {
+            group_handles.borrow_mut().remove(group_id);
+        }
+    }
+}
+
+fn confirm_close_dirty_tab(display_name: String, on_confirm: impl FnOnce() + 'static) {
+    let dialog = gtk::AlertDialog::builder()
+        .modal(true)
+        .message(format!("\"{}\" has unsaved changes", display_name))
+        .detail("Your changes will be lost if you close this tab without saving.")
+        .buttons(["Cancel", "Close Without Saving"])
+        .cancel_button(0)
+        .default_button(1)
+        .build();
+
+    let on_confirm = std::cell::Cell::new(Some(on_confirm));
+    dialog.choose(
+        gtk::Window::NONE,
+        gtk::gio::Cancellable::NONE,
+        move |result| {
+            if result == Ok(1) {
+                if let Some(f) = on_confirm.take() {
+                    f();
+                }
+            }
+        },
+    );
 }
 
 pub fn open_or_focus_plugin_view(

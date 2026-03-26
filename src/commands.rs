@@ -3,7 +3,8 @@ use std::path::Path;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::{ApplicationWindow, FileChooserAction, FileChooserNative, ResponseType};
+use gtk::gio;
+use gtk::ApplicationWindow;
 
 use crate::base_plugin;
 use crate::plugin_tabs::{
@@ -356,32 +357,27 @@ fn open_file_picker(
     shell_state: ShellState,
     group_handles: GroupHandles,
 ) {
-    let chooser = FileChooserNative::builder()
+    let dialog = gtk::FileDialog::builder()
         .title("Open File")
-        .transient_for(window)
-        .action(FileChooserAction::Open)
-        .accept_label("Open")
-        .cancel_label("Cancel")
+        .initial_folder(&gio::File::for_path(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))),
+        ))
         .build();
-    chooser.connect_response(move |dialog, response| {
-        if response == ResponseType::Accept {
-            if let Some(file) = dialog.file() {
-                if let Some(path) = file.path() {
-                    if let Ok(document) = base_plugin::file_editor_payload_for_path(&path) {
-                        let _ = open_editor_document(
-                            &runtime,
-                            &persistence_id,
-                            &shell_state,
-                            &group_handles,
-                            &document,
-                        );
-                    }
+    dialog.open(Some(window), gio::Cancellable::NONE, move |result| {
+        if let Ok(file) = result {
+            if let Some(path) = file.path() {
+                if let Ok(document) = base_plugin::file_editor_payload_for_path(&path) {
+                    let _ = open_editor_document(
+                        &runtime,
+                        &persistence_id,
+                        &shell_state,
+                        &group_handles,
+                        &document,
+                    );
                 }
             }
         }
-        dialog.destroy();
     });
-    chooser.show();
 }
 
 fn save_editor_as_picker(
@@ -392,37 +388,36 @@ fn save_editor_as_picker(
     instance_key: String,
     suggested_path: Option<String>,
 ) {
-    let chooser = FileChooserNative::builder()
-        .title("Save Buffer As")
-        .transient_for(window)
-        .action(FileChooserAction::Save)
-        .accept_label("Save")
-        .cancel_label("Cancel")
-        .build();
+    let mut builder = gtk::FileDialog::builder().title("Save Buffer As");
     if let Some(path) = suggested_path.as_deref() {
-        if let Some(name) = Path::new(path).file_name().and_then(|name| name.to_str()) {
-            chooser.set_current_name(name);
+        let p = Path::new(path);
+        if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+            builder = builder.initial_name(name);
         }
+        if let Some(parent) = p.parent() {
+            builder = builder.initial_folder(&gio::File::for_path(parent));
+        }
+    } else {
+        builder = builder.initial_folder(&gio::File::for_path(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))),
+        ));
     }
-    chooser.connect_response(move |dialog, response| {
-        if response == ResponseType::Accept {
-            if let Some(file) = dialog.file() {
-                if let Some(path) = file.path() {
-                    if let Err(error) = save_editor_as_path(
-                        &shell_state,
-                        &group_handles,
-                        &persistence_id,
-                        &instance_key,
-                        &path,
-                    ) {
-                        eprintln!("shell.save_buffer_as failed: {error}");
-                    }
+    let dialog = builder.build();
+    dialog.save(Some(window), gio::Cancellable::NONE, move |result| {
+        if let Ok(file) = result {
+            if let Some(path) = file.path() {
+                if let Err(error) = save_editor_as_path(
+                    &shell_state,
+                    &group_handles,
+                    &persistence_id,
+                    &instance_key,
+                    &path,
+                ) {
+                    eprintln!("shell.save_buffer_as failed: {error}");
                 }
             }
         }
-        dialog.destroy();
     });
-    chooser.show();
 }
 
 fn save_editor_as_path(

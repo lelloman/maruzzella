@@ -223,7 +223,8 @@ pub struct PluginRuntime {
 }
 
 struct PluginShellHost {
-    persistence_id: String,
+    layout_persistence_id: String,
+    config_persistence_id: String,
     shell_state: ShellState,
     group_handles: GroupHandles,
     runtime: Weak<PluginRuntime>,
@@ -323,12 +324,14 @@ impl PluginRuntime {
 
     pub fn attach_shell_host(
         self: &Rc<Self>,
+        layout_persistence_id: String,
         persistence_id: String,
         shell_state: ShellState,
         group_handles: GroupHandles,
     ) {
         let shell_host = Rc::new_cyclic(|weak| PluginShellHost {
-            persistence_id,
+            layout_persistence_id,
+            config_persistence_id: persistence_id,
             shell_state,
             group_handles,
             runtime: Rc::downgrade(self),
@@ -1348,7 +1351,7 @@ extern "C" fn host_open_view(request: *const MzOpenViewRequest) -> MzOpenViewRes
     };
     let result = open_or_focus_plugin_view(
         &runtime,
-        &shell_host.persistence_id,
+        &shell_host.layout_persistence_id,
         &shell_host.shell_state,
         &shell_host.group_handles,
         &ShellOpenPluginViewRequest {
@@ -1499,7 +1502,7 @@ extern "C" fn host_update_view_title(query: *const MzViewQuery, title: MzStr) ->
     if update_plugin_view_title(
         &shell_host.shell_state,
         &shell_host.group_handles,
-        &shell_host.persistence_id,
+        &shell_host.layout_persistence_id,
         &resolve_plugin_view_id(&plugin_id, &view_id),
         empty_to_none(instance_key).as_deref(),
         &title,
@@ -1739,7 +1742,7 @@ extern "C" fn host_read_settings_catalog() -> MzBytes {
                     plugin_id: contribution.plugin_id.clone(),
                     contribution_id: contribution.contribution_id.clone(),
                     config_state: config_state_summary(
-                        &shell_host.persistence_id,
+                        &shell_host.config_persistence_id,
                         &contribution.plugin_id,
                         page.config.as_ref(),
                     ),

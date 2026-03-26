@@ -191,6 +191,21 @@ pub fn load(persistence_id: &str, default_spec: &ShellSpec) -> PersistedShell {
     })
 }
 
+pub fn load_for_slot(persistence_id: &str, slot: &str, default_spec: &ShellSpec) -> PersistedShell {
+    let scoped = scoped_persistence_id(persistence_id, slot);
+    let scoped_path = path(&scoped);
+    if scoped_path.exists() {
+        return load(&scoped, default_spec);
+    }
+    if slot == "workspace" {
+        return load(persistence_id, default_spec);
+    }
+    PersistedShell {
+        spec: default_spec.clone(),
+        panes: PanePositions::default(),
+    }
+}
+
 pub fn save(persistence_id: &str, shell: &PersistedShell) {
     let path = path(persistence_id);
     if let Some(parent) = path.parent() {
@@ -206,6 +221,14 @@ pub fn path(persistence_id: &str) -> PathBuf {
     path.push(persistence_id);
     path.push("layout.json");
     path
+}
+
+pub fn path_for_slot(persistence_id: &str, slot: &str) -> PathBuf {
+    path(&scoped_persistence_id(persistence_id, slot))
+}
+
+pub fn scoped_persistence_id(persistence_id: &str, slot: &str) -> String {
+    format!("{persistence_id}--{slot}")
 }
 
 pub fn load_plugin_configs(persistence_id: &str) -> PluginConfigs {

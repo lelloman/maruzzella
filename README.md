@@ -18,12 +18,14 @@ Today the project is in an intermediate but coherent state:
 - plugin configuration persistence and plugin settings-summary surfaces are wired through the host
 - plugin runtime services, host events, and discovery conventions are now available to downstreams
 - the built-in base plugin now ships a real editor tab with untitled buffers, file-backed documents, native open/save-as flows, and draft restore for dirty buffers
+- the host can now start in a dedicated launcher mode and switch between launcher and workspace shells at runtime
 
 That means the plugin architecture is proven and the shell now exercises it in its default startup experience, but many shared shell contracts are still not formalized.
 
 ## What It Does
 
 - renders a multi-pane desktop shell with left, right, bottom, and central workbench regions
+- supports a compact launcher shell distinct from the normal workspace shell
 - uses custom tab groups instead of `GtkNotebook`
 - supports tab activation, reordering, and workbench split previews
 - persists tab arrangement and pane sizes to a local JSON layout file
@@ -83,6 +85,13 @@ cargo run --example plugin_view
 The intended integration surface is the crate root:
 
 - `MaruzzellaConfig`: application id, persistence namespace, and product definition
+- `MaruzzellaConfig::with_startup_mode(...)`: choose launcher or workspace as the initial shell mode
+- `MaruzzellaConfig::with_launcher(...)`: provide a dedicated launcher shell spec
+- `MaruzzellaConfig::with_launcher_window_policy(...)`: set launcher-specific default size/maximize behavior
+- `MaruzzellaConfig::with_workspace_window_policy(...)`: override workspace window startup policy
+- `build_application_with_handle(...)`: build the GTK application and keep a runtime handle for mode switching
+- `MaruzzellaHandle::switch_to_workspace(...)`: replace launcher mode with a real workspace shell and optional project handle
+- `MaruzzellaHandle::switch_to_launcher()`: return from a workspace to the configured launcher without quitting
 - `ThemeSpec`: configurable theme tokens and optional external stylesheet template
 - `MaruzzellaConfig::with_plugin_path(...)`: register a dynamic plugin library to load at startup
 - `MaruzzellaConfig::with_plugin_dir(...)`: add a directory to plugin discovery
@@ -117,6 +126,41 @@ Dynamic plugins can also be attached through config:
 ```rust
 let config = MaruzzellaConfig::new("com.example.my-app")
     .with_plugin_path("plugins/libexample_plugin.so");
+```
+
+Launcher-mode startup:
+
+```rust
+use maruzzella::{
+    build_application_with_handle, plugin_tab, LauncherSpec, MaruzzellaConfig, ShellMode,
+    TabGroupSpec,
+};
+
+let launcher = LauncherSpec::new(
+    "Sim RNS",
+    TabGroupSpec::new(
+        "launcher-home",
+        Some("launcher"),
+        vec![plugin_tab(
+            "launcher",
+            "launcher-home",
+            "Launcher",
+            "com.example.sim_rns.launcher",
+            "Launcher plugin view failed to load.",
+            false,
+        )],
+    )
+    .with_tab_strip_hidden(),
+);
+
+let config = MaruzzellaConfig::new("com.example.sim-rns")
+    .with_startup_mode(ShellMode::Launcher)
+    .with_launcher(launcher);
+
+let (app, handle) = build_application_with_handle(config);
+// Later, when a project is opened:
+// handle.switch_to_workspace(WorkspaceSession::new(product.shell_spec()))?;
+app.run();
 ```
 
 Discovery can also be directory-based. By default Maruzzella now scans:
@@ -176,7 +220,7 @@ The bundled `Reload Theme` command now reloads the active theme spec, including 
 
 ## Persistence
 
-By default, Maruzzella stores its layout at:
+By default, Maruzzella stores its workspace layout at:
 
 ```text
 $XDG_CONFIG_HOME/maruzzella/layout.json
@@ -189,6 +233,8 @@ $HOME/.config/maruzzella/layout.json
 ```
 
 If you set `MaruzzellaConfig::with_persistence_id(...)`, the directory name changes accordingly.
+
+Launcher and workspace modes persist independent shell layouts so switching modes does not overwrite the other mode's layout.
 
 Deleting the layout file resets the shell to the default layout supplied in the config's `ProductSpec`.
 

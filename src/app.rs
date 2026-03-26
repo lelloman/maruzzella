@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
 
 use gtk::prelude::*;
@@ -25,9 +26,207 @@ use crate::spec::{
     BottomPanelLayout, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec,
 };
 use crate::theme;
-use crate::MaruzzellaConfig;
+use crate::{MaruzzellaConfig, ProductSpec};
 
 type ShellState = Rc<RefCell<PersistedShell>>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShellMode {
+    Launcher,
+    Workspace,
+}
+
+impl ShellMode {
+    fn persistence_slot(self) -> &'static str {
+        match self {
+            Self::Launcher => "launcher",
+            Self::Workspace => "workspace",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShellChrome {
+    pub show_menu_bar: bool,
+    pub show_toolbar: bool,
+    pub show_search: bool,
+}
+
+impl ShellChrome {
+    pub fn launcher_default() -> Self {
+        Self {
+            show_menu_bar: false,
+            show_toolbar: false,
+            show_search: false,
+        }
+    }
+
+    pub fn workspace_default() -> Self {
+        Self {
+            show_menu_bar: true,
+            show_toolbar: true,
+            show_search: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowPolicy {
+    pub default_width: i32,
+    pub default_height: i32,
+    pub start_maximized: bool,
+}
+
+impl WindowPolicy {
+    pub fn new(default_width: i32, default_height: i32) -> Self {
+        Self {
+            default_width,
+            default_height,
+            start_maximized: false,
+        }
+    }
+
+    pub fn with_start_maximized(mut self, start_maximized: bool) -> Self {
+        self.start_maximized = start_maximized;
+        self
+    }
+
+    fn launcher_default() -> Self {
+        Self::new(980, 720)
+    }
+
+    fn workspace_default(density: &theme::ThemeDensity) -> Self {
+        Self::new(density.window_default_width, density.window_default_height).with_start_maximized(true)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LauncherSpec {
+    pub title: String,
+    pub search_placeholder: String,
+    pub search_command_id: Option<String>,
+    pub status_text: String,
+    pub menu_roots: Vec<crate::spec::MenuRootSpec>,
+    pub menu_items: Vec<crate::spec::MenuItemSpec>,
+    pub commands: Vec<crate::spec::CommandSpec>,
+    pub toolbar_items: Vec<crate::spec::ToolbarItemSpec>,
+    pub include_base_toolbar_items: bool,
+    pub content: TabGroupSpec,
+    pub chrome: ShellChrome,
+}
+
+impl LauncherSpec {
+    pub fn new(title: impl Into<String>, content: TabGroupSpec) -> Self {
+        Self {
+            title: title.into(),
+            search_placeholder: String::new(),
+            search_command_id: None,
+            status_text: String::new(),
+            menu_roots: Vec::new(),
+            menu_items: Vec::new(),
+            commands: Vec::new(),
+            toolbar_items: Vec::new(),
+            include_base_toolbar_items: false,
+            content,
+            chrome: ShellChrome::launcher_default(),
+        }
+    }
+
+    pub fn shell_spec(&self) -> ShellSpec {
+        ShellSpec {
+            title: self.title.clone(),
+            search_placeholder: self.search_placeholder.clone(),
+            search_command_id: self.search_command_id.clone(),
+            status_text: self.status_text.clone(),
+            bottom_panel_layout: BottomPanelLayout::CenterOnly,
+            menu_roots: self.menu_roots.clone(),
+            menu_items: self.menu_items.clone(),
+            commands: self.commands.clone(),
+            toolbar_items: self.toolbar_items.clone(),
+            left_panel: TabGroupSpec::new("launcher-left", None, Vec::new()),
+            right_panel: TabGroupSpec::new("launcher-right", None, Vec::new()),
+            bottom_panel: TabGroupSpec::new("launcher-bottom", None, Vec::new()),
+            workbench: WorkbenchNodeSpec::Group(self.content.clone()),
+            left_panel_resize: PanelResizePolicy::Fixed,
+            right_panel_resize: PanelResizePolicy::Fixed,
+            bottom_panel_resize: PanelResizePolicy::Fixed,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WorkspaceSession {
+    pub project_handle: Option<Vec<u8>>,
+    pub shell_spec: Option<ShellSpec>,
+    pub window_policy: Option<WindowPolicy>,
+}
+
+impl WorkspaceSession {
+    pub fn new(shell_spec: ShellSpec) -> Self {
+        Self {
+            project_handle: None,
+            shell_spec: Some(shell_spec),
+            window_policy: None,
+        }
+    }
+
+    pub fn from_product(product: &ProductSpec) -> Self {
+        Self::new(product.shell_spec())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModeSwitchError {
+    NotActivated,
+    MissingLauncherSpec,
+}
+
+impl fmt::Display for ModeSwitchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotActivated => write!(f, "application has not been activated yet"),
+            Self::MissingLauncherSpec => write!(f, "no launcher spec is configured"),
+        }
+    }
+}
+
+impl std::error::Error for ModeSwitchError {}
+
+#[derive(Clone, Default)]
+pub struct MaruzzellaHandle {
+    controller: Rc<RefCell<Option<Rc<AppController>>>>,
+}
+
+impl MaruzzellaHandle {
+    pub fn switch_to_workspace(&self, session: WorkspaceSession) -> Result<(), ModeSwitchError> {
+        let Some(controller) = self.controller.borrow().clone() else {
+            return Err(ModeSwitchError::NotActivated);
+        };
+        controller.switch_to_workspace(session);
+        Ok(())
+    }
+
+    pub fn switch_to_launcher(&self) -> Result<(), ModeSwitchError> {
+        let Some(controller) = self.controller.borrow().clone() else {
+            return Err(ModeSwitchError::NotActivated);
+        };
+        controller.switch_to_launcher()
+    }
+
+    pub fn current_mode(&self) -> Result<ShellMode, ModeSwitchError> {
+        let Some(controller) = self.controller.borrow().clone() else {
+            return Err(ModeSwitchError::NotActivated);
+        };
+        Ok(controller.current_mode())
+    }
+
+    pub fn current_project_handle(&self) -> Result<Option<Vec<u8>>, ModeSwitchError> {
+        let Some(controller) = self.controller.borrow().clone() else {
+            return Err(ModeSwitchError::NotActivated);
+        };
+        Ok(controller.current_project_handle())
+    }
+}
 
 #[derive(Default)]
 struct WorkbenchDragContext {
@@ -68,94 +267,208 @@ impl PanePositionController {
     }
 }
 
-pub fn build(application: &Application, config: &MaruzzellaConfig) {
-    theme::install(config.theme.clone());
-    let density = &config.theme.density;
-    let has_persisted_layout = layout::path(&config.persistence_id).exists();
+struct AppController {
+    window: ApplicationWindow,
+    config: MaruzzellaConfig,
+    plugin_host: Rc<PluginHost>,
+    mode: RefCell<ShellMode>,
+    project_handle: RefCell<Option<Vec<u8>>>,
+    installed_actions: RefCell<Vec<String>>,
+}
 
-    let state = Rc::new(RefCell::new(layout::load(
-        &config.persistence_id,
-        &config.product.shell_spec(),
-    )));
-    let mut spec = state.borrow().spec.clone();
-    let product_spec = config.product.shell_spec();
-    spec.title = product_spec.title;
-    spec.search_placeholder = product_spec.search_placeholder;
-    spec.search_command_id = product_spec.search_command_id;
-    spec.status_text = product_spec.status_text;
-    let plugin_host = Rc::new(build_plugin_host(config));
-    if let Some(runtime) = plugin_host.runtime() {
-        product::merge_plugin_runtime(
-            &mut spec,
-            runtime,
-            config.product.include_base_toolbar_items,
-        );
-        if !has_persisted_layout {
-            product::merge_runtime_startup_tabs(&mut spec, runtime);
+impl AppController {
+    fn new(window: ApplicationWindow, config: MaruzzellaConfig, plugin_host: Rc<PluginHost>) -> Rc<Self> {
+        Rc::new(Self {
+            window,
+            config,
+            plugin_host,
+            mode: RefCell::new(ShellMode::Workspace),
+            project_handle: RefCell::new(None),
+            installed_actions: RefCell::new(Vec::new()),
+        })
+    }
+
+    fn show_startup_mode(&self) -> Result<(), ModeSwitchError> {
+        match self.config.startup_mode {
+            ShellMode::Launcher => self.show_launcher(self.config.launcher.clone()),
+            ShellMode::Workspace => {
+                self.show_workspace(WorkspaceSession::from_product(&self.config.product));
+                Ok(())
+            }
         }
-        state.borrow_mut().spec = spec.clone();
     }
-    let group_handles = Rc::new(RefCell::new(HashMap::new()));
-    if let Some(runtime) = plugin_host.runtime() {
-        runtime.attach_shell_host(
-            config.persistence_id.clone(),
-            state.clone(),
-            group_handles.clone(),
+
+    fn switch_to_workspace(&self, session: WorkspaceSession) {
+        self.show_workspace(session);
+    }
+
+    fn switch_to_launcher(&self) -> Result<(), ModeSwitchError> {
+        self.show_launcher(self.config.launcher.clone())
+    }
+
+    fn current_mode(&self) -> ShellMode {
+        *self.mode.borrow()
+    }
+
+    fn current_project_handle(&self) -> Option<Vec<u8>> {
+        self.project_handle.borrow().clone()
+    }
+
+    fn show_workspace(&self, session: WorkspaceSession) {
+        let shell_spec = session
+            .shell_spec
+            .unwrap_or_else(|| self.config.product.shell_spec());
+        let policy = session
+            .window_policy
+            .or_else(|| self.config.workspace_window_policy.clone())
+            .unwrap_or_else(|| WindowPolicy::workspace_default(&self.config.theme.density));
+        self.project_handle.replace(session.project_handle);
+        self.render_mode(
+            ShellMode::Workspace,
+            shell_spec,
+            policy,
+            ShellChrome::workspace_default(),
+            self.config.product.include_base_toolbar_items,
         );
     }
 
+    fn show_launcher(&self, launcher: Option<LauncherSpec>) -> Result<(), ModeSwitchError> {
+        let Some(launcher) = launcher else {
+            return Err(ModeSwitchError::MissingLauncherSpec);
+        };
+        let policy = self
+            .config
+            .launcher_window_policy
+            .clone()
+            .unwrap_or_else(WindowPolicy::launcher_default);
+        self.project_handle.replace(None);
+        self.render_mode(
+            ShellMode::Launcher,
+            launcher.shell_spec(),
+            policy,
+            launcher.chrome,
+            launcher.include_base_toolbar_items,
+        );
+        Ok(())
+    }
+
+    fn render_mode(
+        &self,
+        mode: ShellMode,
+        default_spec: ShellSpec,
+        window_policy: WindowPolicy,
+        chrome: ShellChrome,
+        include_base_toolbar_items: bool,
+    ) {
+        let persistence_slot = mode.persistence_slot();
+        let layout_persistence_id =
+            layout::scoped_persistence_id(&self.config.persistence_id, persistence_slot);
+        let has_persisted_layout =
+            layout::path_for_slot(&self.config.persistence_id, persistence_slot).exists();
+        let state = Rc::new(RefCell::new(layout::load_for_slot(
+            &self.config.persistence_id,
+            persistence_slot,
+            &default_spec,
+        )));
+        let mut spec = state.borrow().spec.clone();
+        if let Some(runtime) = self.plugin_host.runtime() {
+            product::merge_plugin_runtime(&mut spec, runtime, include_base_toolbar_items);
+            if mode == ShellMode::Workspace && !has_persisted_layout {
+                product::merge_runtime_startup_tabs(&mut spec, runtime);
+            }
+            state.borrow_mut().spec = spec.clone();
+        }
+
+        let group_handles = Rc::new(RefCell::new(HashMap::new()));
+        if let Some(runtime) = self.plugin_host.runtime() {
+            runtime.attach_shell_host(
+                layout_persistence_id.clone(),
+                self.config.persistence_id.clone(),
+                state.clone(),
+                group_handles.clone(),
+            );
+        }
+
+        let (shell, mut pane_roots) = match mode {
+            ShellMode::Launcher => build_launcher_shell(
+                state.clone(),
+                layout_persistence_id.clone(),
+                group_handles.clone(),
+                self.plugin_host.runtime().cloned(),
+            ),
+            ShellMode::Workspace => build_shell(
+                state.clone(),
+                layout_persistence_id.clone(),
+                group_handles.clone(),
+                self.plugin_host.runtime().cloned(),
+                &self.config.theme.density,
+            ),
+        };
+
+        let registry = commands::shell_registry(
+            &self.window,
+            &spec,
+            Some(self.plugin_host.clone()),
+            &layout_persistence_id,
+            Some(state),
+            Some(group_handles),
+        );
+
+        for action_name in self.installed_actions.borrow_mut().drain(..) {
+            self.window.remove_action(&action_name);
+        }
+        let installed_actions = topbar::install_actions(&self.window, &spec, &registry);
+        self.installed_actions.replace(installed_actions);
+
+        let root = GtkBox::new(Orientation::Vertical, 0);
+        root.add_css_class("app-root");
+        let app_overlay = Overlay::new();
+        app_overlay.set_child(Some(&root));
+
+        if let Some(topbar) = topbar::build(&spec, chrome) {
+            if let Some(search_command_id) = &spec.search_command_id {
+                if let Some(handler) = registry.handler_for(search_command_id) {
+                    topbar.search.connect_changed(move |entry| {
+                        let text = entry.text();
+                        handler(text.as_bytes());
+                    });
+                }
+            }
+            pane_roots.push(topbar.root.clone().upcast());
+            root.append(&topbar.root);
+            topbar.install_tooltip_overlay(&app_overlay);
+        }
+
+        install_pane_focus_tracking(&pane_roots);
+        root.append(&shell);
+
+        self.window.set_title(Some(&spec.title));
+        self.window.set_default_size(window_policy.default_width, window_policy.default_height);
+        if window_policy.start_maximized {
+            self.window.maximize();
+        } else {
+            self.window.unmaximize();
+        }
+        self.window.set_child(Some(&app_overlay));
+        self.window.present();
+        self.mode.replace(mode);
+    }
+}
+
+pub fn build(application: &Application, config: &MaruzzellaConfig, handle: &MaruzzellaHandle) {
+    theme::install(config.theme.clone());
+    let plugin_host = Rc::new(build_plugin_host(config));
     let window = ApplicationWindow::builder()
         .application(application)
-        .title(&spec.title)
-        .default_width(density.window_default_width)
-        .default_height(density.window_default_height)
+        .title(&config.product.branding.title)
         .build();
     window.add_css_class("app-window");
-    let (shell, mut pane_roots) = build_shell(
-        state.clone(),
-        config.persistence_id.clone(),
-        group_handles.clone(),
-        plugin_host.runtime().cloned(),
-        &config.theme.density,
-    );
-    let registry = commands::shell_registry(
-        &window,
-        &spec,
-        Some(plugin_host.clone()),
-        &config.persistence_id,
-        Some(state),
-        Some(group_handles),
-    );
-    topbar::install_actions(&window, &spec, &registry);
-
-    let topbar = topbar::build(&spec);
-
-    if let Some(search_command_id) = &spec.search_command_id {
-        if let Some(handler) = registry.handler_for(search_command_id) {
-            topbar.search.connect_changed(move |entry| {
-                let text = entry.text();
-                handler(text.as_bytes());
-            });
-        }
-    }
-
-    pane_roots.push(topbar.root.clone().upcast());
-    install_pane_focus_tracking(&pane_roots);
-
-    let root = GtkBox::new(Orientation::Vertical, 0);
-    root.add_css_class("app-root");
-    root.append(&topbar.root);
-    root.append(&shell);
-
-    let app_overlay = Overlay::new();
-    app_overlay.set_child(Some(&root));
-    topbar.install_tooltip_overlay(&app_overlay);
-
-    window.set_child(Some(&app_overlay));
     unsafe {
-        window.set_data("maruzzella-plugin-host", plugin_host);
+        window.set_data("maruzzella-plugin-host", plugin_host.clone());
     }
-    window.present();
+    let controller = AppController::new(window, config.clone(), plugin_host);
+    handle.controller.replace(Some(controller.clone()));
+    let _ = controller.show_startup_mode();
 }
 
 fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
@@ -437,6 +750,47 @@ fn build_shell(
     };
 
     (shell, pane_roots)
+}
+
+fn build_launcher_shell(
+    state: ShellState,
+    persistence_id: String,
+    group_handles: GroupHandles,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
+) -> (gtk::Widget, Vec<gtk::Widget>) {
+    let spec = state.borrow().spec.clone();
+    let Some(group) = first_workbench_group(&spec.workbench) else {
+        let root = GtkBox::new(Orientation::Vertical, 0);
+        root.set_hexpand(true);
+        root.set_vexpand(true);
+        return (root.upcast::<gtk::Widget>(), Vec::new());
+    };
+
+    let built = build_group(
+        group,
+        state,
+        persistence_id,
+        plugin_runtime,
+        group_handles.clone(),
+    );
+    group_handles
+        .borrow_mut()
+        .insert(group.id.clone(), built.handle.clone());
+
+    let root = GtkBox::new(Orientation::Vertical, 0);
+    root.add_css_class("launcher-shell");
+    root.set_hexpand(true);
+    root.set_vexpand(true);
+    root.append(&built.root);
+
+    (root.upcast::<gtk::Widget>(), vec![built.root.upcast()])
+}
+
+fn first_workbench_group(node: &WorkbenchNodeSpec) -> Option<&TabGroupSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => Some(group),
+        WorkbenchNodeSpec::Split { children, .. } => children.iter().find_map(first_workbench_group),
+    }
 }
 
 fn build_group(

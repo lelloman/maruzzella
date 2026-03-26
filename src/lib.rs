@@ -16,6 +16,10 @@ pub mod theme;
 use gtk::prelude::*;
 use gtk::Application;
 
+pub use app::{
+    LauncherSpec, MaruzzellaHandle, ModeSwitchError, ShellChrome, ShellMode, WindowPolicy,
+    WorkspaceSession,
+};
 pub use plugins::{
     diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, load_static_plugin,
     resolve_load_order, LoadedPlugin, PluginDependencySpec, PluginDescriptor, PluginDiagnostic,
@@ -37,6 +41,10 @@ pub struct MaruzzellaConfig {
     pub application_id: String,
     pub persistence_id: String,
     pub product: ProductSpec,
+    pub startup_mode: ShellMode,
+    pub launcher: Option<LauncherSpec>,
+    pub workspace_window_policy: Option<WindowPolicy>,
+    pub launcher_window_policy: Option<WindowPolicy>,
     pub theme: ThemeSpec,
     pub plugin_paths: Vec<PathBuf>,
     pub plugin_dirs: Vec<PathBuf>,
@@ -56,6 +64,10 @@ impl MaruzzellaConfig {
             application_id: application_id.to_string(),
             persistence_id: "maruzzella".to_string(),
             product: default_product_spec(),
+            startup_mode: ShellMode::Workspace,
+            launcher: None,
+            workspace_window_policy: None,
+            launcher_window_policy: None,
             theme: ThemeSpec::default(),
             plugin_paths: Vec::new(),
             plugin_dirs: Vec::new(),
@@ -71,6 +83,26 @@ impl MaruzzellaConfig {
 
     pub fn with_product(mut self, product: ProductSpec) -> Self {
         self.product = product;
+        self
+    }
+
+    pub fn with_startup_mode(mut self, startup_mode: ShellMode) -> Self {
+        self.startup_mode = startup_mode;
+        self
+    }
+
+    pub fn with_launcher(mut self, launcher: LauncherSpec) -> Self {
+        self.launcher = Some(launcher);
+        self
+    }
+
+    pub fn with_workspace_window_policy(mut self, policy: WindowPolicy) -> Self {
+        self.workspace_window_policy = Some(policy);
+        self
+    }
+
+    pub fn with_launcher_window_policy(mut self, policy: WindowPolicy) -> Self {
+        self.launcher_window_policy = Some(policy);
         self
     }
 
@@ -141,10 +173,17 @@ impl MaruzzellaConfig {
 }
 
 pub fn build_application(config: MaruzzellaConfig) -> Application {
+    build_application_with_handle(config).0
+}
+
+pub fn build_application_with_handle(config: MaruzzellaConfig) -> (Application, MaruzzellaHandle) {
     let config_for_activate = config.clone();
-    build_application_with_activate(&config.application_id, move |application| {
-        app::build(application, &config_for_activate);
-    })
+    let handle = MaruzzellaHandle::default();
+    let handle_for_activate = handle.clone();
+    let application = build_application_with_activate(&config.application_id, move |application| {
+        app::build(application, &config_for_activate, &handle_for_activate);
+    });
+    (application, handle)
 }
 
 pub fn build_application_with_activate<F>(application_id: &str, activate: F) -> Application

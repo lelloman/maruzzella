@@ -6,6 +6,7 @@ use gtk::{
 };
 
 use crate::commands::CommandRegistry;
+use crate::app::ShellChrome;
 use crate::spec::{
     command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarDisplayMode, ToolbarItemSpec,
 };
@@ -69,55 +70,68 @@ impl TopBar {
     }
 }
 
-pub fn build(spec: &ShellSpec) -> TopBar {
+pub fn build(spec: &ShellSpec, chrome: ShellChrome) -> Option<TopBar> {
+    if !chrome.show_menu_bar && !chrome.show_toolbar && !chrome.show_search {
+        return None;
+    }
+
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("topbar-shell");
 
-    let masthead = GtkBox::new(Orientation::Horizontal, 12);
-    masthead.add_css_class("topbar-masthead");
-
-    let menu_model = build_menu_model(spec);
-    let menu_bar = PopoverMenuBar::from_model(Some(&menu_model));
-    menu_bar.add_css_class("menu-bar");
-    menu_bar.set_hexpand(true);
-    masthead.append(&menu_bar);
-    root.append(&masthead);
-
-    let toolbar = GtkBox::new(Orientation::Horizontal, 12);
-    toolbar.add_css_class("studio-toolbar");
-
-    let search_cluster = GtkBox::new(Orientation::Horizontal, 0);
-    search_cluster.add_css_class("toolbar-search-cluster");
-    search_cluster.set_hexpand(true);
     let search = Entry::new();
-    search.add_css_class("toolbar-search");
-    search.set_hexpand(true);
     search.set_placeholder_text(Some(&spec.search_placeholder));
-    search_cluster.append(&search);
-    toolbar.append(&search_cluster);
-
     let mut tooltips = Vec::new();
 
-    let actions_group = GtkBox::new(Orientation::Horizontal, 8);
-    actions_group.add_css_class("toolbar-actions");
-    for item in spec.toolbar_items.iter().filter(|item| !item.secondary) {
-        actions_group.append(&action_bar_item_button(item, &mut tooltips));
-    }
-    toolbar.append(&actions_group);
+    if chrome.show_menu_bar {
+        let masthead = GtkBox::new(Orientation::Horizontal, 12);
+        masthead.add_css_class("topbar-masthead");
 
-    let utility_group = GtkBox::new(Orientation::Horizontal, 6);
-    utility_group.add_css_class("toolbar-utility-group");
-    for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
-        utility_group.append(&action_bar_item_button(item, &mut tooltips));
+        let menu_model = build_menu_model(spec);
+        let menu_bar = PopoverMenuBar::from_model(Some(&menu_model));
+        menu_bar.add_css_class("menu-bar");
+        menu_bar.set_hexpand(true);
+        masthead.append(&menu_bar);
+        root.append(&masthead);
     }
-    toolbar.append(&utility_group);
 
-    root.append(&toolbar);
-    TopBar {
+    if chrome.show_toolbar || chrome.show_search {
+        let toolbar = GtkBox::new(Orientation::Horizontal, 12);
+        toolbar.add_css_class("studio-toolbar");
+
+        if chrome.show_search {
+            let search_cluster = GtkBox::new(Orientation::Horizontal, 0);
+            search_cluster.add_css_class("toolbar-search-cluster");
+            search_cluster.set_hexpand(true);
+            search.add_css_class("toolbar-search");
+            search.set_hexpand(true);
+            search_cluster.append(&search);
+            toolbar.append(&search_cluster);
+        }
+
+        if chrome.show_toolbar {
+            let actions_group = GtkBox::new(Orientation::Horizontal, 8);
+            actions_group.add_css_class("toolbar-actions");
+            for item in spec.toolbar_items.iter().filter(|item| !item.secondary) {
+                actions_group.append(&action_bar_item_button(item, &mut tooltips));
+            }
+            toolbar.append(&actions_group);
+
+            let utility_group = GtkBox::new(Orientation::Horizontal, 6);
+            utility_group.add_css_class("toolbar-utility-group");
+            for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
+                utility_group.append(&action_bar_item_button(item, &mut tooltips));
+            }
+            toolbar.append(&utility_group);
+        }
+
+        root.append(&toolbar);
+    }
+
+    Some(TopBar {
         root,
         search,
         tooltips,
-    }
+    })
 }
 
 fn action_bar_item_button(
@@ -239,10 +253,12 @@ pub fn install_actions(
     window: &gtk::ApplicationWindow,
     spec: &ShellSpec,
     registry: &CommandRegistry,
-) {
+) -> Vec<String> {
+    let mut installed = Vec::new();
     for command in &spec.commands {
         let simple = gio::SimpleAction::new(&command_name(&command.id), None);
         let handler = registry.handler_for(&command.id);
+        let action_name = command_name(&command.id);
         let title = command.title.clone();
         simple.connect_activate(move |_, _| {
             if let Some(handler) = handler.as_ref() {
@@ -252,6 +268,7 @@ pub fn install_actions(
             }
         });
         window.add_action(&simple);
+        installed.push(action_name);
     }
 
     for action_id in spec
@@ -264,9 +281,12 @@ pub fn install_actions(
             continue;
         };
         let simple = gio::SimpleAction::new(&command_name(action_id), None);
+        let action_name = command_name(action_id);
         simple.connect_activate(move |_, _| {
             handler(&[]);
         });
         window.add_action(&simple);
+        installed.push(action_name);
     }
+    installed
 }

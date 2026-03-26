@@ -562,6 +562,7 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_separator_fill".to_string(), "#323232".to_string()),
         ("separator_alpha".to_string(), "1.0".to_string()),
         ("separator_size".to_string(), "1px".to_string()),
+        ("paned_separator_size".to_string(), "3px".to_string()),
         ("drop_zone_width".to_string(), "40px".to_string()),
         ("drop_zone_height".to_string(), "40px".to_string()),
         ("drop_zone_side_width".to_string(), "72px".to_string()),

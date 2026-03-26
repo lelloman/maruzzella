@@ -304,11 +304,16 @@ entry:focus {
   min-width: {{command_width_min}};
 }
 
-paned > separator,
 separator {
   background: alpha({{color_separator_fill}}, {{separator_alpha}});
   min-width: {{separator_size}};
   min-height: {{separator_size}};
+}
+
+paned > separator {
+  background: alpha({{color_separator_fill}}, {{separator_alpha}});
+  min-width: {{paned_separator_size}};
+  min-height: {{paned_separator_size}};
 }
 
 .workspace-pane {

@@ -1616,15 +1616,27 @@ fn persist_pane_position(
     controller: Rc<PanePositionController>,
     pane_id: String,
 ) {
+    let prev_total = Rc::new(std::cell::Cell::new(0i32));
     paned.connect_position_notify(move |paned| {
+        let total = paned_total(paned);
+        let old_total = prev_total.get();
+        prev_total.set(total);
         if !controller.should_persist() {
+            return;
+        }
+        // Only persist when the user drags the divider (total unchanged).
+        // During window resizes the total changes and the preferred-restore
+        // handler is responsible for applying the cached layout — persisting
+        // here would overwrite it with the intermediate proportional position
+        // and poison last_bucket.
+        if total != old_total {
             return;
         }
         state
             .borrow_mut()
             .panes
-            .remember_position(&pane_id, paned_total(paned), paned.position());
-        controller.set_last_bucket(layout::pane_extent_bucket(paned_total(paned)).unwrap_or(0));
+            .remember_position(&pane_id, total, paned.position());
+        controller.set_last_bucket(layout::pane_extent_bucket(total).unwrap_or(0));
         persist_state(&state, &persistence_id);
     });
 }
@@ -1635,53 +1647,42 @@ fn install_preferred_pane_restore(
     pane_id: String,
     controller: Rc<PanePositionController>,
 ) {
-    let apply_preferred = {
-        let state = state.clone();
-        let pane_id = pane_id.clone();
-        let controller = controller.clone();
-        move |paned: &Paned| {
-            let extent = paned_total(paned);
-            let bucket = layout::pane_extent_bucket(extent).unwrap_or(0);
-            if bucket == controller.last_bucket() {
-                return;
-            }
-            controller.set_last_bucket(bucket);
-
-            let has_preferred = state
-                .borrow()
-                .panes
-                .has_preferred_position(&pane_id, extent);
-            if !has_preferred {
-                return;
-            }
-            let Some(position) = state
-                .borrow_mut()
-                .panes
-                .preferred_position(&pane_id, extent)
-            else {
-                return;
-            };
-            if paned.position() != position {
-                controller.run_programmatic_update(|| {
-                    paned.set_position(position);
-                });
-            }
+    // Listen on position_notify rather than notify::width/height because
+    // GTK adjusts the paned position proportionally during size_allocate
+    // (when both resize children are true).  notify::width/height fires
+    // before that adjustment, so any position we set there gets
+    // overridden.  position_notify fires after, so our override sticks.
+    paned.connect_position_notify(move |paned| {
+        if controller.is_programmatic_update() {
+            return;
         }
-    };
+        let extent = paned_total(paned);
+        let bucket = layout::pane_extent_bucket(extent).unwrap_or(0);
+        if bucket == controller.last_bucket() {
+            return;
+        }
+        controller.set_last_bucket(bucket);
 
-    match paned.orientation() {
-        Orientation::Horizontal => {
-            paned.connect_notify_local(Some("width"), move |paned, _| {
-                apply_preferred(paned);
+        let has_preferred = state
+            .borrow()
+            .panes
+            .has_preferred_position(&pane_id, extent);
+        if !has_preferred {
+            return;
+        }
+        let Some(position) = state
+            .borrow_mut()
+            .panes
+            .preferred_position(&pane_id, extent)
+        else {
+            return;
+        };
+        if paned.position() != position {
+            controller.run_programmatic_update(|| {
+                paned.set_position(position);
             });
         }
-        Orientation::Vertical => {
-            paned.connect_notify_local(Some("height"), move |paned, _| {
-                apply_preferred(paned);
-            });
-        }
-        _ => {}
-    }
+    });
 }
 
 fn persist_state(state: &ShellState, persistence_id: &str) {

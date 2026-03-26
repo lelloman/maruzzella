@@ -310,6 +310,8 @@ fn build_shell(
         &left_center,
         spec.left_panel_resize,
         left_center_controller.clone(),
+        state.clone(),
+        "shell.horizontal".to_string(),
         density.min_side_panel_width,
     );
     restore_pane_position(
@@ -338,6 +340,8 @@ fn build_shell(
                 &vertical,
                 bottom_resize,
                 vertical_controller.clone(),
+                state.clone(),
+                "shell.vertical".to_string(),
                 min_bottom,
             );
             restore_pane_position(
@@ -360,6 +364,8 @@ fn build_shell(
                     &outer,
                     right_resize,
                     outer_controller.clone(),
+                    state.clone(),
+                    "shell.outer".to_string(),
                     min_side,
                 );
                 restore_pane_position(
@@ -387,6 +393,8 @@ fn build_shell(
                     &upper,
                     right_resize,
                     upper_controller.clone(),
+                    state.clone(),
+                    "shell.outer".to_string(),
                     min_side,
                 );
                 restore_pane_position(
@@ -412,6 +420,8 @@ fn build_shell(
                 &vertical,
                 bottom_resize,
                 vertical_controller.clone(),
+                state.clone(),
+                "shell.vertical".to_string(),
                 min_bottom,
             );
             restore_pane_position(
@@ -1335,10 +1345,13 @@ fn paned_total(paned: &Paned) -> i32 {
 
 /// Configure a Paned where the **start** child is the panel (e.g. left panel).
 /// Position = panel size. On window grow, keep panel at previous size.
+/// Skips the resize override when a resolution-aware preferred layout exists.
 fn apply_start_panel_resize_policy(
     paned: &Paned,
     policy: PanelResizePolicy,
     controller: Rc<PanePositionController>,
+    state: ShellState,
+    pane_id: String,
     _min_size: i32,
 ) {
     paned.set_resize_start_child(true);
@@ -1359,6 +1372,15 @@ fn apply_start_panel_resize_policy(
                 let old_pos = prev_pos.get();
 
                 if old_total > 0 && total > old_total {
+                    let has_preferred = state
+                        .borrow()
+                        .panes
+                        .has_preferred_position(&pane_id, total);
+                    if has_preferred {
+                        prev_total.set(total);
+                        prev_pos.set(pos);
+                        return;
+                    }
                     // Window grew — restore panel to its previous size.
                     if pos != old_pos {
                         controller.run_programmatic_update(|| {
@@ -1378,10 +1400,13 @@ fn apply_start_panel_resize_policy(
 
 /// Configure a Paned where the **end** child is the panel (e.g. bottom or right panel).
 /// Panel size = total - position. On window grow, keep panel at previous size.
+/// Skips the resize override when a resolution-aware preferred layout exists.
 fn apply_end_panel_resize_policy(
     paned: &Paned,
     policy: PanelResizePolicy,
     controller: Rc<PanePositionController>,
+    state: ShellState,
+    pane_id: String,
     _min_size: i32,
 ) {
     paned.set_resize_start_child(true);
@@ -1402,6 +1427,15 @@ fn apply_end_panel_resize_policy(
                 let old_panel_size = prev_panel_size.get();
 
                 if old_total > 0 && total > old_total {
+                    let has_preferred = state
+                        .borrow()
+                        .panes
+                        .has_preferred_position(&pane_id, total);
+                    if has_preferred {
+                        prev_total.set(total);
+                        prev_panel_size.set(panel_size);
+                        return;
+                    }
                     // Window grew — restore panel to its previous size.
                     if panel_size != old_panel_size {
                         controller.run_programmatic_update(|| {

@@ -514,6 +514,9 @@ mod tests {
             left_panel: TabGroupSpec::new("panel-left", None, Vec::new()),
             right_panel: TabGroupSpec::new("panel-right", None, Vec::new()),
             bottom_panel: TabGroupSpec::new("panel-bottom", None, Vec::new()),
+            left_panel_resize: Default::default(),
+            right_panel_resize: Default::default(),
+            bottom_panel_resize: Default::default(),
             workbench: WorkbenchNodeSpec::Group(TabGroupSpec::new(
                 "workbench-main",
                 None,
@@ -552,6 +555,9 @@ mod tests {
             left_panel: TabGroupSpec::new("panel-left", None, Vec::new()),
             right_panel: TabGroupSpec::new("panel-right", None, Vec::new()),
             bottom_panel: TabGroupSpec::new("panel-bottom", None, Vec::new()),
+            left_panel_resize: Default::default(),
+            right_panel_resize: Default::default(),
+            bottom_panel_resize: Default::default(),
             workbench: WorkbenchNodeSpec::Group(TabGroupSpec::new(
                 "workbench-main",
                 None,
@@ -597,6 +603,9 @@ mod tests {
                     true,
                 )],
             ),
+            left_panel_resize: Default::default(),
+            right_panel_resize: Default::default(),
+            bottom_panel_resize: Default::default(),
             workbench: WorkbenchNodeSpec::Group(TabGroupSpec::new(
                 "workbench-main",
                 None,

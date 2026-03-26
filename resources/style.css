@@ -922,3 +922,60 @@ popover.background separator {
   min-height: 1px;
   margin: {{popover_separator_margin}};
 }
+
+row,
+list row,
+listview row,
+.dense-row,
+.boxed-list row {
+  margin: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.boxed-list {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  border-spacing: 0;
+}
+
+list separator {
+  min-height: 0;
+  background: transparent;
+}
+
+row:hover box,
+row:hover label {
+  background: transparent;
+}
+
+.pane-focused row:hover,
+.pane-focused list row:hover {
+  background: alpha(#2d5c88, 0.3);
+}
+
+.workbench-tab-strip > .tab-header,
+.drag-preview,
+notebook header tab {
+  border-radius: 0;
+  margin: 0;
+}
+
+.workbench-tab-strip > .tab-header.active {
+  border-bottom-color: #515658;
+}
+
+.pane-focused .workbench-tab-strip > .tab-header.active {
+  border-bottom-color: #4b6eaf;
+}
+
+.pane-focused .linked > button:checked {
+  background: #2d5c88;
+  color: #ffffff;
+}

@@ -10,7 +10,6 @@ use gtk::{
 use crate::base_plugin;
 use crate::commands;
 use crate::layout::{self, PersistedShell};
-use crate::spec::PanelResizePolicy;
 use crate::plugin_tabs::{self, GroupHandles};
 use crate::plugins::{
     diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginDiagnostic,
@@ -21,6 +20,7 @@ use crate::shell::topbar;
 use crate::shell::workbench_custom::{
     self, BuiltCustomWorkbenchGroup, CustomWorkbenchGroupHandle, SplitPreviewSide,
 };
+use crate::spec::PanelResizePolicy;
 use crate::spec::{
     BottomPanelLayout, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec,
 };
@@ -34,6 +34,38 @@ struct WorkbenchDragContext {
     source_group_id: Option<String>,
     target_group_id: Option<String>,
     target_index: Option<usize>,
+}
+
+#[derive(Default)]
+struct PanePositionController {
+    suppress_persist_depth: std::cell::Cell<u32>,
+    last_bucket: std::cell::Cell<i32>,
+}
+
+impl PanePositionController {
+    fn should_persist(&self) -> bool {
+        self.suppress_persist_depth.get() == 0
+    }
+
+    fn is_programmatic_update(&self) -> bool {
+        self.suppress_persist_depth.get() > 0
+    }
+
+    fn last_bucket(&self) -> i32 {
+        self.last_bucket.get()
+    }
+
+    fn set_last_bucket(&self, bucket: i32) {
+        self.last_bucket.set(bucket);
+    }
+
+    fn run_programmatic_update(&self, update: impl FnOnce()) {
+        self.suppress_persist_depth
+            .set(self.suppress_persist_depth.get().saturating_add(1));
+        update();
+        self.suppress_persist_depth
+            .set(self.suppress_persist_depth.get().saturating_sub(1));
+    }
 }
 
 pub fn build(application: &Application, config: &MaruzzellaConfig) {
@@ -223,7 +255,9 @@ fn build_shell(
         group_handles
             .borrow_mut()
             .insert(spec.right_panel.id.clone(), right.handle.clone());
-        right.root.set_size_request(density.min_side_panel_width, -1);
+        right
+            .root
+            .set_size_request(density.min_side_panel_width, -1);
         right
     });
     let bottom = build_group(
@@ -267,6 +301,7 @@ fn build_shell(
     }
 
     let left_center = Paned::new(Orientation::Horizontal);
+    let left_center_controller = Rc::new(PanePositionController::default());
     left_center.set_wide_handle(true);
     left_center.set_shrink_start_child(false);
     left_center.set_start_child(Some(&left.root));
@@ -274,14 +309,16 @@ fn build_shell(
     apply_start_panel_resize_policy(
         &left_center,
         spec.left_panel_resize,
+        left_center_controller.clone(),
         density.min_side_panel_width,
     );
-    restore_pane_position(&left_center, &state, "shell.horizontal", 280);
-    persist_pane_position(
+    restore_pane_position(
         &left_center,
-        state.clone(),
-        persistence_id.clone(),
+        &state,
+        &persistence_id,
+        left_center_controller.clone(),
         "shell.horizontal",
+        280,
     );
 
     let bottom_resize = spec.bottom_panel_resize;
@@ -292,28 +329,47 @@ fn build_shell(
     let shell = match spec.bottom_panel_layout {
         BottomPanelLayout::CenterOnly => {
             let vertical = Paned::new(Orientation::Vertical);
+            let vertical_controller = Rc::new(PanePositionController::default());
             vertical.set_wide_handle(true);
             vertical.set_shrink_end_child(false);
             vertical.set_start_child(Some(&left_center));
             vertical.set_end_child(Some(&bottom.root));
-            apply_end_panel_resize_policy(&vertical, bottom_resize, min_bottom);
-            restore_pane_position(&vertical, &state, "shell.vertical", 720);
-            persist_pane_position(
+            apply_end_panel_resize_policy(
                 &vertical,
-                state.clone(),
-                persistence_id.clone(),
+                bottom_resize,
+                vertical_controller.clone(),
+                min_bottom,
+            );
+            restore_pane_position(
+                &vertical,
+                &state,
+                &persistence_id,
+                vertical_controller.clone(),
                 "shell.vertical",
+                720,
             );
 
             if let Some(right) = right {
                 let outer = Paned::new(Orientation::Horizontal);
+                let outer_controller = Rc::new(PanePositionController::default());
                 outer.set_wide_handle(true);
                 outer.set_shrink_end_child(false);
                 outer.set_start_child(Some(&vertical));
                 outer.set_end_child(Some(&right.root));
-                apply_end_panel_resize_policy(&outer, right_resize, min_side);
-                restore_pane_position(&outer, &state, "shell.outer", 1260);
-                persist_pane_position(&outer, state, persistence_id, "shell.outer");
+                apply_end_panel_resize_policy(
+                    &outer,
+                    right_resize,
+                    outer_controller.clone(),
+                    min_side,
+                );
+                restore_pane_position(
+                    &outer,
+                    &state,
+                    &persistence_id,
+                    outer_controller.clone(),
+                    "shell.outer",
+                    1260,
+                );
                 outer.upcast::<gtk::Widget>()
             } else {
                 vertical.upcast::<gtk::Widget>()
@@ -322,26 +378,50 @@ fn build_shell(
         BottomPanelLayout::FullWidth => {
             let upper = if let Some(right) = right {
                 let upper = Paned::new(Orientation::Horizontal);
+                let upper_controller = Rc::new(PanePositionController::default());
                 upper.set_wide_handle(true);
                 upper.set_shrink_end_child(false);
                 upper.set_start_child(Some(&left_center));
                 upper.set_end_child(Some(&right.root));
-                apply_end_panel_resize_policy(&upper, right_resize, min_side);
-                restore_pane_position(&upper, &state, "shell.outer", 1260);
-                persist_pane_position(&upper, state.clone(), persistence_id.clone(), "shell.outer");
+                apply_end_panel_resize_policy(
+                    &upper,
+                    right_resize,
+                    upper_controller.clone(),
+                    min_side,
+                );
+                restore_pane_position(
+                    &upper,
+                    &state,
+                    &persistence_id,
+                    upper_controller.clone(),
+                    "shell.outer",
+                    1260,
+                );
                 upper.upcast::<gtk::Widget>()
             } else {
                 left_center.upcast::<gtk::Widget>()
             };
 
             let vertical = Paned::new(Orientation::Vertical);
+            let vertical_controller = Rc::new(PanePositionController::default());
             vertical.set_wide_handle(true);
             vertical.set_shrink_end_child(false);
             vertical.set_start_child(Some(&upper));
             vertical.set_end_child(Some(&bottom.root));
-            apply_end_panel_resize_policy(&vertical, bottom_resize, min_bottom);
-            restore_pane_position(&vertical, &state, "shell.vertical", 720);
-            persist_pane_position(&vertical, state, persistence_id, "shell.vertical");
+            apply_end_panel_resize_policy(
+                &vertical,
+                bottom_resize,
+                vertical_controller.clone(),
+                min_bottom,
+            );
+            restore_pane_position(
+                &vertical,
+                &state,
+                &persistence_id,
+                vertical_controller.clone(),
+                "shell.vertical",
+                720,
+            );
             vertical.upcast::<gtk::Widget>()
         }
     };
@@ -356,11 +436,12 @@ fn build_group(
     plugin_runtime: Option<Rc<PluginRuntime>>,
     group_handles: GroupHandles,
 ) -> BuiltCustomWorkbenchGroup {
-    let extra_classes: Vec<&str> = if group.id.starts_with("workbench") || group.id.starts_with("panel-bottom") {
-        vec!["dark-pane"]
-    } else {
-        vec![]
-    };
+    let extra_classes: Vec<&str> =
+        if group.id.starts_with("workbench") || group.id.starts_with("panel-bottom") {
+            vec!["dark-pane"]
+        } else {
+            vec![]
+        };
     let built = workbench_custom::build_group(
         &group.id,
         &extra_classes,
@@ -447,14 +528,21 @@ fn build_workbench_node(
                     SplitAxis::Horizontal => Orientation::Horizontal,
                     SplitAxis::Vertical => Orientation::Vertical,
                 });
+                let paned_controller = Rc::new(PanePositionController::default());
                 paned.set_wide_handle(true);
                 paned.set_resize_start_child(true);
                 paned.set_resize_end_child(true);
                 paned.set_start_child(Some(&current));
                 paned.set_end_child(Some(&child));
                 let pane_id = format!("{path}:split:{index}");
-                restore_pane_position(&paned, &state, &pane_id, 520);
-                persist_pane_position(&paned, state.clone(), persistence_id.clone(), &pane_id);
+                restore_pane_position(
+                    &paned,
+                    &state,
+                    &persistence_id,
+                    paned_controller.clone(),
+                    &pane_id,
+                    520,
+                );
                 current = paned.upcast::<gtk::Widget>();
             }
             current
@@ -923,9 +1011,9 @@ fn split_workbench_node(
             *node = split;
             Some(new_group)
         }
-        WorkbenchNodeSpec::Split { children, .. } => children.iter_mut().find_map(|child| {
-            split_workbench_node(child, group_id, tab_id, side, new_group_id)
-        }),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter_mut()
+            .find_map(|child| split_workbench_node(child, group_id, tab_id, side, new_group_id)),
     }
 }
 
@@ -1125,27 +1213,111 @@ fn sync_single_group(
     true
 }
 
-fn restore_pane_position(paned: &Paned, state: &ShellState, pane_id: &str, default: i32) {
+fn restore_pane_position(
+    paned: &Paned,
+    state: &ShellState,
+    persistence_id: &str,
+    controller: Rc<PanePositionController>,
+    pane_id: &str,
+    default: i32,
+) {
+    controller.set_last_bucket(layout::pane_extent_bucket(paned_total(paned)).unwrap_or(0));
     let position = state
-        .borrow()
+        .borrow_mut()
         .panes
-        .positions
-        .get(pane_id)
-        .copied()
+        .preferred_position(pane_id, paned_total(paned))
         .unwrap_or(default);
-    paned.set_position(position);
+    controller.run_programmatic_update(|| {
+        paned.set_position(position);
+    });
+    install_preferred_pane_restore(
+        paned,
+        state.clone(),
+        pane_id.to_string(),
+        controller.clone(),
+    );
+    persist_pane_position(
+        paned,
+        state.clone(),
+        persistence_id.to_string(),
+        controller,
+        pane_id.to_string(),
+    );
 }
 
-fn persist_pane_position(paned: &Paned, state: ShellState, persistence_id: String, pane_id: &str) {
-    let pane_id = pane_id.to_string();
+fn persist_pane_position(
+    paned: &Paned,
+    state: ShellState,
+    persistence_id: String,
+    controller: Rc<PanePositionController>,
+    pane_id: String,
+) {
     paned.connect_position_notify(move |paned| {
+        if !controller.should_persist() {
+            return;
+        }
         state
             .borrow_mut()
             .panes
-            .positions
-            .insert(pane_id.clone(), paned.position());
+            .remember_position(&pane_id, paned_total(paned), paned.position());
+        controller.set_last_bucket(layout::pane_extent_bucket(paned_total(paned)).unwrap_or(0));
         persist_state(&state, &persistence_id);
     });
+}
+
+fn install_preferred_pane_restore(
+    paned: &Paned,
+    state: ShellState,
+    pane_id: String,
+    controller: Rc<PanePositionController>,
+) {
+    let apply_preferred = {
+        let state = state.clone();
+        let pane_id = pane_id.clone();
+        let controller = controller.clone();
+        move |paned: &Paned| {
+            let extent = paned_total(paned);
+            let bucket = layout::pane_extent_bucket(extent).unwrap_or(0);
+            if bucket == controller.last_bucket() {
+                return;
+            }
+            controller.set_last_bucket(bucket);
+
+            let has_preferred = state
+                .borrow()
+                .panes
+                .has_preferred_position(&pane_id, extent);
+            if !has_preferred {
+                return;
+            }
+            let Some(position) = state
+                .borrow_mut()
+                .panes
+                .preferred_position(&pane_id, extent)
+            else {
+                return;
+            };
+            if paned.position() != position {
+                controller.run_programmatic_update(|| {
+                    paned.set_position(position);
+                });
+            }
+        }
+    };
+
+    match paned.orientation() {
+        Orientation::Horizontal => {
+            paned.connect_notify_local(Some("width"), move |paned, _| {
+                apply_preferred(paned);
+            });
+        }
+        Orientation::Vertical => {
+            paned.connect_notify_local(Some("height"), move |paned, _| {
+                apply_preferred(paned);
+            });
+        }
+        _ => {}
+    }
 }
 
 fn persist_state(state: &ShellState, persistence_id: &str) {
@@ -1163,7 +1335,12 @@ fn paned_total(paned: &Paned) -> i32 {
 
 /// Configure a Paned where the **start** child is the panel (e.g. left panel).
 /// Position = panel size. On window grow, keep panel at previous size.
-fn apply_start_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _min_size: i32) {
+fn apply_start_panel_resize_policy(
+    paned: &Paned,
+    policy: PanelResizePolicy,
+    controller: Rc<PanePositionController>,
+    _min_size: i32,
+) {
     paned.set_resize_start_child(true);
     paned.set_resize_end_child(true);
     match policy {
@@ -1171,7 +1348,11 @@ fn apply_start_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _mi
         PanelResizePolicy::Fixed | PanelResizePolicy::CappedProportional { .. } => {
             let prev_total = Rc::new(std::cell::Cell::new(0i32));
             let prev_pos = Rc::new(std::cell::Cell::new(0i32));
+            let controller = controller.clone();
             paned.connect_position_notify(move |paned| {
+                if controller.is_programmatic_update() {
+                    return;
+                }
                 let total = paned_total(paned);
                 let pos = paned.position();
                 let old_total = prev_total.get();
@@ -1180,7 +1361,9 @@ fn apply_start_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _mi
                 if old_total > 0 && total > old_total {
                     // Window grew — restore panel to its previous size.
                     if pos != old_pos {
-                        paned.set_position(old_pos);
+                        controller.run_programmatic_update(|| {
+                            paned.set_position(old_pos);
+                        });
                         prev_total.set(total);
                         return;
                     }
@@ -1195,7 +1378,12 @@ fn apply_start_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _mi
 
 /// Configure a Paned where the **end** child is the panel (e.g. bottom or right panel).
 /// Panel size = total - position. On window grow, keep panel at previous size.
-fn apply_end_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _min_size: i32) {
+fn apply_end_panel_resize_policy(
+    paned: &Paned,
+    policy: PanelResizePolicy,
+    controller: Rc<PanePositionController>,
+    _min_size: i32,
+) {
     paned.set_resize_start_child(true);
     paned.set_resize_end_child(true);
     match policy {
@@ -1203,7 +1391,11 @@ fn apply_end_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _min_
         PanelResizePolicy::Fixed | PanelResizePolicy::CappedProportional { .. } => {
             let prev_total = Rc::new(std::cell::Cell::new(0i32));
             let prev_panel_size = Rc::new(std::cell::Cell::new(0i32));
+            let controller = controller.clone();
             paned.connect_position_notify(move |paned| {
+                if controller.is_programmatic_update() {
+                    return;
+                }
                 let total = paned_total(paned);
                 let panel_size = total - paned.position();
                 let old_total = prev_total.get();
@@ -1212,7 +1404,9 @@ fn apply_end_panel_resize_policy(paned: &Paned, policy: PanelResizePolicy, _min_
                 if old_total > 0 && total > old_total {
                     // Window grew — restore panel to its previous size.
                     if panel_size != old_panel_size {
-                        paned.set_position(total - old_panel_size);
+                        controller.run_programmatic_update(|| {
+                            paned.set_position(total - old_panel_size);
+                        });
                         prev_total.set(total);
                         return;
                     }

@@ -12,6 +12,128 @@ use crate::spec::ShellSpec;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PanePositions {
     pub positions: HashMap<String, i32>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub preferred_by_extent: HashMap<String, Vec<PaneExtentPreference>>,
+    #[serde(default)]
+    usage_clock: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PaneExtentPreference {
+    pub extent_bucket: i32,
+    pub position: i32,
+    #[serde(default = "default_preference_use_count")]
+    pub use_count: u32,
+    #[serde(default)]
+    pub last_seen: u64,
+}
+
+impl PanePositions {
+    pub fn has_preferred_position(&self, pane_id: &str, extent: i32) -> bool {
+        pane_extent_bucket(extent)
+            .and_then(|extent_bucket| {
+                self.preferred_by_extent.get(pane_id).map(|entries| {
+                    entries
+                        .iter()
+                        .any(|entry| entry.extent_bucket == extent_bucket)
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    pub fn preferred_position(&mut self, pane_id: &str, extent: i32) -> Option<i32> {
+        let preferred = pane_extent_bucket(extent).and_then(|extent_bucket| {
+            let next_seen = self.bump_usage_clock();
+            self.preferred_by_extent
+                .get_mut(pane_id)
+                .and_then(|entries| {
+                    entries
+                        .iter_mut()
+                        .find(|entry| entry.extent_bucket == extent_bucket)
+                })
+                .map(|entry| {
+                    entry.use_count = entry.use_count.saturating_add(1);
+                    entry.last_seen = next_seen;
+                    entry.position
+                })
+        });
+        preferred.or_else(|| self.positions.get(pane_id).copied())
+    }
+
+    pub fn remember_position(&mut self, pane_id: &str, extent: i32, position: i32) {
+        self.positions.insert(pane_id.to_string(), position);
+
+        let Some(extent_bucket) = pane_extent_bucket(extent) else {
+            return;
+        };
+
+        let next_seen = self.bump_usage_clock();
+        let entries = self
+            .preferred_by_extent
+            .entry(pane_id.to_string())
+            .or_default();
+        if let Some(entry) = entries
+            .iter_mut()
+            .find(|entry| entry.extent_bucket == extent_bucket)
+        {
+            entry.position = position;
+            entry.use_count = entry.use_count.saturating_add(1);
+            entry.last_seen = next_seen;
+        } else {
+            entries.push(PaneExtentPreference {
+                extent_bucket,
+                position,
+                use_count: 1,
+                last_seen: next_seen,
+            });
+        }
+
+        while entries.len() > max_pane_preferences() {
+            let current_clock = self.usage_clock;
+            let Some((lowest_index, _)) = entries
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, entry)| preference_score(entry, current_clock))
+            else {
+                break;
+            };
+            entries.remove(lowest_index);
+        }
+    }
+
+    #[cfg(test)]
+    fn tracked_buckets(&self, pane_id: &str) -> Vec<i32> {
+        self.preferred_by_extent
+            .get(pane_id)
+            .map(|entries| entries.iter().map(|entry| entry.extent_bucket).collect())
+            .unwrap_or_default()
+    }
+
+    fn bump_usage_clock(&mut self) -> u64 {
+        self.usage_clock = self.usage_clock.saturating_add(1);
+        self.usage_clock
+    }
+}
+
+pub fn pane_extent_bucket(extent: i32) -> Option<i32> {
+    if extent <= 0 {
+        return None;
+    }
+    const BUCKET_SIZE: i32 = 64;
+    Some(((extent + (BUCKET_SIZE / 2)) / BUCKET_SIZE) * BUCKET_SIZE)
+}
+
+fn default_preference_use_count() -> u32 {
+    1
+}
+
+fn max_pane_preferences() -> usize {
+    10
+}
+
+fn preference_score(entry: &PaneExtentPreference, current_clock: u64) -> i64 {
+    let age = current_clock.saturating_sub(entry.last_seen) as i64;
+    i64::from(entry.use_count) * 100 - age
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -116,9 +238,10 @@ pub fn load_plugin_configs(persistence_id: &str) -> PluginConfigs {
                 );
             }
             Err(error) => {
-                configs
-                    .invalid_entries
-                    .insert(plugin_id, format!("stored plugin config is unreadable: {error}"));
+                configs.invalid_entries.insert(
+                    plugin_id,
+                    format!("stored plugin config is unreadable: {error}"),
+                );
             }
         }
     }
@@ -174,11 +297,17 @@ fn inject_missing_tab_strip_flags(root: &mut Value, default_spec: &ShellSpec) {
 
     merge_group_show_tab_strip(spec.get_mut("left_panel"), Some(&default_spec.left_panel));
     merge_group_show_tab_strip(spec.get_mut("right_panel"), Some(&default_spec.right_panel));
-    merge_group_show_tab_strip(spec.get_mut("bottom_panel"), Some(&default_spec.bottom_panel));
+    merge_group_show_tab_strip(
+        spec.get_mut("bottom_panel"),
+        Some(&default_spec.bottom_panel),
+    );
     merge_workbench_show_tab_strip(spec.get_mut("workbench"), Some(&default_spec.workbench));
 }
 
-fn merge_group_show_tab_strip(current: Option<&mut Value>, default: Option<&crate::spec::TabGroupSpec>) {
+fn merge_group_show_tab_strip(
+    current: Option<&mut Value>,
+    default: Option<&crate::spec::TabGroupSpec>,
+) {
     let (Some(current), Some(default)) = (current, default) else {
         return;
     };
@@ -214,10 +343,13 @@ fn merge_workbench_show_tab_strip(
                 ..
             },
         ) => {
-            let Some(split_obj) = current_obj.get_mut("Split").and_then(Value::as_object_mut) else {
+            let Some(split_obj) = current_obj.get_mut("Split").and_then(Value::as_object_mut)
+            else {
                 return;
             };
-            let Some(current_children) = split_obj.get_mut("children").and_then(Value::as_array_mut) else {
+            let Some(current_children) =
+                split_obj.get_mut("children").and_then(Value::as_array_mut)
+            else {
                 return;
             };
             for (child, default_child) in current_children.iter_mut().zip(default_children.iter()) {
@@ -225,5 +357,55 @@ fn merge_workbench_show_tab_strip(
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PanePositions;
+
+    #[test]
+    fn pane_preferences_round_to_resolution_buckets() {
+        let mut panes = PanePositions::default();
+        panes.remember_position("shell.vertical", 1918, 1400);
+        panes.remember_position("shell.vertical", 947, 640);
+
+        assert_eq!(panes.preferred_position("shell.vertical", 1920), Some(1400));
+        assert_eq!(panes.preferred_position("shell.vertical", 960), Some(640));
+    }
+
+    #[test]
+    fn pane_preferences_fall_back_to_legacy_position() {
+        let mut panes = PanePositions::default();
+        panes.positions.insert("shell.outer".to_string(), 1200);
+
+        assert_eq!(panes.preferred_position("shell.outer", 0), Some(1200));
+        assert_eq!(panes.preferred_position("shell.outer", 1920), Some(1200));
+    }
+
+    #[test]
+    fn pane_preferences_do_not_cross_resolution_buckets() {
+        let mut panes = PanePositions::default();
+        panes.remember_position("shell.horizontal", 1918, 320);
+        panes.positions.insert("shell.horizontal".to_string(), 280);
+
+        assert_eq!(panes.preferred_position("shell.horizontal", 960), Some(280));
+    }
+
+    #[test]
+    fn pane_preferences_keep_frequent_resolutions_when_capped() {
+        let mut panes = PanePositions::default();
+        for _ in 0..5 {
+            panes.remember_position("shell.vertical", 1920, 1400);
+            assert_eq!(panes.preferred_position("shell.vertical", 1920), Some(1400));
+        }
+
+        for index in 0..10 {
+            panes.remember_position("shell.vertical", 640 + (index * 64), 300 + index);
+        }
+
+        assert_eq!(panes.tracked_buckets("shell.vertical").len(), 10);
+        assert_eq!(panes.preferred_position("shell.vertical", 1920), Some(1400));
+        assert!(!panes.tracked_buckets("shell.vertical").contains(&640));
     }
 }

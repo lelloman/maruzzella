@@ -3,6 +3,84 @@ use serde::{Deserialize, Serialize};
 
 pub const MZ_ABI_VERSION_V1: u32 = 1;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Tone {
+    Neutral,
+    Primary,
+    Secondary,
+    Tertiary,
+    Accent,
+    Success,
+    Warning,
+    Danger,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SurfaceLevel {
+    Flat,
+    Raised,
+    Sunken,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ButtonStyle {
+    Solid,
+    Soft,
+    Ghost,
+    Outline,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TextRole {
+    Title,
+    Subtitle,
+    Body,
+    BodyStrong,
+    Meta,
+    SectionLabel,
+    TabLabel,
+    Code,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TabStripStyle {
+    Editor,
+    Utility,
+    Console,
+}
+
+pub fn surface_css_class(id: &str) -> String {
+    format!("mz-surface-{}", sanitize_css_identifier(id))
+}
+
+pub fn button_css_class(id: &str) -> String {
+    format!("mz-button-{}", sanitize_css_identifier(id))
+}
+
+pub fn text_css_class(id: &str) -> String {
+    format!("mz-text-{}", sanitize_css_identifier(id))
+}
+
+pub fn input_css_class(id: &str) -> String {
+    format!("mz-input-{}", sanitize_css_identifier(id))
+}
+
+pub fn tab_strip_css_class(id: &str) -> String {
+    format!("mz-tabstrip-{}", sanitize_css_identifier(id))
+}
+
+fn sanitize_css_identifier(id: &str) -> String {
+    let mut sanitized = String::new();
+    for ch in id.chars() {
+        if ch.is_ascii_alphanumeric() {
+            sanitized.push(ch.to_ascii_lowercase());
+        } else {
+            sanitized.push('-');
+        }
+    }
+    sanitized.trim_matches('-').to_string()
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MzStr {

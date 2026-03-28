@@ -1,11 +1,13 @@
 pub use maruzzella_api as ffi;
 pub use maruzzella_api::{
-    MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzConfigContract, MzConfigRecord,
-    MzConfigState, MzConfigStateSummary, MzContributionSurface, MzDiagnosticCatalog, MzLogLevel,
-    MzHostEvent, MzMenuSurface, MzPluginDependencySummary, MzPluginSnapshot, MzServiceCatalog,
-    MzServiceSummary, MzSettingsCatalog, MzSettingsCategory, MzStartupTab, MzStatusCode,
-    MzToolbarDisplayMode, MzToolbarItem, MzViewCatalog, MzViewOpenDisposition, MzViewPlacement,
-    MzViewSummary,
+    button_css_class, input_css_class, surface_css_class, tab_strip_css_class, text_css_class,
+    ButtonStyle, MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzConfigContract,
+    MzConfigRecord, MzConfigState, MzConfigStateSummary, MzContributionSurface,
+    MzDiagnosticCatalog, MzHostEvent, MzLogLevel, MzMenuSurface, MzPluginDependencySummary,
+    MzPluginSnapshot, MzServiceCatalog, MzServiceSummary, MzSettingsCatalog,
+    MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarDisplayMode, MzToolbarItem,
+    MzViewCatalog, MzViewOpenDisposition, MzViewPlacement, MzViewSummary, SurfaceLevel,
+    TabStripStyle, TextRole, Tone,
 };
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,

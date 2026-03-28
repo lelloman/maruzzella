@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 
 use gtk::gdk::Display;
 use gtk::{CssProvider, STYLE_PROVIDER_PRIORITY_USER};
+pub use maruzzella_api::{
+    button_css_class, input_css_class, surface_css_class, tab_strip_css_class, text_css_class,
+    ButtonStyle, SurfaceLevel, TabStripStyle, TextRole, Tone,
+};
 
 const STYLE_TEMPLATE: &str = include_str!("../resources/style.css");
 
@@ -222,52 +226,6 @@ pub struct ThemeAppearances {
     pub text: BTreeMap<String, TextAppearance>,
     pub inputs: BTreeMap<String, InputAppearance>,
     pub tab_strips: BTreeMap<String, TabStripAppearance>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tone {
-    Neutral,
-    Primary,
-    Secondary,
-    Tertiary,
-    Accent,
-    Success,
-    Warning,
-    Danger,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SurfaceLevel {
-    Flat,
-    Raised,
-    Sunken,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ButtonStyle {
-    Solid,
-    Soft,
-    Ghost,
-    Outline,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TextRole {
-    Title,
-    Subtitle,
-    Body,
-    BodyStrong,
-    Meta,
-    SectionLabel,
-    TabLabel,
-    Code,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TabStripStyle {
-    Editor,
-    Utility,
-    Console,
 }
 
 #[derive(Clone, Debug)]
@@ -1124,38 +1082,6 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_popover_separator".to_string(), "#515151".to_string()),
         ("popover_separator_margin".to_string(), "4px 0".to_string()),
     ])
-}
-
-pub fn surface_css_class(id: &str) -> String {
-    format!("mz-surface-{}", sanitize_css_identifier(id))
-}
-
-pub fn button_css_class(id: &str) -> String {
-    format!("mz-button-{}", sanitize_css_identifier(id))
-}
-
-pub fn text_css_class(id: &str) -> String {
-    format!("mz-text-{}", sanitize_css_identifier(id))
-}
-
-pub fn input_css_class(id: &str) -> String {
-    format!("mz-input-{}", sanitize_css_identifier(id))
-}
-
-pub fn tab_strip_css_class(id: &str) -> String {
-    format!("mz-tabstrip-{}", sanitize_css_identifier(id))
-}
-
-fn sanitize_css_identifier(id: &str) -> String {
-    let mut sanitized = String::new();
-    for ch in id.chars() {
-        if ch.is_ascii_alphanumeric() {
-            sanitized.push(ch.to_ascii_lowercase());
-        } else {
-            sanitized.push('-');
-        }
-    }
-    sanitized.trim_matches('-').to_string()
 }
 
 fn render_appearance_stylesheet(spec: &ThemeSpec) -> String {

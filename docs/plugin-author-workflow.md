@@ -99,6 +99,8 @@ Use `maruzzella_api` types for structured host/plugin contracts such as:
 
 That keeps plugins aligned with the host without inventing ad hoc JSON formats for shared surfaces.
 
+For visual styling, prefer the host shell's semantic appearance API rather than plugin-local assumptions about Maruzzella's GTK CSS. Product apps should configure shell appearances through `ThemeSpec` and shell spec appearance ids; plugin views should generally style only their own internal content.
+
 ## 6. Versioning Expectations
 
 - `MZ_ABI_VERSION_V1` means host and plugin agree on the current ABI layout

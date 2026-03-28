@@ -10,6 +10,7 @@ use gtk::{
 
 use crate::plugins::PluginRuntime;
 use crate::spec::{PanelContentKind, TabSpec};
+use crate::theme;
 
 use super::{bare_pane_container, scrolled, section_title};
 
@@ -178,6 +179,7 @@ pub fn build_tab_page(
                     .monospace(true)
                     .buffer(&built_buffer)
                     .build();
+                view.add_css_class(&theme::text_css_class(&tab.text_appearance_id));
                 if css_class == "console-pane" {
                     view.add_css_class("console-view");
                 }
@@ -188,6 +190,7 @@ pub fn build_tab_page(
     };
     let tab_label = Label::new(Some(&tab.title));
     tab_label.add_css_class("tab-label");
+    tab_label.add_css_class(&theme::text_css_class("tab-label"));
     let tab_header = GtkBox::new(Orientation::Horizontal, 6);
     tab_header.add_css_class("tab-header");
     tab_header.append(&tab_label);
@@ -195,6 +198,7 @@ pub fn build_tab_page(
         let button = Button::new();
         button.set_icon_name("window-close-symbolic");
         button.add_css_class("tab-close-button");
+        button.add_css_class(&theme::button_css_class("ghost"));
         button.set_focus_on_click(false);
         tab_header.append(&button);
         close_button = Some(button);
@@ -290,6 +294,7 @@ fn field(label_text: &str, value: &Label) -> GtkBox {
     let label = Label::new(Some(label_text));
     label.set_xalign(0.0);
     label.add_css_class("muted");
+    label.add_css_class(&theme::text_css_class("meta"));
     row.append(&label);
     row.append(value);
     row
@@ -300,6 +305,7 @@ fn value_label(text: &str) -> Label {
     label.set_xalign(0.0);
     label.add_css_class("mono");
     label.add_css_class("inspector-value");
+    label.add_css_class(&theme::text_css_class("code"));
     label.set_wrap(true);
     label
 }

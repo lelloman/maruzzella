@@ -34,6 +34,7 @@ Implemented so far:
 24. plugin author workflow and packaging/versioning documentation
 25. SDK ergonomics helpers for typed JSON payload, config, and service handling
 26. built-in base-plugin editor tabs with untitled buffers, file-backed documents, native open/save-as flows, and host-backed draft restore
+27. semantic shell appearance API for panels, tab strips, buttons, inputs, and typography roles
 
 These pieces are enough to prove the basic architecture:
 
@@ -53,6 +54,7 @@ What is still explicitly not done:
 - discovery conventions exist, but signed/distributed third-party plugin installation is not standardized
 - the SDK is cleaner, but more convenience wrappers may still be worth adding as third-party usage grows
 - the roadmap itself no longer needs to drive the next slice; follow-up work should now be driven by stabilization and downstream adoption needs
+- downstream products no longer need to treat Maruzzella styling as ad hoc CSS override work for common shell surfaces
 
 ## Guiding Direction
 
@@ -151,6 +153,7 @@ The original roadmap phases are now implemented. The next useful work should be 
 Current likely targets:
 
 - review the plugin/runtime surface for rough edges before treating it as stable for downstream products
+- review the semantic appearance surface before treating its built-in ids as long-term stable product contract
 - improve packaging/install conventions beyond raw platform-native libraries
 - keep tightening SDK ergonomics as real third-party plugin examples appear
 

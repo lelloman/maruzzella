@@ -34,7 +34,11 @@ pub use spec::{
     PanelResizePolicy, ToolbarDisplayMode, ToolbarItemSpec,
     WorkbenchNodeSpec,
 };
-pub use theme::{ThemeDensity, ThemePalette, ThemeSpec, ThemeStylesheet, ThemeTypography};
+pub use theme::{
+    ButtonAppearance, ButtonStyle, InputAppearance, SurfaceAppearance, SurfaceLevel,
+    TabStripAppearance, TabStripStyle, TextAppearance, TextRole, ThemeAppearances, ThemeDensity,
+    ThemePalette, ThemeSpec, ThemeStylesheet, ThemeTypography, Tone,
+};
 
 #[derive(Clone, Debug)]
 pub struct MaruzzellaConfig {

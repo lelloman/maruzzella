@@ -14,6 +14,7 @@ pub struct ThemeSpec {
     pub palette: ThemePalette,
     pub typography: ThemeTypography,
     pub density: ThemeDensity,
+    pub appearances: ThemeAppearances,
     pub overrides: BTreeMap<String, String>,
 }
 
@@ -24,6 +25,7 @@ impl Default for ThemeSpec {
             palette: ThemePalette::default(),
             typography: ThemeTypography::default(),
             density: ThemeDensity::default(),
+            appearances: ThemeAppearances::default(),
             overrides: BTreeMap::new(),
         }
     }
@@ -37,6 +39,51 @@ impl ThemeSpec {
 
     pub fn with_override(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.overrides.insert(key.into(), value.into());
+        self
+    }
+
+    pub fn with_surface_appearance(
+        mut self,
+        id: impl Into<String>,
+        appearance: SurfaceAppearance,
+    ) -> Self {
+        self.appearances.surfaces.insert(id.into(), appearance);
+        self
+    }
+
+    pub fn with_button_appearance(
+        mut self,
+        id: impl Into<String>,
+        appearance: ButtonAppearance,
+    ) -> Self {
+        self.appearances.buttons.insert(id.into(), appearance);
+        self
+    }
+
+    pub fn with_text_appearance(
+        mut self,
+        id: impl Into<String>,
+        appearance: TextAppearance,
+    ) -> Self {
+        self.appearances.text.insert(id.into(), appearance);
+        self
+    }
+
+    pub fn with_input_appearance(
+        mut self,
+        id: impl Into<String>,
+        appearance: InputAppearance,
+    ) -> Self {
+        self.appearances.inputs.insert(id.into(), appearance);
+        self
+    }
+
+    pub fn with_tab_strip_appearance(
+        mut self,
+        id: impl Into<String>,
+        appearance: TabStripAppearance,
+    ) -> Self {
+        self.appearances.tab_strips.insert(id.into(), appearance);
         self
     }
 }
@@ -168,6 +215,274 @@ impl Default for ThemeDensity {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ThemeAppearances {
+    pub surfaces: BTreeMap<String, SurfaceAppearance>,
+    pub buttons: BTreeMap<String, ButtonAppearance>,
+    pub text: BTreeMap<String, TextAppearance>,
+    pub inputs: BTreeMap<String, InputAppearance>,
+    pub tab_strips: BTreeMap<String, TabStripAppearance>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tone {
+    Neutral,
+    Primary,
+    Secondary,
+    Tertiary,
+    Accent,
+    Success,
+    Warning,
+    Danger,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SurfaceLevel {
+    Flat,
+    Raised,
+    Sunken,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ButtonStyle {
+    Solid,
+    Soft,
+    Ghost,
+    Outline,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextRole {
+    Title,
+    Subtitle,
+    Body,
+    BodyStrong,
+    Meta,
+    SectionLabel,
+    TabLabel,
+    Code,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TabStripStyle {
+    Editor,
+    Utility,
+    Console,
+}
+
+#[derive(Clone, Debug)]
+pub struct SurfaceAppearance {
+    pub tone: Tone,
+    pub level: SurfaceLevel,
+    pub text_role: TextRole,
+    pub border: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct ButtonAppearance {
+    pub tone: Tone,
+    pub style: ButtonStyle,
+    pub text_role: TextRole,
+}
+
+#[derive(Clone, Debug)]
+pub struct TextAppearance {
+    pub role: TextRole,
+    pub tone: Tone,
+}
+
+#[derive(Clone, Debug)]
+pub struct InputAppearance {
+    pub tone: Tone,
+    pub level: SurfaceLevel,
+    pub text_role: TextRole,
+}
+
+#[derive(Clone, Debug)]
+pub struct TabStripAppearance {
+    pub tone: Tone,
+    pub style: TabStripStyle,
+    pub text_role: TextRole,
+}
+
+impl ThemeAppearances {
+    fn default_registry() -> Self {
+        let mut surfaces = BTreeMap::new();
+        surfaces.insert(
+            "app-shell".to_string(),
+            SurfaceAppearance::new(Tone::Neutral, SurfaceLevel::Sunken, TextRole::Body).borderless(),
+        );
+        surfaces.insert(
+            "topbar".to_string(),
+            SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Raised, TextRole::BodyStrong),
+        );
+        surfaces.insert(
+            "menu".to_string(),
+            SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Flat, TextRole::BodyStrong).borderless(),
+        );
+        surfaces.insert(
+            "toolbar".to_string(),
+            SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Flat, TextRole::Body),
+        );
+        surfaces.insert(
+            "status".to_string(),
+            SurfaceAppearance::new(Tone::Secondary, SurfaceLevel::Raised, TextRole::Meta),
+        );
+        surfaces.insert(
+            "primary".to_string(),
+            SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Raised, TextRole::Body),
+        );
+        surfaces.insert(
+            "secondary".to_string(),
+            SurfaceAppearance::new(Tone::Secondary, SurfaceLevel::Raised, TextRole::Body),
+        );
+        surfaces.insert(
+            "tertiary".to_string(),
+            SurfaceAppearance::new(Tone::Tertiary, SurfaceLevel::Raised, TextRole::Body),
+        );
+        surfaces.insert(
+            "workbench".to_string(),
+            SurfaceAppearance::new(Tone::Neutral, SurfaceLevel::Sunken, TextRole::Body).borderless(),
+        );
+        surfaces.insert(
+            "console".to_string(),
+            SurfaceAppearance::new(Tone::Tertiary, SurfaceLevel::Sunken, TextRole::Code),
+        );
+        surfaces.insert(
+            "inspector".to_string(),
+            SurfaceAppearance::new(Tone::Secondary, SurfaceLevel::Raised, TextRole::Body),
+        );
+
+        let mut buttons = BTreeMap::new();
+        buttons.insert(
+            "primary".to_string(),
+            ButtonAppearance::new(Tone::Accent, ButtonStyle::Solid, TextRole::BodyStrong),
+        );
+        buttons.insert(
+            "secondary".to_string(),
+            ButtonAppearance::new(Tone::Primary, ButtonStyle::Soft, TextRole::Body),
+        );
+        buttons.insert(
+            "ghost".to_string(),
+            ButtonAppearance::new(Tone::Neutral, ButtonStyle::Ghost, TextRole::Body),
+        );
+        buttons.insert(
+            "toolbar".to_string(),
+            ButtonAppearance::new(Tone::Primary, ButtonStyle::Ghost, TextRole::Body),
+        );
+        buttons.insert(
+            "icon".to_string(),
+            ButtonAppearance::new(Tone::Neutral, ButtonStyle::Ghost, TextRole::Body),
+        );
+        buttons.insert(
+            "danger".to_string(),
+            ButtonAppearance::new(Tone::Danger, ButtonStyle::Soft, TextRole::BodyStrong),
+        );
+
+        let mut text = BTreeMap::new();
+        for (id, role, tone) in [
+            ("title", TextRole::Title, Tone::Primary),
+            ("subtitle", TextRole::Subtitle, Tone::Secondary),
+            ("body", TextRole::Body, Tone::Primary),
+            ("body-strong", TextRole::BodyStrong, Tone::Primary),
+            ("meta", TextRole::Meta, Tone::Neutral),
+            ("section-label", TextRole::SectionLabel, Tone::Neutral),
+            ("tab-label", TextRole::TabLabel, Tone::Primary),
+            ("code", TextRole::Code, Tone::Primary),
+        ] {
+            text.insert(id.to_string(), TextAppearance { role, tone });
+        }
+
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            "search".to_string(),
+            InputAppearance::new(Tone::Secondary, SurfaceLevel::Sunken, TextRole::Body),
+        );
+        inputs.insert(
+            "command".to_string(),
+            InputAppearance::new(Tone::Secondary, SurfaceLevel::Sunken, TextRole::Body),
+        );
+        inputs.insert(
+            "field".to_string(),
+            InputAppearance::new(Tone::Primary, SurfaceLevel::Sunken, TextRole::Body),
+        );
+
+        let mut tab_strips = BTreeMap::new();
+        tab_strips.insert(
+            "editor".to_string(),
+            TabStripAppearance::new(Tone::Neutral, TabStripStyle::Editor, TextRole::TabLabel),
+        );
+        tab_strips.insert(
+            "utility".to_string(),
+            TabStripAppearance::new(Tone::Primary, TabStripStyle::Utility, TextRole::TabLabel),
+        );
+        tab_strips.insert(
+            "console".to_string(),
+            TabStripAppearance::new(Tone::Tertiary, TabStripStyle::Console, TextRole::TabLabel),
+        );
+
+        Self {
+            surfaces,
+            buttons,
+            text,
+            inputs,
+            tab_strips,
+        }
+    }
+}
+
+impl Default for ThemeAppearances {
+    fn default() -> Self {
+        Self::default_registry()
+    }
+}
+
+impl SurfaceAppearance {
+    pub fn new(tone: Tone, level: SurfaceLevel, text_role: TextRole) -> Self {
+        Self {
+            tone,
+            level,
+            text_role,
+            border: true,
+        }
+    }
+
+    pub fn borderless(mut self) -> Self {
+        self.border = false;
+        self
+    }
+}
+
+impl ButtonAppearance {
+    pub fn new(tone: Tone, style: ButtonStyle, text_role: TextRole) -> Self {
+        Self {
+            tone,
+            style,
+            text_role,
+        }
+    }
+}
+
+impl InputAppearance {
+    pub fn new(tone: Tone, level: SurfaceLevel, text_role: TextRole) -> Self {
+        Self {
+            tone,
+            level,
+            text_role,
+        }
+    }
+}
+
+impl TabStripAppearance {
+    pub fn new(tone: Tone, style: TabStripStyle, text_role: TextRole) -> Self {
+        Self {
+            tone,
+            style,
+            text_role,
+        }
+    }
+}
+
 struct ThemeRuntime {
     provider: CssProvider,
     spec: ThemeSpec,
@@ -228,7 +543,9 @@ fn build_stylesheet(spec: &ThemeSpec) -> Result<String, String> {
             .map_err(|error| format!("failed to read stylesheet {}: {error}", path.display()))?,
     };
 
-    render_template(&template, &spec.token_map())
+    let mut stylesheet = render_template(&template, &spec.token_map())?;
+    stylesheet.push_str(&render_appearance_stylesheet(spec));
+    Ok(stylesheet)
 }
 
 fn render_template(template: &str, tokens: &BTreeMap<String, String>) -> Result<String, String> {
@@ -809,6 +1126,455 @@ fn default_component_tokens() -> BTreeMap<String, String> {
     ])
 }
 
+pub fn surface_css_class(id: &str) -> String {
+    format!("mz-surface-{}", sanitize_css_identifier(id))
+}
+
+pub fn button_css_class(id: &str) -> String {
+    format!("mz-button-{}", sanitize_css_identifier(id))
+}
+
+pub fn text_css_class(id: &str) -> String {
+    format!("mz-text-{}", sanitize_css_identifier(id))
+}
+
+pub fn input_css_class(id: &str) -> String {
+    format!("mz-input-{}", sanitize_css_identifier(id))
+}
+
+pub fn tab_strip_css_class(id: &str) -> String {
+    format!("mz-tabstrip-{}", sanitize_css_identifier(id))
+}
+
+fn sanitize_css_identifier(id: &str) -> String {
+    let mut sanitized = String::new();
+    for ch in id.chars() {
+        if ch.is_ascii_alphanumeric() {
+            sanitized.push(ch.to_ascii_lowercase());
+        } else {
+            sanitized.push('-');
+        }
+    }
+    sanitized.trim_matches('-').to_string()
+}
+
+fn render_appearance_stylesheet(spec: &ThemeSpec) -> String {
+    let mut css = String::new();
+
+    for (id, appearance) in &spec.appearances.surfaces {
+        css.push_str(&render_surface_css(spec, id, appearance));
+    }
+    for (id, appearance) in &spec.appearances.buttons {
+        css.push_str(&render_button_css(spec, id, appearance));
+    }
+    for (id, appearance) in &spec.appearances.text {
+        css.push_str(&render_text_css(spec, id, appearance));
+    }
+    for (id, appearance) in &spec.appearances.inputs {
+        css.push_str(&render_input_css(spec, id, appearance));
+    }
+    for (id, appearance) in &spec.appearances.tab_strips {
+        css.push_str(&render_tab_strip_css(spec, id, appearance));
+    }
+
+    css
+}
+
+fn render_surface_css(spec: &ThemeSpec, id: &str, appearance: &SurfaceAppearance) -> String {
+    let class = surface_css_class(id);
+    let colors = surface_colors(spec, appearance.tone, appearance.level);
+    let text = text_style(spec, appearance.text_role, appearance.tone);
+    let border = if appearance.border {
+        format!("1px solid {}", colors.border)
+    } else {
+        "0".to_string()
+    };
+    format!(
+        "
+.{class} {{
+  background: {bg};
+  color: {fg};
+  border-color: {border_color};
+  border: {border};
+}}
+.{class} label,
+.{class} text,
+.{class} image {{
+  color: {fg};
+}}
+.{class}.panel-header {{
+  min-height: {header_height}px;
+}}
+",
+        bg = colors.background,
+        fg = colors.foreground,
+        border_color = colors.border,
+        border = border,
+        header_height = spec.density.panel_header_height,
+    ) + &format_text_css_block(&format!(".{class}"), &text)
+}
+
+fn render_button_css(spec: &ThemeSpec, id: &str, appearance: &ButtonAppearance) -> String {
+    let class = button_css_class(id);
+    let text = text_style(spec, appearance.text_role, appearance.tone);
+    let base = surface_colors(spec, appearance.tone, SurfaceLevel::Raised);
+    let soft = surface_colors(spec, appearance.tone, SurfaceLevel::Flat);
+    let (background, border, foreground, hover, active) = match appearance.style {
+        ButtonStyle::Solid => (
+            base.background.clone(),
+            base.border.clone(),
+            base.foreground.clone(),
+            lighten(&base.background, 0.08),
+            darken(&base.background, 0.06),
+        ),
+        ButtonStyle::Soft => (
+            blend(&soft.background, &base.background, 0.35),
+            base.border.clone(),
+            soft.foreground.clone(),
+            blend(&soft.background, &base.background, 0.55),
+            blend(&soft.background, &base.background, 0.70),
+        ),
+        ButtonStyle::Ghost => (
+            "transparent".to_string(),
+            "transparent".to_string(),
+            soft.foreground.clone(),
+            blend(&soft.background, &base.background, 0.35),
+            blend(&soft.background, &base.background, 0.55),
+        ),
+        ButtonStyle::Outline => (
+            "transparent".to_string(),
+            base.border.clone(),
+            base.foreground.clone(),
+            blend(&soft.background, &base.background, 0.20),
+            blend(&soft.background, &base.background, 0.35),
+        ),
+    };
+
+    format!(
+        "
+button.{class} {{
+  min-height: {height}px;
+  padding: 0 {padding}px;
+  border-radius: {radius}px;
+  background: {background};
+  border: 1px solid {border};
+  color: {foreground};
+}}
+button.{class}:hover {{
+  background: {hover};
+}}
+button.{class}:active,
+button.{class}:checked {{
+  background: {active};
+}}
+button.{class} label,
+button.{class} image {{
+  color: {foreground};
+}}
+",
+        height = spec.density.control_height_medium,
+        padding = spec.density.space_xl,
+        radius = spec.density.radius_medium,
+        background = background,
+        border = border,
+        foreground = foreground,
+        hover = hover,
+        active = active,
+    ) + &format_text_css_block(&format!("button.{class} label"), &text)
+}
+
+fn render_text_css(spec: &ThemeSpec, id: &str, appearance: &TextAppearance) -> String {
+    let class = text_css_class(id);
+    let text = text_style(spec, appearance.role, appearance.tone);
+    format_text_css_block(&format!(".{class}"), &text)
+}
+
+fn render_input_css(spec: &ThemeSpec, id: &str, appearance: &InputAppearance) -> String {
+    let class = input_css_class(id);
+    let colors = surface_colors(spec, appearance.tone, appearance.level);
+    let text = text_style(spec, appearance.text_role, appearance.tone);
+    let focus = surface_colors(spec, Tone::Accent, SurfaceLevel::Raised);
+    format!(
+        "
+entry.{class} {{
+  min-height: {height}px;
+  padding: 0 {padding}px;
+  border-radius: {radius}px;
+  background: {background};
+  border: 1px solid {border};
+  color: {foreground};
+}}
+entry.{class}:focus {{
+  border-color: {focus};
+}}
+",
+        height = spec.density.control_height_medium,
+        padding = spec.density.space_xl,
+        radius = spec.density.radius_medium,
+        background = colors.background,
+        border = colors.border,
+        foreground = colors.foreground,
+        focus = focus.border,
+    ) + &format_text_css_block(&format!("entry.{class}"), &text)
+}
+
+fn render_tab_strip_css(spec: &ThemeSpec, id: &str, appearance: &TabStripAppearance) -> String {
+    let class = tab_strip_css_class(id);
+    let surface = surface_colors(spec, appearance.tone, SurfaceLevel::Flat);
+    let active = surface_colors(spec, Tone::Accent, SurfaceLevel::Raised);
+    let hover = blend(&surface.background, &active.background, 0.22);
+    let text = text_style(spec, appearance.text_role, appearance.tone);
+    let tab_height = match appearance.style {
+        TabStripStyle::Editor => spec.density.tab_height,
+        TabStripStyle::Utility => spec.density.tab_height.saturating_sub(2),
+        TabStripStyle::Console => spec.density.tab_height.saturating_sub(2),
+    };
+    format!(
+        "
+notebook.{class} > header,
+.workbench-tab-strip-scroller.{class} {{
+  background: {strip_bg};
+  border-bottom: 1px solid {strip_border};
+}}
+notebook.{class} > header tabs tab {{
+  min-height: {tab_height}px;
+  background: transparent;
+  color: {text_color};
+}}
+notebook.{class} > header tabs tab:hover {{
+  background: {hover};
+  color: {text_color};
+}}
+notebook.{class} > header tabs tab:checked {{
+  background: {active_bg};
+  border-bottom-color: {active_border};
+  color: {active_fg};
+}}
+.workbench-tab-strip.{class} > .tab-header {{
+  min-height: {tab_height}px;
+  background: transparent;
+  color: {text_color};
+}}
+.workbench-tab-strip.{class} > .tab-header:hover {{
+  background: {hover};
+  color: {text_color};
+}}
+.workbench-tab-strip.{class} > .tab-header.active {{
+  background: {active_bg};
+  border-bottom-color: {active_border};
+  color: {active_fg};
+}}
+",
+        strip_bg = surface.background.clone(),
+        strip_border = surface.border.clone(),
+        tab_height = tab_height,
+        text_color = text.color.clone(),
+        hover = hover,
+        active_bg = blend(&surface.background, &active.background, 0.26),
+        active_border = active.border.clone(),
+        active_fg = active.foreground.clone(),
+    ) + &format_text_css_block(&format!(".workbench-tab-strip.{class} > .tab-header .tab-label"), &text)
+}
+
+struct SurfaceColors {
+    background: String,
+    foreground: String,
+    border: String,
+}
+
+struct ResolvedTextStyle {
+    color: String,
+    font_family: String,
+    font_size_px: u16,
+    font_weight: u16,
+    letter_spacing: &'static str,
+    text_transform: &'static str,
+}
+
+fn surface_colors(spec: &ThemeSpec, tone: Tone, level: SurfaceLevel) -> SurfaceColors {
+    let base = tone_color(&spec.palette, tone);
+    let background = match level {
+        SurfaceLevel::Flat => blend(&base, &spec.palette.bg_0, 0.22),
+        SurfaceLevel::Raised => blend(&base, &spec.palette.bg_1, 0.10),
+        SurfaceLevel::Sunken => darken(&blend(&base, &spec.palette.workbench, 0.22), 0.05),
+    };
+    let border = darken(&blend(&background, &spec.palette.border_strong, 0.35), 0.08);
+    let foreground = readable_text_for(&background, &spec.palette.text_0, &spec.palette.bg_0);
+    SurfaceColors {
+        background,
+        foreground,
+        border,
+    }
+}
+
+fn text_style(spec: &ThemeSpec, role: TextRole, tone: Tone) -> ResolvedTextStyle {
+    let tone_color = tone_color(&spec.palette, tone);
+    let color = match role {
+        TextRole::Title | TextRole::BodyStrong | TextRole::TabLabel | TextRole::Code => {
+            readable_text_for(&tone_color, &spec.palette.text_0, &spec.palette.bg_0)
+        }
+        TextRole::Subtitle | TextRole::Body => spec.palette.text_1.clone(),
+        TextRole::Meta | TextRole::SectionLabel => spec.palette.text_2.clone(),
+    };
+    let (font_size_px, font_weight, letter_spacing, text_transform, font_family) = match role {
+        TextRole::Title => (
+            spec.typography.font_size_title,
+            700,
+            "0",
+            "none",
+            spec.typography.font_family.clone(),
+        ),
+        TextRole::Subtitle => (
+            spec.typography.font_size_base,
+            600,
+            "0",
+            "none",
+            spec.typography.font_family.clone(),
+        ),
+        TextRole::Body => (
+            spec.typography.font_size_ui,
+            400,
+            "0",
+            "none",
+            spec.typography.font_family.clone(),
+        ),
+        TextRole::BodyStrong => (
+            spec.typography.font_size_ui,
+            600,
+            "0",
+            "none",
+            spec.typography.font_family.clone(),
+        ),
+        TextRole::Meta => (
+            spec.typography.font_size_small,
+            500,
+            "0",
+            "none",
+            spec.typography.font_family.clone(),
+        ),
+        TextRole::SectionLabel => (
+            spec.typography.font_size_tiny,
+            700,
+            "0.08em",
+            "uppercase",
+            spec.typography.font_family.clone(),
+        ),
+        TextRole::TabLabel => (
+            spec.typography.font_size_ui,
+            500,
+            "0",
+            "none",
+            spec.typography.font_family.clone(),
+        ),
+        TextRole::Code => (
+            spec.typography.font_size_ui,
+            400,
+            "0",
+            "none",
+            spec.typography.mono_font_family.clone(),
+        ),
+    };
+    ResolvedTextStyle {
+        color,
+        font_family,
+        font_size_px,
+        font_weight,
+        letter_spacing,
+        text_transform,
+    }
+}
+
+fn format_text_css_block(selector: &str, style: &ResolvedTextStyle) -> String {
+    format!(
+        "
+{selector} {{
+  color: {color};
+  font-family: {font_family};
+  font-size: {font_size}px;
+  font-weight: {font_weight};
+  letter-spacing: {letter_spacing};
+  text-transform: {text_transform};
+}}
+",
+        selector = selector,
+        color = style.color,
+        font_family = style.font_family,
+        font_size = style.font_size_px,
+        font_weight = style.font_weight,
+        letter_spacing = style.letter_spacing,
+        text_transform = style.text_transform,
+    )
+}
+
+fn tone_color(palette: &ThemePalette, tone: Tone) -> String {
+    match tone {
+        Tone::Neutral => palette.bg_1.clone(),
+        Tone::Primary => palette.panel_left.clone(),
+        Tone::Secondary => palette.panel_right.clone(),
+        Tone::Tertiary => palette.panel_bottom.clone(),
+        Tone::Accent => palette.accent.clone(),
+        Tone::Success => "#3f8f5a".to_string(),
+        Tone::Warning => "#c38b2e".to_string(),
+        Tone::Danger => "#b85151".to_string(),
+    }
+}
+
+fn readable_text_for(background: &str, light: &str, dark: &str) -> String {
+    if is_light_color(background) {
+        dark.to_string()
+    } else {
+        light.to_string()
+    }
+}
+
+fn is_light_color(color: &str) -> bool {
+    parse_hex_color(color)
+        .map(|(r, g, b)| (0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64) / 255.0 > 0.62)
+        .unwrap_or(false)
+}
+
+fn blend(a: &str, b: &str, ratio: f32) -> String {
+    match (parse_hex_color(a), parse_hex_color(b)) {
+        (Some((ar, ag, ab)), Some((br, bg, bb))) => format!(
+            "#{:02x}{:02x}{:02x}",
+            mix_channel(ar, br, ratio),
+            mix_channel(ag, bg, ratio),
+            mix_channel(ab, bb, ratio)
+        ),
+        _ => a.to_string(),
+    }
+}
+
+fn lighten(color: &str, amount: f32) -> String {
+    blend(color, "#ffffff", amount)
+}
+
+fn darken(color: &str, amount: f32) -> String {
+    blend(color, "#000000", amount)
+}
+
+fn mix_channel(a: u8, b: u8, ratio: f32) -> u8 {
+    ((a as f32 * (1.0 - ratio)) + (b as f32 * ratio)).round() as u8
+}
+
+fn parse_hex_color(color: &str) -> Option<(u8, u8, u8)> {
+    let value = color.trim();
+    let hex = value.strip_prefix('#')?;
+    match hex.len() {
+        6 => Some((
+            u8::from_str_radix(&hex[0..2], 16).ok()?,
+            u8::from_str_radix(&hex[2..4], 16).ok()?,
+            u8::from_str_radix(&hex[4..6], 16).ok()?,
+        )),
+        3 => Some((
+            u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?,
+            u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?,
+            u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?,
+        )),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -832,5 +1598,24 @@ mod tests {
         )
         .expect("override tokens render");
         assert_eq!(rendered, ".hero { padding: 42px; color: #abcdef; }");
+    }
+
+    #[test]
+    fn renders_custom_semantic_appearance_classes() {
+        let stylesheet = build_stylesheet(
+            &ThemeSpec::default()
+                .with_surface_appearance(
+                    "secondary-panel",
+                    SurfaceAppearance::new(Tone::Secondary, SurfaceLevel::Raised, TextRole::Body),
+                )
+                .with_button_appearance(
+                    "danger-action",
+                    ButtonAppearance::new(Tone::Danger, ButtonStyle::Soft, TextRole::BodyStrong),
+                ),
+        )
+        .expect("appearance stylesheet renders");
+
+        assert!(stylesheet.contains(".mz-surface-secondary-panel"));
+        assert!(stylesheet.contains("button.mz-button-danger-action"));
     }
 }

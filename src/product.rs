@@ -46,6 +46,14 @@ impl ProductSpec {
             search_placeholder: self.branding.search_placeholder.clone(),
             search_command_id: self.branding.search_command_id.clone(),
             status_text: self.branding.status_text.clone(),
+            app_appearance_id: "app-shell".to_string(),
+            topbar_appearance_id: "topbar".to_string(),
+            menu_appearance_id: "menu".to_string(),
+            toolbar_appearance_id: "toolbar".to_string(),
+            search_input_appearance_id: "search".to_string(),
+            status_appearance_id: "status".to_string(),
+            button_appearance_id: "secondary".to_string(),
+            text_appearance_id: "body".to_string(),
             bottom_panel_layout: self.layout.bottom_panel_layout,
             menu_roots: self.menu_roots.clone(),
             menu_items: self.menu_items.clone(),
@@ -229,6 +237,11 @@ fn merge_runtime_toolbar(
                         crate::spec::ToolbarDisplayMode::TextOnly
                     }
                 },
+                appearance_id: if item.secondary {
+                    "ghost".to_string()
+                } else {
+                    "primary".to_string()
+                },
             });
         }
     }
@@ -250,18 +263,36 @@ pub fn default_product_spec() -> ProductSpec {
     let menu_items = Vec::new();
     let layout = LayoutContribution {
         bottom_panel_layout: BottomPanelLayout::CenterOnly,
-        left_panel: TabGroupSpec::new("panel-left", None, Vec::new()),
-        right_panel: TabGroupSpec::new("panel-right", None, Vec::new()),
-        bottom_panel: TabGroupSpec::new("panel-bottom", None, Vec::new()),
+        left_panel: TabGroupSpec::new("panel-left", None, Vec::new())
+            .with_panel_appearance("primary")
+            .with_panel_header_appearance("secondary")
+            .with_tab_strip_appearance("utility"),
+        right_panel: TabGroupSpec::new("panel-right", None, Vec::new())
+            .with_panel_appearance("secondary")
+            .with_panel_header_appearance("secondary")
+            .with_tab_strip_appearance("utility"),
+        bottom_panel: TabGroupSpec::new("panel-bottom", None, Vec::new())
+            .with_panel_appearance("console")
+            .with_panel_header_appearance("secondary")
+            .with_tab_strip_appearance("console")
+            .with_text_appearance("code"),
         workbench: WorkbenchNodeSpec::Split {
             axis: SplitAxis::Horizontal,
             children: vec![
-                WorkbenchNodeSpec::Group(TabGroupSpec::new("workbench-main", None, Vec::new())),
+                WorkbenchNodeSpec::Group(
+                    TabGroupSpec::new("workbench-main", None, Vec::new())
+                        .with_panel_appearance("workbench")
+                        .with_panel_header_appearance("secondary")
+                        .with_tab_strip_appearance("editor"),
+                ),
                 WorkbenchNodeSpec::Group(TabGroupSpec::new(
                     "workbench-secondary",
                     None,
                     Vec::new(),
-                )),
+                )
+                .with_panel_appearance("workbench")
+                .with_panel_header_appearance("secondary")
+                .with_tab_strip_appearance("editor")),
             ],
         },
         left_panel_resize: PanelResizePolicy::default(),

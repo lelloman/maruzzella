@@ -1,5 +1,49 @@
 use serde::{Deserialize, Serialize};
 
+fn default_shell_surface_appearance() -> String {
+    "app-shell".to_string()
+}
+
+fn default_topbar_appearance() -> String {
+    "topbar".to_string()
+}
+
+fn default_menu_appearance() -> String {
+    "menu".to_string()
+}
+
+fn default_toolbar_appearance() -> String {
+    "toolbar".to_string()
+}
+
+fn default_search_input_appearance() -> String {
+    "search".to_string()
+}
+
+fn default_status_appearance() -> String {
+    "status".to_string()
+}
+
+fn default_panel_appearance() -> String {
+    "primary".to_string()
+}
+
+fn default_panel_header_appearance() -> String {
+    "secondary".to_string()
+}
+
+fn default_tab_strip_appearance() -> String {
+    "utility".to_string()
+}
+
+fn default_text_appearance() -> String {
+    "body".to_string()
+}
+
+fn default_button_appearance() -> String {
+    "secondary".to_string()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PanelContentKind {
     NavigationList,
@@ -51,6 +95,15 @@ pub struct TabSpec {
     pub placeholder: String,
     pub closable: bool,
     pub close_prompt: Option<String>,
+    #[serde(default = "default_text_appearance")]
+    pub text_appearance_id: String,
+}
+
+impl TabSpec {
+    pub fn with_text_appearance(mut self, appearance_id: impl Into<String>) -> Self {
+        self.text_appearance_id = appearance_id.into();
+        self
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -59,6 +112,14 @@ pub struct TabGroupSpec {
     pub active_tab_id: Option<String>,
     #[serde(default = "default_show_tab_strip")]
     pub show_tab_strip: bool,
+    #[serde(default = "default_panel_appearance")]
+    pub panel_appearance_id: String,
+    #[serde(default = "default_panel_header_appearance")]
+    pub panel_header_appearance_id: String,
+    #[serde(default = "default_tab_strip_appearance")]
+    pub tab_strip_appearance_id: String,
+    #[serde(default = "default_text_appearance")]
+    pub text_appearance_id: String,
     pub tabs: Vec<TabSpec>,
 }
 
@@ -68,6 +129,22 @@ pub struct ShellSpec {
     pub search_placeholder: String,
     pub search_command_id: Option<String>,
     pub status_text: String,
+    #[serde(default = "default_shell_surface_appearance")]
+    pub app_appearance_id: String,
+    #[serde(default = "default_topbar_appearance")]
+    pub topbar_appearance_id: String,
+    #[serde(default = "default_menu_appearance")]
+    pub menu_appearance_id: String,
+    #[serde(default = "default_toolbar_appearance")]
+    pub toolbar_appearance_id: String,
+    #[serde(default = "default_search_input_appearance")]
+    pub search_input_appearance_id: String,
+    #[serde(default = "default_status_appearance")]
+    pub status_appearance_id: String,
+    #[serde(default = "default_button_appearance")]
+    pub button_appearance_id: String,
+    #[serde(default = "default_text_appearance")]
+    pub text_appearance_id: String,
     pub bottom_panel_layout: BottomPanelLayout,
     pub menu_roots: Vec<MenuRootSpec>,
     pub menu_items: Vec<MenuItemSpec>,
@@ -119,6 +196,8 @@ pub struct ToolbarItemSpec {
     pub secondary: bool,
     #[serde(default)]
     pub display_mode: ToolbarDisplayMode,
+    #[serde(default = "default_button_appearance")]
+    pub appearance_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -143,12 +222,36 @@ impl TabGroupSpec {
             id: id.to_string(),
             active_tab_id: active_tab_id.map(str::to_string),
             show_tab_strip: true,
+            panel_appearance_id: default_panel_appearance(),
+            panel_header_appearance_id: default_panel_header_appearance(),
+            tab_strip_appearance_id: default_tab_strip_appearance(),
+            text_appearance_id: default_text_appearance(),
             tabs,
         }
     }
 
     pub fn with_tab_strip_hidden(mut self) -> Self {
         self.show_tab_strip = false;
+        self
+    }
+
+    pub fn with_panel_appearance(mut self, appearance_id: impl Into<String>) -> Self {
+        self.panel_appearance_id = appearance_id.into();
+        self
+    }
+
+    pub fn with_panel_header_appearance(mut self, appearance_id: impl Into<String>) -> Self {
+        self.panel_header_appearance_id = appearance_id.into();
+        self
+    }
+
+    pub fn with_tab_strip_appearance(mut self, appearance_id: impl Into<String>) -> Self {
+        self.tab_strip_appearance_id = appearance_id.into();
+        self
+    }
+
+    pub fn with_text_appearance(mut self, appearance_id: impl Into<String>) -> Self {
+        self.text_appearance_id = appearance_id.into();
         self
     }
 }
@@ -178,6 +281,7 @@ pub fn text_tab(id: &str, panel_id: &str, title: &str, body: &str, closable: boo
         placeholder: body.to_string(),
         closable,
         close_prompt: None,
+        text_appearance_id: default_text_appearance(),
     }
 }
 
@@ -201,6 +305,7 @@ pub fn plugin_tab(
         placeholder: placeholder.to_string(),
         closable,
         close_prompt: None,
+        text_appearance_id: default_text_appearance(),
     }
 }
 
@@ -226,5 +331,6 @@ pub fn plugin_tab_with_instance(
         placeholder: placeholder.to_string(),
         closable,
         close_prompt: None,
+        text_appearance_id: default_text_appearance(),
     }
 }

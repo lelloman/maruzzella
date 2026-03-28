@@ -138,6 +138,14 @@ impl LauncherSpec {
             search_placeholder: self.search_placeholder.clone(),
             search_command_id: self.search_command_id.clone(),
             status_text: self.status_text.clone(),
+            app_appearance_id: "app-shell".to_string(),
+            topbar_appearance_id: "topbar".to_string(),
+            menu_appearance_id: "menu".to_string(),
+            toolbar_appearance_id: "toolbar".to_string(),
+            search_input_appearance_id: "search".to_string(),
+            status_appearance_id: "status".to_string(),
+            button_appearance_id: "secondary".to_string(),
+            text_appearance_id: "body".to_string(),
             bottom_panel_layout: BottomPanelLayout::CenterOnly,
             menu_roots: self.menu_roots.clone(),
             menu_items: self.menu_items.clone(),
@@ -422,6 +430,7 @@ impl AppController {
 
         let root = GtkBox::new(Orientation::Vertical, 0);
         root.add_css_class("app-root");
+        root.add_css_class(&theme::surface_css_class(&spec.app_appearance_id));
         let app_overlay = Overlay::new();
         app_overlay.set_child(Some(&root));
 
@@ -812,6 +821,10 @@ fn build_group(
         &group.tabs,
         group.active_tab_id.as_deref(),
         group.show_tab_strip,
+        &group.panel_appearance_id,
+        &group.panel_header_appearance_id,
+        &group.tab_strip_appearance_id,
+        &group.text_appearance_id,
         plugin_runtime,
     );
     for tab in &group.tabs {
@@ -1346,6 +1359,10 @@ fn split_workbench_node(
                 id: new_group_id.to_string(),
                 active_tab_id: Some(dragged_tab.id.clone()),
                 show_tab_strip: group.show_tab_strip,
+                panel_appearance_id: group.panel_appearance_id.clone(),
+                panel_header_appearance_id: group.panel_header_appearance_id.clone(),
+                tab_strip_appearance_id: group.tab_strip_appearance_id.clone(),
+                text_appearance_id: group.text_appearance_id.clone(),
                 tabs: vec![dragged_tab],
             };
             let existing_group = group.clone();

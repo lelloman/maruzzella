@@ -10,6 +10,7 @@ use crate::app::ShellChrome;
 use crate::spec::{
     command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarDisplayMode, ToolbarItemSpec,
 };
+use crate::theme;
 
 struct IconButtonTooltip {
     button: Button,
@@ -77,18 +78,22 @@ pub fn build(spec: &ShellSpec, chrome: ShellChrome) -> Option<TopBar> {
 
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("topbar-shell");
+    root.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
 
     let search = Entry::new();
     search.set_placeholder_text(Some(&spec.search_placeholder));
+    search.add_css_class(&theme::input_css_class(&spec.search_input_appearance_id));
     let mut tooltips = Vec::new();
 
     if chrome.show_menu_bar {
         let masthead = GtkBox::new(Orientation::Horizontal, 12);
         masthead.add_css_class("topbar-masthead");
+        masthead.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
 
         let menu_model = build_menu_model(spec);
         let menu_bar = PopoverMenuBar::from_model(Some(&menu_model));
         menu_bar.add_css_class("menu-bar");
+        menu_bar.add_css_class(&theme::surface_css_class(&spec.menu_appearance_id));
         menu_bar.set_hexpand(true);
         masthead.append(&menu_bar);
         root.append(&masthead);
@@ -97,6 +102,7 @@ pub fn build(spec: &ShellSpec, chrome: ShellChrome) -> Option<TopBar> {
     if chrome.show_toolbar || chrome.show_search {
         let toolbar = GtkBox::new(Orientation::Horizontal, 12);
         toolbar.add_css_class("studio-toolbar");
+        toolbar.add_css_class(&theme::surface_css_class(&spec.toolbar_appearance_id));
 
         if chrome.show_search {
             let search_cluster = GtkBox::new(Orientation::Horizontal, 0);
@@ -146,7 +152,7 @@ fn action_bar_item_button(
                 .as_deref()
                 .unwrap_or_else(|| panic!("toolbar item '{}' is IconOnly but has no icon", item.id));
             let tooltip = item.label.as_deref().unwrap_or(&item.id);
-            icon_button(icon_name, &action_ref, tooltip, tooltips)
+            icon_button(icon_name, &action_ref, tooltip, &item.appearance_id, tooltips)
         }
         ToolbarDisplayMode::IconAndText => {
             let label = item.label.as_deref().unwrap_or(&item.id);
@@ -154,18 +160,19 @@ fn action_bar_item_button(
                 .icon_name
                 .as_deref()
                 .unwrap_or("applications-system-symbolic");
-            toolbar_button(icon_name, label, &action_ref)
+            toolbar_button(icon_name, label, &action_ref, &item.appearance_id)
         }
         ToolbarDisplayMode::TextOnly => {
             let label = item.label.as_deref().unwrap_or(&item.id);
-            text_button(label, &action_ref)
+            text_button(label, &action_ref, &item.appearance_id)
         }
     }
 }
 
-fn toolbar_button(icon_name: &str, label: &str, action_name: &str) -> Button {
+fn toolbar_button(icon_name: &str, label: &str, action_name: &str, appearance_id: &str) -> Button {
     let button = Button::new();
     button.add_css_class("toolbar-button");
+    button.add_css_class(&theme::button_css_class(appearance_id));
     button.set_action_name(Some(action_name));
 
     let content = GtkBox::new(Orientation::Horizontal, 6);
@@ -174,17 +181,20 @@ fn toolbar_button(icon_name: &str, label: &str, action_name: &str) -> Button {
     content.append(&icon);
     let text = Label::new(Some(label));
     text.add_css_class("toolbar-button-label");
+    text.add_css_class(&theme::text_css_class("body"));
     content.append(&text);
     button.set_child(Some(&content));
     button
 }
 
-fn text_button(label: &str, action_name: &str) -> Button {
+fn text_button(label: &str, action_name: &str, appearance_id: &str) -> Button {
     let button = Button::new();
     button.add_css_class("toolbar-button");
+    button.add_css_class(&theme::button_css_class(appearance_id));
     button.set_action_name(Some(action_name));
     let text = Label::new(Some(label));
     text.add_css_class("toolbar-button-label");
+    text.add_css_class(&theme::text_css_class("body"));
     button.set_child(Some(&text));
     button
 }
@@ -193,10 +203,12 @@ fn icon_button(
     icon_name: &str,
     action_name: &str,
     tooltip: &str,
+    appearance_id: &str,
     tooltips: &mut Vec<IconButtonTooltip>,
 ) -> Button {
     let button = Button::new();
     button.add_css_class("toolbar-icon-button");
+    button.add_css_class(&theme::button_css_class(appearance_id));
     button.set_action_name(Some(action_name));
 
     let icon = Image::from_icon_name(icon_name);
@@ -205,6 +217,7 @@ fn icon_button(
 
     let tip_label = Label::new(Some(tooltip));
     tip_label.add_css_class("icon-button-tooltip-label");
+    tip_label.add_css_class(&theme::text_css_class("meta"));
 
     tooltips.push(IconButtonTooltip {
         button: button.clone(),

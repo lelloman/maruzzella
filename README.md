@@ -30,6 +30,7 @@ That means the plugin architecture is proven and the shell now exercises it in i
 - supports tab activation, reordering, and workbench split previews
 - persists tab arrangement and pane sizes to a local JSON layout file
 - exposes shell commands for theme reload, command palette style actions, and editor buffer workflows
+- exposes semantic appearance roles for panels, buttons, typography, inputs, and tab strips
 - ships with a built-in workspace slice that can be replaced or extended by downstream products
 
 ## Editor Tabs
@@ -73,6 +74,12 @@ Run the example app with:
 cargo run --example notebook
 ```
 
+Run the semantic appearance demo with:
+
+```bash
+cargo run --example semantic_appearance
+```
+
 Run the plugin view demo with:
 
 ```bash
@@ -92,11 +99,11 @@ The intended integration surface is the crate root:
 - `build_application_with_handle(...)`: build the GTK application and keep a runtime handle for mode switching
 - `MaruzzellaHandle::switch_to_workspace(...)`: replace launcher mode with a real workspace shell and optional project handle
 - `MaruzzellaHandle::switch_to_launcher()`: return from a workspace to the configured launcher without quitting
-- `ThemeSpec`: configurable theme tokens and optional external stylesheet template
+- `ThemeSpec`: configurable palette, typography, density, semantic appearance registry, and optional external stylesheet template
 - `MaruzzellaConfig::with_plugin_path(...)`: register a dynamic plugin library to load at startup
 - `MaruzzellaConfig::with_plugin_dir(...)`: add a directory to plugin discovery
 - `MaruzzellaConfig::without_default_plugin_discovery()`: opt out of the built-in discovery convention
-- `MaruzzellaConfig::with_theme(...)`: swap typography, palette, sizing, or the whole stylesheet
+- `MaruzzellaConfig::with_theme(...)`: swap semantic appearances, typography, palette, sizing, or the whole stylesheet
 - `default_plugin_discovery_dirs(...)`: inspect the built-in plugin discovery convention
 - `discover_plugin_paths_in_dir(...)`: enumerate loadable plugin artifacts in a directory
 - `run(config)`: launch a configured shell
@@ -176,16 +183,62 @@ let config = MaruzzellaConfig::new("com.example.my-app")
     .without_default_plugin_discovery();
 ```
 
-## Theming
+## Styling And Theming
 
-The shell styling is no longer tied to a single baked-in CSS file.
+The preferred downstream styling path is now semantic, not selector-driven.
 
 - `ThemeSpec::default()` gives the bundled Maruzzella look
-- `ThemeSpec` exposes typed palette, typography, and density tokens for common changes
+- `ThemeSpec` exposes typed palette, typography, density, and semantic appearance registries
+- downstream apps can define or override named appearances such as `primary`, `secondary`, `workbench`, `console`, `toolbar`, `title`, or `danger`
+- `ShellSpec`, `TabGroupSpec`, `TabSpec`, and `ToolbarItemSpec` reference those appearances by stable ids
 - `ThemeDensity` also controls window defaults and panel minimum sizes
+- typography is standardized through named text roles such as `title`, `body`, `meta`, `section-label`, `tab-label`, and `code`
+- buttons are standardized through named button roles such as `primary`, `secondary`, `ghost`, `toolbar`, `icon`, and `danger`
 - `ThemeSpec::with_stylesheet_path(...)` points at an external GTK CSS template for full theme swapping
 - `ThemeSpec::with_override(key, value)` injects extra `{{token}}` values for custom templates
-- the bundled stylesheet is now expressed in semantic component tokens rather than anonymous literal placeholders
+- the stylesheet/template path remains an escape hatch for product-specific edge cases, not the normal downstream customization path
+
+Minimal semantic appearance override:
+
+```rust
+use maruzzella::{
+    ButtonAppearance, ButtonStyle, MaruzzellaConfig, SurfaceAppearance, SurfaceLevel,
+    TextRole, ThemeSpec, Tone,
+};
+
+let theme = ThemeSpec::default()
+    .with_surface_appearance(
+        "primary",
+        SurfaceAppearance::new(Tone::Secondary, SurfaceLevel::Raised, TextRole::Body),
+    )
+    .with_button_appearance(
+        "primary",
+        ButtonAppearance::new(Tone::Accent, ButtonStyle::Solid, TextRole::BodyStrong),
+    );
+
+let config = MaruzzellaConfig::new("com.example.my-app").with_theme(theme);
+```
+
+Minimal shell spec usage:
+
+```rust
+use maruzzella::{default_product_spec, MaruzzellaConfig};
+
+let mut product = default_product_spec();
+product.layout.left_panel = product
+    .layout
+    .left_panel
+    .clone()
+    .with_panel_appearance("secondary")
+    .with_panel_header_appearance("secondary")
+    .with_tab_strip_appearance("utility");
+
+for item in &mut product.toolbar_items {
+    item.appearance_id = "primary".to_string();
+}
+
+let config = MaruzzellaConfig::new("com.example.my-app").with_product(product);
+```
 
 Minimal theme override:
 
@@ -203,6 +256,8 @@ theme.density.min_side_panel_width = 260;
 
 let config = MaruzzellaConfig::new("com.example.my-app").with_theme(theme);
 ```
+
+See [docs/appearance-api.md](/home/lelloman/lelloprojects/maruzzella/docs/appearance-api.md) for the semantic styling model and built-in appearance ids.
 
 Full stylesheet swap:
 
@@ -244,6 +299,7 @@ The easiest way to evolve the shell is to change the default `ProductSpec` in `s
 
 - rename branding and window text
 - add commands, menus, and toolbar items
+- assign semantic appearances to panels, tab strips, buttons, and tab content
 - replace placeholder tabs with real views
 - reshape the central workbench tree with horizontal or vertical splits
 

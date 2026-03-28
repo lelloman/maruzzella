@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use maruzzella::{
-    default_product_spec, plugin_tab, run, MaruzzellaConfig, TabGroupSpec, ThemeSpec,
-    WorkbenchNodeSpec,
+    default_product_spec, plugin_tab, run, ButtonAppearance, ButtonStyle, MaruzzellaConfig,
+    SurfaceAppearance, SurfaceLevel, TabGroupSpec, TabStripAppearance, TabStripStyle, TextRole,
+    ThemeSpec, Tone, WorkbenchNodeSpec,
 };
 
 fn main() {
@@ -18,29 +19,34 @@ fn main() {
     let mut product = default_product_spec();
     product.branding.title = "Plugin View Demo".to_string();
     product.branding.search_placeholder = "Search plugin demo".to_string();
-    product.branding.status_text = "Plugin-backed GTK view mounted into Maruzzella".to_string();
+    product.branding.status_text = "Plugin-backed GTK view with semantic shell styling".to_string();
 
-    product.layout.workbench = WorkbenchNodeSpec::Group(TabGroupSpec::new(
-        "workbench-plugin-demo",
-        Some("plugin-welcome"),
-        vec![
-            plugin_tab(
-                "plugin-welcome",
-                "workbench-plugin-demo",
-                "Plugin Welcome",
-                "com.example.hello.welcome",
-                "The example plugin view could not be created.",
-                false,
-            ),
-            maruzzella::text_tab(
-                "notes",
-                "workbench-plugin-demo",
-                "Notes",
-                "This second tab remains host-owned placeholder content.",
-                true,
-            ),
-        ],
-    ));
+    product.layout.workbench = WorkbenchNodeSpec::Group(
+        TabGroupSpec::new(
+            "workbench-plugin-demo",
+            Some("plugin-welcome"),
+            vec![
+                plugin_tab(
+                    "plugin-welcome",
+                    "workbench-plugin-demo",
+                    "Plugin Welcome",
+                    "com.example.hello.welcome",
+                    "The example plugin view could not be created.",
+                    false,
+                ),
+                maruzzella::text_tab(
+                    "notes",
+                    "workbench-plugin-demo",
+                    "Notes",
+                    "This second tab remains host-owned placeholder content.",
+                    true,
+                ),
+            ],
+        )
+        .with_panel_appearance("demo-workbench")
+        .with_panel_header_appearance("demo-header")
+        .with_tab_strip_appearance("demo-tabs"),
+    );
 
     let config = MaruzzellaConfig::new("com.example.maruzzella.plugin-view")
         .with_persistence_id("plugin-view-demo")
@@ -84,59 +90,35 @@ fn plugin_demo_theme() -> ThemeSpec {
     theme.density.radius_large = 14;
     theme.density.toolbar_height = 42;
     theme.density.tab_height = 30;
+
     theme
-        .overrides
-        .insert("color_app_shell".to_string(), "#0c1015".to_string());
-    theme
-        .overrides
-        .insert("color_topbar".to_string(), "#151c24".to_string());
-    theme
-        .overrides
-        .insert("color_menu_bg".to_string(), "#0f151d".to_string());
-    theme
-        .overrides
-        .insert("color_toolbar_bg".to_string(), "#121922".to_string());
-    theme
-        .overrides
-        .insert("color_toolbar_group".to_string(), "#18212c".to_string());
-    theme.overrides.insert(
-        "color_toolbar_group_subtle".to_string(),
-        "#141b23".to_string(),
-    );
-    theme
-        .overrides
-        .insert("color_accent_action_bg".to_string(), "#1f3940".to_string());
-    theme.overrides.insert(
-        "color_accent_action_text".to_string(),
-        "#dffcf6".to_string(),
-    );
-    theme
-        .overrides
-        .insert("color_notebook_tab_bg".to_string(), "#121922".to_string());
-    theme.overrides.insert(
-        "color_notebook_tab_hover".to_string(),
-        "#1a2430".to_string(),
-    );
-    theme.overrides.insert(
-        "color_notebook_tab_active".to_string(),
-        "#1c2733".to_string(),
-    );
-    theme
-        .overrides
-        .insert("color_workbench_tab_bg".to_string(), "#111821".to_string());
-    theme.overrides.insert(
-        "color_workbench_tab_hover".to_string(),
-        "#182330".to_string(),
-    );
-    theme.overrides.insert(
-        "color_workbench_tab_active".to_string(),
-        "#1e2a36".to_string(),
-    );
-    theme
-        .overrides
-        .insert("color_drag_preview_bg".to_string(), "#22303c".to_string());
-    theme
-        .overrides
-        .insert("color_status_bar_bg".to_string(), "#10161d".to_string());
-    theme
+        .with_surface_appearance(
+            "topbar",
+            SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Flat, TextRole::BodyStrong),
+        )
+        .with_surface_appearance(
+            "toolbar",
+            SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Raised, TextRole::Body),
+        )
+        .with_surface_appearance(
+            "demo-workbench",
+            SurfaceAppearance::new(Tone::Neutral, SurfaceLevel::Sunken, TextRole::Body)
+                .borderless(),
+        )
+        .with_surface_appearance(
+            "demo-header",
+            SurfaceAppearance::new(Tone::Secondary, SurfaceLevel::Flat, TextRole::SectionLabel),
+        )
+        .with_button_appearance(
+            "primary",
+            ButtonAppearance::new(Tone::Accent, ButtonStyle::Solid, TextRole::BodyStrong),
+        )
+        .with_button_appearance(
+            "ghost",
+            ButtonAppearance::new(Tone::Secondary, ButtonStyle::Ghost, TextRole::Body),
+        )
+        .with_tab_strip_appearance(
+            "demo-tabs",
+            TabStripAppearance::new(Tone::Secondary, TabStripStyle::Editor, TextRole::TabLabel),
+        )
 }

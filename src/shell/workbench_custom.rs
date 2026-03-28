@@ -13,6 +13,7 @@ use gtk::{
 
 use crate::plugins::PluginRuntime;
 use crate::spec::TabSpec;
+use crate::theme;
 
 use super::tabbed_panel::{self, BuiltTabPage};
 
@@ -642,6 +643,10 @@ pub fn build_group(
     tabs: &[TabSpec],
     active_tab_id: Option<&str>,
     show_tab_strip: bool,
+    panel_appearance_id: &str,
+    panel_header_appearance_id: &str,
+    tab_strip_appearance_id: &str,
+    text_appearance_id: &str,
     plugin_runtime: Option<Rc<PluginRuntime>>,
 ) -> BuiltCustomWorkbenchGroup {
     let overlay = Overlay::new();
@@ -658,12 +663,15 @@ pub fn build_group(
     root.set_vexpand(true);
     root.add_css_class("workspace-pane");
     root.add_css_class("workbench");
+    root.add_css_class(&theme::surface_css_class(panel_appearance_id));
+    root.add_css_class(&theme::text_css_class(text_appearance_id));
     for class in extra_css_classes {
         root.add_css_class(class);
     }
 
     let tab_strip = GtkBox::new(Orientation::Horizontal, 0);
     tab_strip.add_css_class("workbench-tab-strip");
+    tab_strip.add_css_class(&theme::tab_strip_css_class(tab_strip_appearance_id));
 
     let tab_scroller = ScrolledWindow::builder()
         .hexpand(true)
@@ -674,6 +682,8 @@ pub fn build_group(
         .child(&tab_strip)
         .build();
     tab_scroller.add_css_class("workbench-tab-strip-scroller");
+    tab_scroller.add_css_class(&theme::surface_css_class(panel_header_appearance_id));
+    tab_scroller.add_css_class(&theme::tab_strip_css_class(tab_strip_appearance_id));
     tab_scroller.set_visible(show_tab_strip);
 
     let stack = Stack::new();

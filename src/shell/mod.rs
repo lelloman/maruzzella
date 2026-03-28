@@ -5,6 +5,8 @@ pub mod workbench_custom;
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Label, Orientation, PolicyType, ScrolledWindow, Separator, Widget};
 
+use crate::theme;
+
 pub fn pane_container(title: &str, pane_class: &str) -> (GtkBox, GtkBox) {
     let pane = GtkBox::new(Orientation::Vertical, 0);
     pane.add_css_class("workspace-pane");
@@ -12,10 +14,12 @@ pub fn pane_container(title: &str, pane_class: &str) -> (GtkBox, GtkBox) {
 
     let header = GtkBox::new(Orientation::Horizontal, 0);
     header.add_css_class("panel-header");
+    header.add_css_class(&theme::surface_css_class("secondary"));
 
     let title_label = Label::new(Some(title));
     title_label.set_xalign(0.0);
     title_label.add_css_class("panel-title");
+    title_label.add_css_class(&theme::text_css_class("section-label"));
     header.append(&title_label);
 
     pane.append(&header);
@@ -46,6 +50,7 @@ pub fn section_title(text: &str) -> Label {
     let label = Label::new(Some(text));
     label.set_xalign(0.0);
     label.add_css_class("section-title");
+    label.add_css_class(&theme::text_css_class("section-label"));
     label
 }
 

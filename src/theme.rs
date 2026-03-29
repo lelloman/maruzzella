@@ -916,7 +916,7 @@ fn default_component_tokens() -> BTreeMap<String, String> {
             "tab_strip_scroller_border".to_string(),
             "1px solid #323232".to_string(),
         ),
-        ("tab_strip_height".to_string(), "42px".to_string()),
+        ("tab_strip_height".to_string(), "26px".to_string()),
         (
             "color_workbench_tab_bg".to_string(),
             "transparent".to_string(),
@@ -937,7 +937,7 @@ fn default_component_tokens() -> BTreeMap<String, String> {
             "color_workbench_tab_active".to_string(),
             "transparent".to_string(),
         ),
-        ("workbench_tab_padding".to_string(), "0 16px".to_string()),
+        ("workbench_tab_padding".to_string(), "0 0 0 8px".to_string()),
         ("workbench_tab_border_width".to_string(), "2px".to_string()),
         ("color_drag_preview_bg".to_string(), "#45494a".to_string()),
         (
@@ -1250,6 +1250,12 @@ fn render_tab_strip_css(spec: &ThemeSpec, id: &str, appearance: &TabStripAppeara
     let active = surface_colors(spec, Tone::Accent, SurfaceLevel::Raised);
     let hover = blend(&surface.background, &active.background, 0.22);
     let text = text_style(spec, appearance.text_role, appearance.tone);
+    let active_background = match appearance.style {
+        TabStripStyle::Editor => "transparent".to_string(),
+        TabStripStyle::Utility | TabStripStyle::Console => {
+            lighten(&surface.background, 0.08)
+        }
+    };
     let tab_height = match appearance.style {
         TabStripStyle::Editor => spec.density.tab_height,
         TabStripStyle::Utility => spec.density.tab_height.saturating_sub(2),
@@ -1296,7 +1302,7 @@ notebook.{class} > header tabs tab:checked {{
         tab_height = tab_height,
         text_color = text.color.clone(),
         hover = hover,
-        active_bg = blend(&surface.background, &active.background, 0.26),
+        active_bg = active_background,
         active_border = active.border.clone(),
         active_fg = active.foreground.clone(),
     ) + &format_text_css_block(&format!(".workbench-tab-strip.{class} > .tab-header .tab-label"), &text)

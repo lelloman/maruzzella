@@ -191,7 +191,7 @@ pub fn build_tab_page(
     let tab_label = Label::new(Some(&tab.title));
     tab_label.add_css_class("tab-label");
     tab_label.add_css_class(&theme::text_css_class("tab-label"));
-    let tab_header = GtkBox::new(Orientation::Horizontal, 6);
+    let tab_header = GtkBox::new(Orientation::Horizontal, 0);
     tab_header.add_css_class("tab-header");
     tab_header.append(&tab_label);
     if tab.closable {

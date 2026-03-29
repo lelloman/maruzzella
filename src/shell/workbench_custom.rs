@@ -843,7 +843,7 @@ fn build_drag_widget(title: &str) -> Widget {
     let label = Label::new(Some(title));
     label.add_css_class("tab-label");
 
-    let container = GtkBox::new(Orientation::Horizontal, 6);
+    let container = GtkBox::new(Orientation::Horizontal, 0);
     container.add_css_class("tab-header");
     container.add_css_class("drag-preview");
     container.append(&label);

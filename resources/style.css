@@ -548,7 +548,7 @@ notebook.bottom-tabs > header tabs tab:checked {
 
 .workbench-tab-strip {
   min-height: {{tab_strip_height}};
-  padding: 0 8px;
+  padding: 0;
   background: transparent;
 }
 
@@ -556,7 +556,7 @@ notebook.bottom-tabs > header tabs tab:checked {
 .drag-preview {
   min-height: {{tab_height}};
   padding: {{workbench_tab_padding}};
-  margin: 4px 4px 4px 0;
+  margin: 0;
   border-top: 0;
   border-left: 0;
   border-right: 0;
@@ -957,6 +957,15 @@ list separator {
 
 row:hover box,
 row:hover label {
+  background: transparent;
+}
+
+row:selected box,
+row:selected label,
+list row:selected box,
+list row:selected label,
+listview row:selected box,
+listview row:selected label {
   background: transparent;
 }
 

@@ -12,40 +12,145 @@
 @define-color accent {{color_accent}};
 @define-color accent_strong {{color_accent_strong}};
 
-window,
 .app-window,
+.app-window box,
+.app-window viewport,
+.app-window overlay,
+.app-window stack,
+.app-window grid,
 .app-root,
-box,
-viewport,
-overlay,
-stack,
-grid {
+.app-root box,
+.app-root viewport,
+.app-root overlay,
+.app-root stack,
+.app-root grid {
   background: @bg_0;
   color: @text_1;
   font-size: {{font_size_base}};
   font-family: {{font_family_base}};
 }
 
-label {
+.app-window label,
+.app-root label {
   color: @text_1;
 }
 
-notebook,
-notebook > stack,
-notebook > stack > box,
-notebook > stack > scrolledwindow,
-notebook > stack > scrolledwindow > viewport,
-scrolledwindow,
-scrolledwindow > viewport,
-frame,
-paned,
-textview,
-textview text,
-entry,
-list,
-listview,
-row,
-viewport,
+.app-dialog,
+.app-dialog headerbar {
+  background: @bg_0;
+  color: @text_1;
+  font-size: {{font_size_base}};
+  font-family: {{font_family_base}};
+}
+
+.app-dialog scrolledwindow,
+.app-dialog scrolledwindow > viewport,
+.app-dialog frame,
+.app-dialog paned,
+.app-dialog list,
+.app-dialog listview,
+.app-dialog columnview,
+.app-dialog row {
+  background: @bg_0;
+  color: @text_1;
+}
+
+.app-dialog label {
+  color: @text_1;
+}
+
+.app-dialog button {
+  min-height: {{control_height_button}};
+  padding: 0 {{space_button_inline}};
+  border-radius: {{button_radius}};
+  background: transparent;
+  border: 0;
+  color: {{color_button_text}};
+  box-shadow: none;
+  font-size: {{font_size_ui}};
+  font-weight: 600;
+}
+
+.app-dialog button:hover {
+  background: {{color_button_hover}};
+}
+
+.app-dialog button:active {
+  background: {{color_button_active}};
+}
+
+.app-dialog button > box {
+  background: transparent;
+}
+
+.app-dialog entry {
+  min-height: {{control_height_medium}};
+  padding: 0 {{space_entry_inline}};
+  background: {{color_entry_bg}};
+  color: @text_0;
+  border: 0;
+  border-radius: {{search_radius}};
+  font-size: {{font_size_ui}};
+}
+
+.app-dialog entry > text {
+  background: transparent;
+}
+
+.app-dialog entry selection,
+.app-dialog text selection {
+  background: {{color_selection_bg}};
+  color: {{color_selection_text}};
+}
+
+.app-dialog entry:focus {
+  border-color: @accent;
+  box-shadow: none;
+}
+
+.app-dialog separator {
+  background: alpha({{color_separator_fill}}, {{separator_alpha}});
+  min-width: {{separator_size}};
+  min-height: {{separator_size}};
+}
+
+.app-dialog paned > separator {
+  background: alpha({{color_separator_fill}}, {{separator_alpha}});
+  min-width: {{paned_separator_size}};
+  min-height: {{paned_separator_size}};
+}
+
+.app-dialog scrollbar trough {
+  background: {{color_scrollbar_trough}};
+}
+
+.app-dialog scrollbar slider {
+  min-width: {{scrollbar_slider_size}};
+  min-height: {{scrollbar_slider_size}};
+  background: {{color_scrollbar_slider}};
+  border-radius: {{radius_pill}};
+}
+
+.app-dialog scrollbar slider:hover {
+  background: {{color_scrollbar_slider_hover}};
+}
+
+.app-window notebook,
+.app-window notebook > stack,
+.app-window notebook > stack > box,
+.app-window notebook > stack > scrolledwindow,
+.app-window notebook > stack > scrolledwindow > viewport,
+.app-window scrolledwindow,
+.app-window scrolledwindow > viewport,
+.app-window frame,
+.app-window paned,
+.app-window textview,
+.app-window textview text,
+.app-window entry,
+.app-window list,
+.app-window listview,
+.app-window row,
+.app-window viewport,
 .workspace-pane,
 .panel-scroller {
   border: 0;
@@ -142,7 +247,7 @@ undershoot.left {
 }
 
 .toolbar-button,
-button {
+.app-window button {
   min-height: {{control_height_button}};
   padding: 0 {{space_button_inline}};
   border-radius: {{button_radius}};
@@ -155,26 +260,26 @@ button {
 }
 
 .toolbar-button:hover,
-button:hover {
+.app-window button:hover {
   background: {{color_button_hover}};
 }
 
 .toolbar-button:active,
-button:active {
+.app-window button:active {
   background: {{color_button_active}};
 }
 
-button > box,
+.app-window button > box,
 .toolbar-button > box {
   background: transparent;
 }
 
-.linked > button:checked {
+.app-window .linked > button:checked {
   background: {{color_button_active}};
   color: @text_0;
 }
 
-.linked > button:checked:hover {
+.app-window .linked > button:checked:hover {
   background: {{color_button_active}};
   color: @text_0;
 }
@@ -288,14 +393,14 @@ entry {
 .toolbar-utility-group {
 }
 
-entry selection,
-textview selection,
-text selection {
+.app-window entry selection,
+.app-window textview selection,
+.app-window text selection {
   background: {{color_selection_bg}};
   color: {{color_selection_text}};
 }
 
-entry:focus {
+.app-window entry:focus {
   border-color: @accent;
   box-shadow: none;
 }
@@ -304,13 +409,13 @@ entry:focus {
   min-width: {{command_width_min}};
 }
 
-separator {
+.app-window separator {
   background: alpha({{color_separator_fill}}, {{separator_alpha}});
   min-width: {{separator_size}};
   min-height: {{separator_size}};
 }
 
-paned > separator {
+.app-window paned > separator {
   background: alpha({{color_separator_fill}}, {{separator_alpha}});
   min-width: {{paned_separator_size}};
   min-height: {{paned_separator_size}};
@@ -394,31 +499,31 @@ paned > separator {
   border: {{drop_zone_border}};
 }
 
-notebook header,
-notebook.workbench-tabs > header {
+.app-window notebook header,
+.app-window notebook.workbench-tabs > header {
   background: transparent;
   border-bottom: 0;
 }
 
-.console-pane notebook header {
+.app-window .console-pane notebook header {
   background: transparent;
 }
 
-notebook.workbench-tabs,
-notebook.workbench-tabs > stack,
-notebook.workbench-tabs > stack > box,
-notebook.workbench-tabs > stack > scrolledwindow,
-notebook.workbench-tabs > stack > scrolledwindow > viewport {
+.app-window notebook.workbench-tabs,
+.app-window notebook.workbench-tabs > stack,
+.app-window notebook.workbench-tabs > stack > box,
+.app-window notebook.workbench-tabs > stack > scrolledwindow,
+.app-window notebook.workbench-tabs > stack > scrolledwindow > viewport {
   background: @workbench;
 }
 
-notebook header tabs,
-notebook.workbench-tabs > header tabs {
+.app-window notebook header tabs,
+.app-window notebook.workbench-tabs > header tabs {
   background: transparent;
 }
 
-notebook header tab,
-notebook.workbench-tabs > header tabs tab {
+.app-window notebook header tab,
+.app-window notebook.workbench-tabs > header tabs tab {
   min-height: {{control_height_medium}};
   padding: {{notebook_tab_padding}};
   margin: 4px 4px 4px 0;
@@ -432,26 +537,26 @@ notebook.workbench-tabs > header tabs tab {
   background-image: none;
 }
 
-notebook header tab:hover,
-notebook.workbench-tabs > header tabs tab:hover {
+.app-window notebook header tab:hover,
+.app-window notebook.workbench-tabs > header tabs tab:hover {
   background: {{color_notebook_tab_hover}};
   border-bottom-color: {{color_notebook_tab_hover_border}};
   color: {{color_notebook_tab_hover_text}};
 }
 
-notebook header tab:checked,
-notebook.workbench-tabs > header tabs tab:checked {
+.app-window notebook header tab:checked,
+.app-window notebook.workbench-tabs > header tabs tab:checked {
   background: {{color_notebook_tab_active}};
   border-bottom-width: {{notebook_tab_active_border_width}};
   border-bottom-color: {{color_notebook_tab_active_border}};
   color: @text_0;
 }
 
-notebook header tab:drop(active),
-notebook.workbench-tabs > header tabs tab:drop(active),
-notebook.editor-tabs > header tabs tab:drop(active),
-notebook.tool-tabs > header tabs tab:drop(active),
-notebook.bottom-tabs > header tabs tab:drop(active) {
+.app-window notebook header tab:drop(active),
+.app-window notebook.workbench-tabs > header tabs tab:drop(active),
+.app-window notebook.editor-tabs > header tabs tab:drop(active),
+.app-window notebook.tool-tabs > header tabs tab:drop(active),
+.app-window notebook.bottom-tabs > header tabs tab:drop(active) {
   background: {{color_notebook_tab_active}};
   border-bottom-color: {{color_notebook_tab_drop_border}};
   box-shadow: {{notebook_tab_drop_shadow}};
@@ -459,43 +564,43 @@ notebook.bottom-tabs > header tabs tab:drop(active) {
 }
 
 
-notebook.editor-tabs > header {
+.app-window notebook.editor-tabs > header {
   background: transparent;
 }
 
-notebook.editor-tabs > header tabs tab {
+.app-window notebook.editor-tabs > header tabs tab {
   background: {{color_editor_tab_bg}};
 }
 
-notebook.editor-tabs > header tabs tab:checked {
+.app-window notebook.editor-tabs > header tabs tab:checked {
   background: {{color_editor_tab_active}};
 }
 
-notebook.tool-tabs > header {
+.app-window notebook.tool-tabs > header {
   background: transparent;
 }
 
-notebook.tool-tabs > header tabs tab {
+.app-window notebook.tool-tabs > header tabs tab {
   min-height: {{tool_tab_height}};
   background: transparent;
 }
 
-notebook.tool-tabs > header tabs tab:checked {
+.app-window notebook.tool-tabs > header tabs tab:checked {
   background: transparent;
   border-bottom-width: {{notebook_tab_active_border_width}};
   border-bottom-color: {{color_notebook_tab_active_border}};
 }
 
-notebook.bottom-tabs > header {
+.app-window notebook.bottom-tabs > header {
   background: transparent;
 }
 
-notebook.bottom-tabs > header tabs tab {
+.app-window notebook.bottom-tabs > header tabs tab {
   min-height: {{tool_tab_height}};
   background: transparent;
 }
 
-notebook.bottom-tabs > header tabs tab:checked {
+.app-window notebook.bottom-tabs > header tabs tab:checked {
   background: transparent;
 }
 
@@ -646,18 +751,18 @@ notebook.bottom-tabs > header tabs tab:checked {
 }
 
 .panel-scroller,
-scrolledwindow,
-scrolledwindow > viewport,
-scrolledwindow > viewport > *,
+.app-window scrolledwindow,
+.app-window scrolledwindow > viewport,
+.app-window scrolledwindow > viewport > *,
 .dense-list,
-list,
-listview,
-row,
-box.list-row-box {
+.app-window list,
+.app-window listview,
+.app-window row,
+.app-window box.list-row-box {
   background: transparent;
 }
 
-row {
+.app-window row {
   border-radius: 0;
 }
 
@@ -670,16 +775,16 @@ row {
 }
 
 .dense-row:selected,
-list row:selected,
-listview row:selected,
-row:selected {
+.app-window list row:selected,
+.app-window listview row:selected,
+.app-window row:selected {
   background: {{dense_row_selected_bg}};
   color: {{dense_row_selected_text}};
 }
 
 .dense-row:hover,
-list row:hover,
-row:hover {
+.app-window list row:hover,
+.app-window row:hover {
   background: {{dense_row_hover_bg}};
 }
 
@@ -735,14 +840,14 @@ text,
   color: {{color_status_running_text}};
 }
 
-textview,
-textview text,
-text {
+.app-window textview,
+.app-window textview text,
+.app-window text {
   background: @workbench;
   color: {{color_textview_text}};
 }
 
-entry > text {
+.app-window entry > text {
   background: transparent;
 }
 
@@ -774,18 +879,18 @@ entry > text {
   background: @panel_bottom;
 }
 
-scrollbar trough {
+.app-window scrollbar trough {
   background: {{color_scrollbar_trough}};
 }
 
-scrollbar slider {
+.app-window scrollbar slider {
   min-width: {{scrollbar_slider_size}};
   min-height: {{scrollbar_slider_size}};
   background: {{color_scrollbar_slider}};
   border-radius: {{radius_pill}};
 }
 
-scrollbar slider:hover {
+.app-window scrollbar slider:hover {
   background: {{color_scrollbar_slider_hover}};
 }
 
@@ -928,11 +1033,11 @@ popover.background separator {
   margin: {{popover_separator_margin}};
 }
 
-row,
-list row,
-listview row,
+.app-window row,
+.app-window list row,
+.app-window listview row,
 .dense-row,
-.boxed-list row {
+.app-window .boxed-list row {
   margin: 0;
   margin-top: 0;
   margin-bottom: 0;
@@ -950,22 +1055,22 @@ listview row,
   border-spacing: 0;
 }
 
-list separator {
+.app-window list separator {
   min-height: 0;
   background: transparent;
 }
 
-row:hover box,
-row:hover label {
+.app-window row:hover box,
+.app-window row:hover label {
   background: transparent;
 }
 
-row:selected box,
-row:selected label,
-list row:selected box,
-list row:selected label,
-listview row:selected box,
-listview row:selected label {
+.app-window row:selected box,
+.app-window row:selected label,
+.app-window list row:selected box,
+.app-window list row:selected label,
+.app-window listview row:selected box,
+.app-window listview row:selected label {
   background: transparent;
 }
 
@@ -976,7 +1081,7 @@ listview row:selected label {
 
 .workbench-tab-strip > .tab-header,
 .drag-preview,
-notebook header tab {
+.app-window notebook header tab {
   border-radius: 0;
   margin: 0;
 }

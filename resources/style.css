@@ -62,6 +62,10 @@
   color: @text_1;
 }
 
+.app-dialog box {
+  background: transparent;
+}
+
 .app-dialog row:hover,
 .app-dialog list row:hover,
 .app-dialog listview row:hover,

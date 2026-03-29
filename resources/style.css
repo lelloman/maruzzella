@@ -50,6 +50,9 @@
 .app-dialog list,
 .app-dialog listview,
 .app-dialog columnview,
+.app-dialog gridview,
+.app-dialog flowbox,
+.app-dialog flowboxchild,
 .app-dialog row {
   background: @bg_0;
   color: @text_1;
@@ -57,6 +60,28 @@
 
 .app-dialog label {
   color: @text_1;
+}
+
+.app-dialog row:hover,
+.app-dialog list row:hover,
+.app-dialog listview row:hover,
+.app-dialog columnview row:hover {
+  background: {{dense_row_hover_bg}};
+}
+
+.app-dialog row:selected,
+.app-dialog list row:selected,
+.app-dialog listview row:selected,
+.app-dialog columnview row:selected {
+  background: {{dense_row_selected_bg}};
+  color: {{dense_row_selected_text}};
+}
+
+.app-dialog row:selected label,
+.app-dialog list row:selected label,
+.app-dialog listview row:selected label,
+.app-dialog columnview row:selected label {
+  color: {{dense_row_selected_text}};
 }
 
 .app-dialog button {

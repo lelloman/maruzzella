@@ -981,13 +981,6 @@ notebook header tab {
   margin: 0;
 }
 
-.workbench-tab-strip > .tab-header.active {
-  border-bottom-color: #515658;
-}
-
-.pane-focused .workbench-tab-strip > .tab-header.active {
-  border-bottom-color: #4b6eaf;
-}
 
 .pane-focused .linked > button:checked {
   background: #2d5c88;

@@ -1248,6 +1248,9 @@ fn render_tab_strip_css(spec: &ThemeSpec, id: &str, appearance: &TabStripAppeara
     let class = tab_strip_css_class(id);
     let surface = surface_colors(spec, appearance.tone, SurfaceLevel::Flat);
     let active = surface_colors(spec, Tone::Accent, SurfaceLevel::Raised);
+    let accent = tone_color(&spec.palette, Tone::Accent);
+    let focused_border = accent;
+    let unfocused_border = blend(&focused_border, &surface.background, 0.6);
     let hover = blend(&surface.background, &active.background, 0.22);
     let text = text_style(spec, appearance.text_role, appearance.tone);
     let active_background = match appearance.style {
@@ -1279,8 +1282,11 @@ notebook.{class} > header tabs tab:hover {{
 }}
 notebook.{class} > header tabs tab:checked {{
   background: {active_bg};
-  border-bottom-color: {active_border};
+  border-bottom-color: {unfocused_border};
   color: {active_fg};
+}}
+.pane-focused notebook.{class} > header tabs tab:checked {{
+  border-bottom-color: {active_border};
 }}
 .workbench-tab-strip.{class} > .tab-header {{
   min-height: {tab_height}px;
@@ -1293,8 +1299,11 @@ notebook.{class} > header tabs tab:checked {{
 }}
 .workbench-tab-strip.{class} > .tab-header.active {{
   background: {active_bg};
-  border-bottom-color: {active_border};
+  border-bottom-color: {unfocused_border};
   color: {active_fg};
+}}
+.pane-focused .workbench-tab-strip.{class} > .tab-header.active {{
+  border-bottom-color: {active_border};
 }}
 ",
         strip_bg = surface.background.clone(),
@@ -1303,7 +1312,8 @@ notebook.{class} > header tabs tab:checked {{
         text_color = text.color.clone(),
         hover = hover,
         active_bg = active_background,
-        active_border = active.border.clone(),
+        active_border = focused_border,
+        unfocused_border = unfocused_border,
         active_fg = active.foreground.clone(),
     ) + &format_text_css_block(&format!(".workbench-tab-strip.{class} > .tab-header .tab-label"), &text)
 }

@@ -2,11 +2,18 @@
 name = "maruzzella_sdk"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Rust SDK for building Maruzzella plugins."
+repository = "https://github.com/lelloman/maruzzella"
+homepage = "https://github.com/lelloman/maruzzella"
+documentation = "https://docs.rs/maruzzella_sdk"
+keywords = ["plugin", "sdk", "gtk4", "desktop"]
+categories = ["api-bindings"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-maruzzella_api = { path = "../maruzzella_api" }
+maruzzella_api = { version = "0.1.0", path = "../maruzzella_api" }
 serde = "1"
 serde_json = "1"

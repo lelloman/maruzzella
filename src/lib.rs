@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -6,7 +6,8 @@ use std::rc::{Rc, Weak};
 use std::str;
 
 use glib::translate::FromGlibPtrFull;
-use gtk::Widget;
+use gtk::prelude::ObjectExt;
+use gtk::{ApplicationWindow, Widget};
 use libloading::{Library, Symbol};
 use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzCommandSummary,
@@ -27,6 +28,7 @@ use crate::plugin_tabs::{
     GroupHandles, OpenPluginViewOutcome, OpenPluginViewRequest as ShellOpenPluginViewRequest,
     ShellState,
 };
+use crate::{MaruzzellaHandle, WorkspaceSession};
 
 const ENTRY_SYMBOL: &[u8] = b"maruzzella_plugin_entry\0";
 
@@ -223,6 +225,7 @@ pub struct PluginRuntime {
 }
 
 struct PluginShellHost {
+    window: ApplicationWindow,
     layout_persistence_id: String,
     config_persistence_id: String,
     shell_state: ShellState,
@@ -324,12 +327,14 @@ impl PluginRuntime {
 
     pub fn attach_shell_host(
         self: &Rc<Self>,
+        window: ApplicationWindow,
         layout_persistence_id: String,
         persistence_id: String,
         shell_state: ShellState,
         group_handles: GroupHandles,
     ) {
         let shell_host = Rc::new_cyclic(|weak| PluginShellHost {
+            window,
             layout_persistence_id,
             config_persistence_id: persistence_id,
             shell_state,
@@ -1226,10 +1231,29 @@ extern "C" fn host_register_host_event_subscriber(
 }
 
 extern "C" fn host_dispatch_command(command_id: MzStr, payload: MzBytes) -> MzStatus {
-    let Some(state) = current_host_state() else {
+    const SWITCH_TO_WORKSPACE_COMMAND: &str = "shell.switch_to_workspace";
+    let Ok(command_id) = decode_runtime_str("dispatch.command_id", command_id) else {
         return MzStatus::new(MzStatusCode::InvalidArgument);
     };
-    let Ok(command_id) = decode_runtime_str("dispatch.command_id", command_id) else {
+    if command_id == SWITCH_TO_WORKSPACE_COMMAND {
+        let Some(shell_host) = current_shell_host() else {
+            return MzStatus::new(MzStatusCode::InvalidArgument);
+        };
+        let Some(handle_ptr) = (unsafe { shell_host.window.data::<MaruzzellaHandle>("maruzzella-handle") }) else {
+            return MzStatus::new(MzStatusCode::NotFound);
+        };
+        let handle = unsafe { handle_ptr.as_ref().clone() };
+        let project_handle = unsafe { std::slice::from_raw_parts(payload.ptr, payload.len) }.to_vec();
+        return match handle.switch_to_workspace(WorkspaceSession {
+            project_handle: Some(project_handle),
+            shell_spec: None,
+            window_policy: None,
+        }) {
+            Ok(()) => MzStatus::OK,
+            Err(_) => MzStatus::new(MzStatusCode::InternalError),
+        };
+    }
+    let Some(state) = current_host_state() else {
         return MzStatus::new(MzStatusCode::InvalidArgument);
     };
     let Some(invoke) = state.command_handlers.get(&command_id).copied() else {

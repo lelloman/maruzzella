@@ -131,13 +131,16 @@ fn main() {
 Dynamic plugins can also be attached through config:
 
 ```rust
+use maruzzella::MaruzzellaConfig;
+
 let config = MaruzzellaConfig::new("com.example.my-app")
     .with_plugin_path("plugins/libexample_plugin.so");
 ```
 
 Launcher-mode startup:
 
-```rust
+```rust,no_run
+use gtk::prelude::ApplicationExtManual;
 use maruzzella::{
     build_application_with_handle, plugin_tab, LauncherSpec, MaruzzellaConfig, ShellMode,
     TabGroupSpec,
@@ -178,6 +181,8 @@ Discovery can also be directory-based. By default Maruzzella now scans:
 You can add more directories or opt out of the built-in convention:
 
 ```rust
+use maruzzella::MaruzzellaConfig;
+
 let config = MaruzzellaConfig::new("com.example.my-app")
     .with_plugin_dir("/opt/my-app/plugins")
     .without_default_plugin_discovery();

@@ -6,6 +6,7 @@ use gtk::prelude::*;
 use gtk::gio;
 use gtk::ApplicationWindow;
 
+use crate::app::{MaruzzellaHandle, WorkspaceSession};
 use crate::base_plugin;
 use crate::plugin_tabs::{
     last_active_plugin_tab, open_or_focus_plugin_view, GroupHandles, OpenPluginViewRequest,
@@ -21,6 +22,7 @@ const BASE_SETTINGS_VIEW_ID: &str = "maruzzella.base.workspace.settings";
 const BASE_COMMANDS_VIEW_ID: &str = "maruzzella.base.workspace.commands";
 const BASE_REGISTERED_VIEWS_VIEW_ID: &str = "maruzzella.base.workspace.registered_views";
 const BASE_EDITOR_VIEW_ID: &str = base_plugin::VIEW_WORKSPACE_EDITOR;
+const CMD_SWITCH_TO_WORKSPACE: &str = "shell.switch_to_workspace";
 
 type CommandHandler = Rc<dyn Fn(&[u8])>;
 
@@ -60,6 +62,33 @@ pub fn shell_registry(
 
     registry.register("shell.reload_theme", move |_| {
         theme::reload();
+    });
+
+    let window_for_workspace_switch = window.clone();
+    registry.register(CMD_SWITCH_TO_WORKSPACE, move |payload| {
+        eprintln!(
+            "maruzzella: shell.switch_to_workspace received payload_len={}",
+            payload.len()
+        );
+        let Some(handle) = (unsafe { window_for_workspace_switch.data::<MaruzzellaHandle>("maruzzella-handle") })
+            .map(|ptr| unsafe { ptr.as_ref().clone() })
+        else {
+            eprintln!("maruzzella: shell.switch_to_workspace missing maruzzella-handle on window");
+            return;
+        };
+        eprintln!("maruzzella: shell.switch_to_workspace invoking handle.switch_to_workspace");
+        let result = handle.switch_to_workspace(WorkspaceSession {
+            project_handle: Some(payload.to_vec()),
+            shell_spec: None,
+            window_policy: None,
+        });
+        eprintln!(
+            "maruzzella: shell.switch_to_workspace result={}",
+            match result {
+                Ok(()) => "ok",
+                Err(_) => "err",
+            }
+        );
     });
 
     let host_for_about = plugin_host.clone();

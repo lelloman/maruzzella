@@ -1,3 +1,10 @@
+//! ABI and shared data contracts for Maruzzella plugin hosts and plugins.
+//!
+//! This crate contains the FFI-safe types exchanged across the Maruzzella
+//! runtime boundary. Host applications typically depend on this crate
+//! indirectly through `maruzzella`, while plugin implementations usually use
+//! `maruzzella_sdk`.
+
 use core::ffi::c_void;
 use serde::{Deserialize, Serialize};
 

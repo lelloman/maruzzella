@@ -1,3 +1,9 @@
+//! Rust SDK for implementing Maruzzella plugins.
+//!
+//! This crate wraps the raw `maruzzella_api` ABI surface with Rust-friendly
+//! helpers for plugin descriptors, command/menu/view registration, payload
+//! encoding, and host interaction.
+
 pub use maruzzella_api as ffi;
 pub use maruzzella_api::{
     button_css_class, input_css_class, surface_css_class, tab_strip_css_class, text_css_class,

@@ -307,6 +307,10 @@ impl AppController {
     }
 
     fn switch_to_workspace(&self, session: WorkspaceSession) {
+        eprintln!(
+            "maruzzella: AppController::switch_to_workspace project_handle_present={}",
+            session.project_handle.is_some()
+        );
         self.show_workspace(session);
     }
 
@@ -323,6 +327,10 @@ impl AppController {
     }
 
     fn show_workspace(&self, session: WorkspaceSession) {
+        eprintln!(
+            "maruzzella: AppController::show_workspace project_handle_len={}",
+            session.project_handle.as_ref().map(|bytes| bytes.len()).unwrap_or(0)
+        );
         let shell_spec = session
             .shell_spec
             .unwrap_or_else(|| self.config.product.shell_spec());
@@ -368,6 +376,11 @@ impl AppController {
         chrome: ShellChrome,
         include_base_toolbar_items: bool,
     ) {
+        eprintln!(
+            "maruzzella: render_mode mode={:?} persistence_slot={}",
+            mode,
+            mode.persistence_slot()
+        );
         let persistence_slot = mode.persistence_slot();
         let layout_persistence_id =
             layout::scoped_persistence_id(&self.config.persistence_id, persistence_slot);
@@ -390,6 +403,7 @@ impl AppController {
         let group_handles = Rc::new(RefCell::new(HashMap::new()));
         if let Some(runtime) = self.plugin_host.runtime() {
             runtime.attach_shell_host(
+                self.window.clone(),
                 layout_persistence_id.clone(),
                 self.config.persistence_id.clone(),
                 state.clone(),
@@ -473,6 +487,7 @@ pub fn build(application: &Application, config: &MaruzzellaConfig, handle: &Maru
         .build();
     window.add_css_class("app-window");
     unsafe {
+        window.set_data("maruzzella-handle", handle.clone());
         window.set_data("maruzzella-plugin-host", plugin_host.clone());
     }
     let controller = AppController::new(window, config.clone(), plugin_host);

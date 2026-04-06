@@ -330,6 +330,10 @@ undershoot.left {
   color: {{color_accent_action_text}};
 }
 
+.toolbar-utility-group .toolbar-button:hover {
+  background: {{color_button_hover}};
+}
+
 .toolbar-button-label {
   color: {{color_button_text}};
   font-size: {{font_size_ui}};
@@ -1063,6 +1067,15 @@ text,
   background: {{color_popover_bg}};
   color: @text_1;
   font-size: {{font_size_small}};
+}
+
+popover.icon-button-tooltip-popover,
+popover.icon-button-tooltip-popover > contents {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
 }
 
 popover.menu,

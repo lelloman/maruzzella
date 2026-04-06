@@ -2,7 +2,7 @@ use gtk::gio;
 use gtk::prelude::*;
 use gtk::{
     Box as GtkBox, Button, Entry, EventControllerMotion, Fixed, Image, Label, Orientation,
-    Overlay, PopoverMenuBar,
+    Overlay, Popover, PopoverMenuBar, PositionType,
 };
 
 use crate::commands::CommandRegistry;
@@ -169,6 +169,31 @@ fn action_bar_item_button(
     }
 }
 
+pub fn standalone_toolbar_item_button(item: &ToolbarItemSpec) -> Button {
+    match item.display_mode {
+        ToolbarDisplayMode::IconOnly => {
+            let icon_name = item
+                .icon_name
+                .as_deref()
+                .unwrap_or("applications-system-symbolic");
+            let tooltip = item.label.as_deref().unwrap_or(&item.id);
+            standalone_icon_button(icon_name, tooltip, &item.appearance_id)
+        }
+        ToolbarDisplayMode::IconAndText => {
+            let label = item.label.as_deref().unwrap_or(&item.id);
+            let icon_name = item
+                .icon_name
+                .as_deref()
+                .unwrap_or("applications-system-symbolic");
+            standalone_toolbar_button(icon_name, label, &item.appearance_id)
+        }
+        ToolbarDisplayMode::TextOnly => {
+            let label = item.label.as_deref().unwrap_or(&item.id);
+            standalone_text_button(label, &item.appearance_id)
+        }
+    }
+}
+
 fn toolbar_button(icon_name: &str, label: &str, action_name: &str, appearance_id: &str) -> Button {
     let button = Button::new();
     button.add_css_class("toolbar-button");
@@ -199,6 +224,34 @@ fn text_button(label: &str, action_name: &str, appearance_id: &str) -> Button {
     button
 }
 
+fn standalone_toolbar_button(icon_name: &str, label: &str, appearance_id: &str) -> Button {
+    let button = Button::new();
+    button.add_css_class("toolbar-button");
+    button.add_css_class(&theme::button_css_class(appearance_id));
+
+    let content = GtkBox::new(Orientation::Horizontal, 6);
+    let icon = Image::from_icon_name(icon_name);
+    icon.set_icon_size(gtk::IconSize::Normal);
+    content.append(&icon);
+    let text = Label::new(Some(label));
+    text.add_css_class("toolbar-button-label");
+    text.add_css_class(&theme::text_css_class("body"));
+    content.append(&text);
+    button.set_child(Some(&content));
+    button
+}
+
+fn standalone_text_button(label: &str, appearance_id: &str) -> Button {
+    let button = Button::new();
+    button.add_css_class("toolbar-button");
+    button.add_css_class(&theme::button_css_class(appearance_id));
+    let text = Label::new(Some(label));
+    text.add_css_class("toolbar-button-label");
+    text.add_css_class(&theme::text_css_class("body"));
+    button.set_child(Some(&text));
+    button
+}
+
 fn icon_button(
     icon_name: &str,
     action_name: &str,
@@ -207,6 +260,7 @@ fn icon_button(
     tooltips: &mut Vec<IconButtonTooltip>,
 ) -> Button {
     let button = Button::new();
+    button.add_css_class("toolbar-button");
     button.add_css_class("toolbar-icon-button");
     button.add_css_class(&theme::button_css_class(appearance_id));
     button.set_action_name(Some(action_name));
@@ -223,6 +277,42 @@ fn icon_button(
         button: button.clone(),
         label: tip_label,
     });
+
+    button
+}
+
+fn standalone_icon_button(icon_name: &str, tooltip: &str, appearance_id: &str) -> Button {
+    let button = Button::new();
+    button.add_css_class("toolbar-button");
+    button.add_css_class("toolbar-icon-button");
+    button.add_css_class(&theme::button_css_class(appearance_id));
+
+    let icon = Image::from_icon_name(icon_name);
+    icon.set_icon_size(gtk::IconSize::Normal);
+    button.set_child(Some(&icon));
+
+    let popover = Popover::new();
+    popover.add_css_class("icon-button-tooltip-popover");
+    popover.set_has_arrow(false);
+    popover.set_autohide(false);
+    popover.set_position(PositionType::Bottom);
+    popover.set_parent(&button);
+
+    let tip_label = Label::new(Some(tooltip));
+    tip_label.add_css_class("icon-button-tooltip-label");
+    tip_label.add_css_class(&theme::text_css_class("meta"));
+    popover.set_child(Some(&tip_label));
+
+    let hover = EventControllerMotion::new();
+    let popover_enter = popover.clone();
+    hover.connect_enter(move |_, _, _| {
+        popover_enter.popup();
+    });
+    let popover_leave = popover.clone();
+    hover.connect_leave(move |_| {
+        popover_leave.popdown();
+    });
+    button.add_controller(hover);
 
     button
 }

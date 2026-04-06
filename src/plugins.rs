@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::str;
 
-use glib::translate::FromGlibPtrFull;
-use gtk::prelude::ObjectExt;
+use glib::translate::{FromGlibPtrFull, IntoGlibPtr};
+use gtk::prelude::*;
 use gtk::{ApplicationWindow, Widget};
 use libloading::{Library, Symbol};
 use maruzzella_api::{
@@ -17,9 +17,9 @@ use maruzzella_api::{
     MzPluginDescriptorView, MzPluginDiagnosticSummary, MzPluginLogSummary, MzPluginSnapshot,
     MzPluginSummary, MzPluginVTable, MzServiceCatalog, MzServiceQuery, MzServiceSpec,
     MzServiceSummary, MzSettingsCatalog, MzSettingsPage, MzSettingsPageSummary, MzStatus,
-    MzStatusCode, MzStr, MzSurfaceContribution, MzViewCatalog, MzViewFactorySpec,
-    MzViewOpenDisposition, MzViewPlacement, MzViewQuery, MzViewQueryResult, MzViewSummary,
-    MZ_ABI_VERSION_V1,
+    MzStatusCode, MzStr, MzSurfaceContribution, MzToolbarDisplayMode, MzToolbarWidgetSpec,
+    MzViewCatalog, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement, MzViewQuery,
+    MzViewQueryResult, MzViewSummary, MZ_ABI_VERSION_V1,
 };
 
 use crate::layout;
@@ -28,6 +28,8 @@ use crate::plugin_tabs::{
     GroupHandles, OpenPluginViewOutcome, OpenPluginViewRequest as ShellOpenPluginViewRequest,
     ShellState,
 };
+use crate::spec::ToolbarItemSpec;
+use crate::shell::topbar;
 use crate::{MaruzzellaHandle, WorkspaceSession};
 
 const ENTRY_SYMBOL: &[u8] = b"maruzzella_plugin_entry\0";
@@ -349,6 +351,7 @@ impl PluginRuntime {
                 register_surface_contribution: None,
                 register_view_factory: None,
                 register_service: None,
+                create_toolbar_widget: Some(host_create_toolbar_widget),
                 register_host_event_subscriber: None,
                 dispatch_command: Some(runtime_dispatch_command),
                 open_view: Some(host_open_view),
@@ -950,6 +953,7 @@ impl HostState {
             register_surface_contribution: Some(host_register_surface_contribution),
             register_view_factory: Some(host_register_view_factory),
             register_service: Some(host_register_service),
+            create_toolbar_widget: None,
             register_host_event_subscriber: Some(host_register_host_event_subscriber),
             dispatch_command: Some(host_dispatch_command),
             open_view: None,
@@ -1210,6 +1214,60 @@ extern "C" fn host_register_service(service: *const MzServiceSpec) -> MzStatus {
         payload: bytes_to_vec(service.payload),
     });
     MzStatus::OK
+}
+
+extern "C" fn host_create_toolbar_widget(spec: *const MzToolbarWidgetSpec) -> *mut std::ffi::c_void {
+    let Some(shell_host) = current_shell_host() else {
+        return std::ptr::null_mut();
+    };
+    let Some(spec) = (unsafe { spec.as_ref() }) else {
+        return std::ptr::null_mut();
+    };
+
+    let icon_name = decode_runtime_str("toolbar_widget.icon_name", spec.icon_name).ok();
+    let label = decode_runtime_str("toolbar_widget.label", spec.label).ok();
+    let command_id = match decode_runtime_str("toolbar_widget.command_id", spec.command_id) {
+        Ok(value) if !value.is_empty() => value,
+        _ => return std::ptr::null_mut(),
+    };
+    let appearance_id = decode_runtime_str("toolbar_widget.appearance_id", spec.appearance_id)
+        .unwrap_or_default();
+    let payload = bytes_to_vec(spec.payload);
+
+    let item = ToolbarItemSpec {
+        id: command_id.clone(),
+        icon_name: icon_name.filter(|value| !value.is_empty()),
+        label: label.filter(|value| !value.is_empty()),
+        command_id: command_id.clone(),
+        payload: payload.clone(),
+        secondary: false,
+        display_mode: match spec.display_mode {
+            MzToolbarDisplayMode::IconOnly => crate::spec::ToolbarDisplayMode::IconOnly,
+            MzToolbarDisplayMode::IconAndText => crate::spec::ToolbarDisplayMode::IconAndText,
+            MzToolbarDisplayMode::TextOnly => crate::spec::ToolbarDisplayMode::TextOnly,
+        },
+        appearance_id: if appearance_id.is_empty() {
+            "ghost".to_string()
+        } else {
+            appearance_id
+        },
+    };
+
+    let button = topbar::standalone_toolbar_item_button(&item);
+    if let Some(runtime) = shell_host.runtime.upgrade() {
+        button.connect_clicked(move |_| {
+            if let Err(status) = runtime.dispatch_command(&command_id, &payload) {
+                eprintln!("plugin toolbar widget command failed: {command_id} ({status:?})");
+            }
+        });
+    } else {
+        button.set_sensitive(false);
+    }
+
+    unsafe {
+        <gtk::Widget as IntoGlibPtr<*mut gtk::ffi::GtkWidget>>::into_glib_ptr(button.upcast())
+            as *mut std::ffi::c_void
+    }
 }
 
 extern "C" fn host_register_host_event_subscriber(

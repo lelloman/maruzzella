@@ -420,6 +420,8 @@ pub struct MzToolbarItem {
     pub secondary: bool,
     #[serde(default)]
     pub display_mode: MzToolbarDisplayMode,
+    #[serde(default)]
+    pub appearance_id: String,
 }
 
 impl MzToolbarItem {
@@ -438,11 +440,17 @@ impl MzToolbarItem {
             payload: Vec::new(),
             secondary,
             display_mode: MzToolbarDisplayMode::default(),
+            appearance_id: String::new(),
         }
     }
 
     pub fn with_display_mode(mut self, mode: MzToolbarDisplayMode) -> Self {
         self.display_mode = mode;
+        self
+    }
+
+    pub fn with_appearance(mut self, appearance_id: impl Into<String>) -> Self {
+        self.appearance_id = appearance_id.into();
         self
     }
 
@@ -912,6 +920,17 @@ pub struct MzViewFactorySpec {
     pub create: MzCreateViewFn,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MzToolbarWidgetSpec {
+    pub icon_name: MzStr,
+    pub label: MzStr,
+    pub command_id: MzStr,
+    pub payload: MzBytes,
+    pub display_mode: MzToolbarDisplayMode,
+    pub appearance_id: MzStr,
+}
+
 pub type MzLogFn = extern "C" fn(level: MzLogLevel, message: MzStr);
 pub type MzCommandInvokeFn = extern "C" fn(payload: MzBytes) -> MzStatus;
 pub type MzRegisterCommandFn = extern "C" fn(command: *const MzCommandSpec) -> MzStatus;
@@ -920,6 +939,8 @@ pub type MzRegisterSurfaceContributionFn =
     extern "C" fn(contribution: *const MzSurfaceContribution) -> MzStatus;
 pub type MzRegisterViewFactoryFn = extern "C" fn(factory: *const MzViewFactorySpec) -> MzStatus;
 pub type MzRegisterServiceFn = extern "C" fn(service: *const MzServiceSpec) -> MzStatus;
+pub type MzCreateToolbarWidgetFn =
+    extern "C" fn(spec: *const MzToolbarWidgetSpec) -> *mut c_void;
 pub type MzHostEventHandlerFn = extern "C" fn(event: MzBytes) -> MzStatus;
 pub type MzRegisterHostEventSubscriberFn =
     extern "C" fn(event_id: MzStr, handler: MzHostEventHandlerFn) -> MzStatus;
@@ -952,6 +973,7 @@ pub struct MzHostApi {
     pub register_surface_contribution: Option<MzRegisterSurfaceContributionFn>,
     pub register_view_factory: Option<MzRegisterViewFactoryFn>,
     pub register_service: Option<MzRegisterServiceFn>,
+    pub create_toolbar_widget: Option<MzCreateToolbarWidgetFn>,
     pub register_host_event_subscriber: Option<MzRegisterHostEventSubscriberFn>,
     pub dispatch_command: Option<MzDispatchCommandFn>,
     pub open_view: Option<MzOpenViewFn>,
@@ -983,6 +1005,7 @@ impl MzHostApi {
             register_surface_contribution: None,
             register_view_factory: None,
             register_service: None,
+            create_toolbar_widget: None,
             register_host_event_subscriber: None,
             dispatch_command: None,
             open_view: None,

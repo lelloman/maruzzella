@@ -237,10 +237,14 @@ fn merge_runtime_toolbar(
                         crate::spec::ToolbarDisplayMode::TextOnly
                     }
                 },
-                appearance_id: if item.secondary {
-                    "ghost".to_string()
+                appearance_id: if item.appearance_id.is_empty() {
+                    if item.secondary {
+                        "ghost".to_string()
+                    } else {
+                        "primary".to_string()
+                    }
                 } else {
-                    "primary".to_string()
+                    item.appearance_id
                 },
             });
         }

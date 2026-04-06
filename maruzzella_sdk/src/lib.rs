@@ -18,7 +18,8 @@ pub use maruzzella_api::{
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,
     MzPluginDescriptorView, MzPluginVTable, MzServiceQuery, MzServiceSpec, MzStatus, MzStr,
-    MzSurfaceContribution, MzVersion, MzViewFactorySpec, MzViewQuery, MZ_ABI_VERSION_V1,
+    MzSurfaceContribution, MzToolbarWidgetSpec, MzVersion, MzViewFactorySpec, MzViewQuery,
+    MZ_ABI_VERSION_V1,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -441,6 +442,29 @@ pub struct ViewQuery<'a> {
     pub instance_key: Option<&'a str>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolbarWidgetSpec<'a> {
+    pub icon_name: Option<&'a str>,
+    pub label: Option<&'a str>,
+    pub command_id: &'a str,
+    pub payload: &'a [u8],
+    pub display_mode: MzToolbarDisplayMode,
+    pub appearance_id: Option<&'a str>,
+}
+
+impl<'a> ToolbarWidgetSpec<'a> {
+    pub fn new(command_id: &'a str) -> Self {
+        Self {
+            icon_name: None,
+            label: None,
+            command_id,
+            payload: &[],
+            display_mode: MzToolbarDisplayMode::default(),
+            appearance_id: None,
+        }
+    }
+}
+
 impl<'a> ViewQuery<'a> {
     pub fn new(plugin_id: &'a str, view_id: &'a str) -> Self {
         Self {
@@ -528,6 +552,47 @@ impl<'a> HostApi<'a> {
             Ok(())
         } else {
             Err(status.code)
+        }
+    }
+
+    pub fn create_toolbar_widget(
+        &self,
+        spec: &ToolbarWidgetSpec<'_>,
+    ) -> Result<*mut std::ffi::c_void, MzStatusCode> {
+        let Some(create) = self.raw.create_toolbar_widget else {
+            return Err(MzStatusCode::NotFound);
+        };
+        let icon_name = spec.icon_name.unwrap_or("");
+        let label = spec.label.unwrap_or("");
+        let appearance_id = spec.appearance_id.unwrap_or("");
+        let ffi = MzToolbarWidgetSpec {
+            icon_name: MzStr {
+                ptr: icon_name.as_ptr(),
+                len: icon_name.len(),
+            },
+            label: MzStr {
+                ptr: label.as_ptr(),
+                len: label.len(),
+            },
+            command_id: MzStr {
+                ptr: spec.command_id.as_ptr(),
+                len: spec.command_id.len(),
+            },
+            payload: MzBytes {
+                ptr: spec.payload.as_ptr(),
+                len: spec.payload.len(),
+            },
+            display_mode: spec.display_mode,
+            appearance_id: MzStr {
+                ptr: appearance_id.as_ptr(),
+                len: appearance_id.len(),
+            },
+        };
+        let widget = create(&ffi);
+        if widget.is_null() {
+            Err(MzStatusCode::InternalError)
+        } else {
+            Ok(widget)
         }
     }
 

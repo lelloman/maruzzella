@@ -551,6 +551,69 @@ entry {
   background: transparent;
 }
 
+.app-window notebook > header scrollbar.horizontal,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal {
+  min-height: 4px;
+  max-height: 4px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+  transition: 120ms ease;
+}
+
+.app-window notebook > header:hover scrollbar.horizontal,
+.app-window .workbench-tab-strip-scroller:hover scrollbar.horizontal {
+  opacity: 0.65;
+}
+
+.app-window notebook > header scrollbar.horizontal trough,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal trough,
+.app-window notebook > header scrollbar.horizontal:hover trough,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal:hover trough {
+  min-height: 4px;
+  max-height: 4px;
+  padding: 0;
+  margin: 2px 0;
+  background: alpha({{color_scrollbar_trough}}, 0.18);
+  border-radius: {{radius_pill}};
+}
+
+.app-window notebook > header scrollbar.horizontal slider,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal slider,
+.app-window notebook > header scrollbar.horizontal:hover slider,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal:hover slider,
+.app-window notebook > header scrollbar.horizontal slider:hover,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal slider:hover {
+  min-width: 28px;
+  min-height: 4px;
+  max-height: 4px;
+  padding: 0;
+  margin: 2px 0;
+  background: alpha({{color_scrollbar_slider}}, 0.7);
+  border-radius: {{radius_pill}};
+}
+
+.app-window notebook > header scrollbar.horizontal:hover,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal:hover {
+  min-height: 4px;
+  max-height: 4px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-window notebook > header scrollbar.horizontal:hover slider,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal:hover slider,
+.app-window notebook > header scrollbar.horizontal slider:hover,
+.app-window .workbench-tab-strip-scroller scrollbar.horizontal slider:hover {
+  background: alpha({{color_notebook_tab_active_border}}, 0.9);
+}
+
 .app-window notebook header tab,
 .app-window notebook.workbench-tabs > header tabs tab {
   min-height: {{control_height_medium}};

@@ -202,6 +202,11 @@ pub fn build_tab_page(
         button.set_focus_on_click(false);
         tab_header.append(&button);
         close_button = Some(button);
+    } else {
+        let spacer = GtkBox::new(Orientation::Horizontal, 0);
+        spacer.add_css_class("tab-close-spacer");
+        spacer.set_can_target(false);
+        tab_header.append(&spacer);
     }
 
     BuiltTabPage {

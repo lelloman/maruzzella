@@ -652,6 +652,11 @@ entry {
   color: {{color_tab_close_text}};
 }
 
+.tab-close-spacer {
+  min-width: 16px;
+  min-height: {{tab_close_height}};
+}
+
 .tab-close-button:hover {
   background: {{color_tab_close_hover}};
   color: @text_0;

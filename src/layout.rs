@@ -185,10 +185,13 @@ pub fn load(persistence_id: &str, default_spec: &ShellSpec) -> PersistedShell {
         };
     };
     inject_missing_tab_strip_flags(&mut value, default_spec);
-    serde_json::from_value(value).unwrap_or_else(|_| PersistedShell {
-        spec: default_spec.clone(),
-        panes: PanePositions::default(),
-    })
+    let mut shell =
+        serde_json::from_value::<PersistedShell>(value).unwrap_or_else(|_| PersistedShell {
+            spec: default_spec.clone(),
+            panes: PanePositions::default(),
+        });
+    restore_app_owned_shell_fields(&mut shell.spec, default_spec);
+    shell
 }
 
 pub fn load_for_slot(persistence_id: &str, slot: &str, default_spec: &ShellSpec) -> PersistedShell {
@@ -204,6 +207,25 @@ pub fn load_for_slot(persistence_id: &str, slot: &str, default_spec: &ShellSpec)
         spec: default_spec.clone(),
         panes: PanePositions::default(),
     }
+}
+
+fn restore_app_owned_shell_fields(spec: &mut ShellSpec, default_spec: &ShellSpec) {
+    spec.title = default_spec.title.clone();
+    spec.search_placeholder = default_spec.search_placeholder.clone();
+    spec.search_command_id = default_spec.search_command_id.clone();
+    spec.status_text = default_spec.status_text.clone();
+    spec.app_appearance_id = default_spec.app_appearance_id.clone();
+    spec.topbar_appearance_id = default_spec.topbar_appearance_id.clone();
+    spec.menu_appearance_id = default_spec.menu_appearance_id.clone();
+    spec.toolbar_appearance_id = default_spec.toolbar_appearance_id.clone();
+    spec.search_input_appearance_id = default_spec.search_input_appearance_id.clone();
+    spec.status_appearance_id = default_spec.status_appearance_id.clone();
+    spec.button_appearance_id = default_spec.button_appearance_id.clone();
+    spec.text_appearance_id = default_spec.text_appearance_id.clone();
+    spec.menu_roots = default_spec.menu_roots.clone();
+    spec.menu_items = default_spec.menu_items.clone();
+    spec.commands = default_spec.commands.clone();
+    spec.toolbar_items = default_spec.toolbar_items.clone();
 }
 
 pub fn save(persistence_id: &str, shell: &PersistedShell) {
@@ -385,7 +407,11 @@ fn merge_workbench_show_tab_strip(
 
 #[cfg(test)]
 mod tests {
-    use super::PanePositions;
+    use super::{restore_app_owned_shell_fields, PanePositions};
+    use crate::product::default_product_spec;
+    use crate::spec::{
+        CommandSpec, MenuItemSpec, MenuRootSpec, ToolbarDisplayMode, ToolbarItemSpec,
+    };
 
     #[test]
     fn pane_preferences_round_to_resolution_buckets() {
@@ -430,5 +456,61 @@ mod tests {
         assert_eq!(panes.tracked_buckets("shell.vertical").len(), 10);
         assert_eq!(panes.preferred_position("shell.vertical", 1920), Some(1400));
         assert!(!panes.tracked_buckets("shell.vertical").contains(&640));
+    }
+
+    #[test]
+    fn persisted_layout_does_not_override_app_owned_chrome() {
+        let mut current = default_product_spec().shell_spec();
+        current.title = "Current App".to_string();
+        current.menu_roots = vec![MenuRootSpec {
+            id: "file".to_string(),
+            label: "File".to_string(),
+        }];
+        current.menu_items = vec![MenuItemSpec {
+            id: "open".to_string(),
+            root_id: "file".to_string(),
+            label: "Open".to_string(),
+            command_id: "app.open".to_string(),
+            payload: Vec::new(),
+        }];
+        current.commands = vec![CommandSpec {
+            id: "app.open".to_string(),
+            title: "Open".to_string(),
+        }];
+        current.toolbar_items = vec![ToolbarItemSpec {
+            id: "open".to_string(),
+            icon_name: None,
+            label: Some("Open".to_string()),
+            command_id: "app.open".to_string(),
+            payload: Vec::new(),
+            secondary: false,
+            display_mode: ToolbarDisplayMode::TextOnly,
+            appearance_id: "primary".to_string(),
+        }];
+
+        let mut persisted = current.clone();
+        persisted.title = "Stale App".to_string();
+        persisted.status_text = "Stale status".to_string();
+        persisted.menu_roots = vec![MenuRootSpec {
+            id: "legacy".to_string(),
+            label: "Legacy".to_string(),
+        }];
+        persisted.menu_items.clear();
+        persisted.commands.clear();
+        persisted.toolbar_items.clear();
+        persisted.bottom_panel.active_tab_id = Some("persisted-bottom-tab".to_string());
+
+        restore_app_owned_shell_fields(&mut persisted, &current);
+
+        assert_eq!(persisted.title, "Current App");
+        assert_eq!(persisted.status_text, current.status_text);
+        assert_eq!(persisted.menu_roots[0].id, "file");
+        assert_eq!(persisted.menu_items[0].id, "open");
+        assert_eq!(persisted.commands[0].id, "app.open");
+        assert_eq!(persisted.toolbar_items[0].id, "open");
+        assert_eq!(
+            persisted.bottom_panel.active_tab_id.as_deref(),
+            Some("persisted-bottom-tab")
+        );
     }
 }

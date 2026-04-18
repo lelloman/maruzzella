@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::product::default_product_spec;
-use crate::spec::{ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
+use crate::spec::{make_workbench_tabs_closeable, ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PanePositions {
@@ -230,6 +230,7 @@ fn restore_app_owned_shell_fields(spec: &mut ShellSpec, default_spec: &ShellSpec
     restore_group_app_owned_fields(&mut spec.right_panel, &default_spec.right_panel);
     restore_group_app_owned_fields(&mut spec.bottom_panel, &default_spec.bottom_panel);
     restore_workbench_app_owned_fields(&mut spec.workbench, &default_spec.workbench);
+    make_workbench_tabs_closeable(&mut spec.workbench);
 }
 
 fn restore_group_app_owned_fields(group: &mut TabGroupSpec, default_group: &TabGroupSpec) {
@@ -455,8 +456,8 @@ mod tests {
     use super::{restore_app_owned_shell_fields, PanePositions};
     use crate::product::default_product_spec;
     use crate::spec::{
-        CommandSpec, MenuItemSpec, MenuRootSpec, TabGroupSpec, ToolbarDisplayMode, ToolbarItemSpec,
-        WorkbenchNodeSpec,
+        text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, TabGroupSpec, ToolbarDisplayMode,
+        ToolbarItemSpec, WorkbenchNodeSpec,
     };
 
     #[test]
@@ -534,8 +535,12 @@ mod tests {
             appearance_id: "primary".to_string(),
         }];
         current.workbench = WorkbenchNodeSpec::Group(
-            TabGroupSpec::new("workbench-main", None, Vec::new())
-                .with_tab_strip_appearance("current-workbench-tabs"),
+            TabGroupSpec::new(
+                "workbench-main",
+                Some("main"),
+                vec![text_tab("main", "workbench-main", "Main", "", false)],
+            )
+            .with_tab_strip_appearance("current-workbench-tabs"),
         );
 
         let mut persisted = current.clone();
@@ -557,6 +562,7 @@ mod tests {
                 panic!("test workbench should be a group");
             };
             group.tab_strip_appearance_id = "stale-workbench-tabs".to_string();
+            group.tabs[0].closable = false;
             group
         });
         persisted.bottom_panel.active_tab_id = Some("persisted-bottom-tab".to_string());
@@ -591,6 +597,7 @@ mod tests {
                     group.tab_strip_appearance_id,
                     current_group.tab_strip_appearance_id
                 );
+                assert!(group.tabs[0].closable);
             }
             _ => panic!("test workbench should be a group"),
         }

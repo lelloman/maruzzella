@@ -171,6 +171,21 @@ pub enum WorkbenchNodeSpec {
     },
 }
 
+pub fn make_workbench_tabs_closeable(node: &mut WorkbenchNodeSpec) {
+    match node {
+        WorkbenchNodeSpec::Group(group) => {
+            for tab in &mut group.tabs {
+                tab.closable = true;
+            }
+        }
+        WorkbenchNodeSpec::Split { children, .. } => {
+            for child in children {
+                make_workbench_tabs_closeable(child);
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommandSpec {
     pub id: String,

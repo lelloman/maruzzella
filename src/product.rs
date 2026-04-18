@@ -4,8 +4,9 @@ use maruzzella_api::{MzContributionSurface, MzStartupTab, MzToolbarItem};
 
 use crate::plugins::PluginRuntime;
 use crate::spec::{
-    plugin_tab_with_instance, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec,
-    PanelResizePolicy, ShellSpec, SplitAxis, TabGroupSpec, ToolbarItemSpec, WorkbenchNodeSpec,
+    make_workbench_tabs_closeable, plugin_tab_with_instance, BottomPanelLayout, CommandSpec,
+    MenuItemSpec, MenuRootSpec, PanelResizePolicy, ShellSpec, SplitAxis, TabGroupSpec,
+    ToolbarItemSpec, WorkbenchNodeSpec,
 };
 
 #[derive(Clone, Debug)]
@@ -41,6 +42,9 @@ pub struct ProductSpec {
 
 impl ProductSpec {
     pub fn shell_spec(&self) -> ShellSpec {
+        let mut workbench = self.layout.workbench.clone();
+        make_workbench_tabs_closeable(&mut workbench);
+
         ShellSpec {
             title: self.branding.title.clone(),
             search_placeholder: self.branding.search_placeholder.clone(),
@@ -62,7 +66,7 @@ impl ProductSpec {
             left_panel: self.layout.left_panel.clone(),
             right_panel: self.layout.right_panel.clone(),
             bottom_panel: self.layout.bottom_panel.clone(),
-            workbench: self.layout.workbench.clone(),
+            workbench,
             left_panel_resize: self.layout.left_panel_resize,
             right_panel_resize: self.layout.right_panel_resize,
             bottom_panel_resize: self.layout.bottom_panel_resize,
@@ -96,6 +100,7 @@ pub fn merge_runtime_startup_tabs(spec: &mut ShellSpec, runtime: &PluginRuntime)
             );
             continue;
         };
+        let closable = tab.closable || find_group_in_workbench(&spec.workbench, &tab.group_id);
         let Some(group) = find_group_mut(spec, &tab.group_id) else {
             continue;
         };
@@ -113,7 +118,7 @@ pub fn merge_runtime_startup_tabs(spec: &mut ShellSpec, runtime: &PluginRuntime)
             tab.instance_key.as_deref(),
             tab.payload,
             &tab.placeholder,
-            tab.closable,
+            closable,
         ));
         if tab.active {
             group.active_tab_id = Some(tab.tab_id);
@@ -186,7 +191,6 @@ fn merge_runtime_menus(spec: &mut ShellSpec, runtime: &PluginRuntime) {
             });
         }
     }
-
 }
 
 fn merge_runtime_toolbar(
@@ -289,14 +293,12 @@ pub fn default_product_spec() -> ProductSpec {
                         .with_panel_header_appearance("secondary")
                         .with_tab_strip_appearance("editor"),
                 ),
-                WorkbenchNodeSpec::Group(TabGroupSpec::new(
-                    "workbench-secondary",
-                    None,
-                    Vec::new(),
-                )
-                .with_panel_appearance("workbench")
-                .with_panel_header_appearance("secondary")
-                .with_tab_strip_appearance("editor")),
+                WorkbenchNodeSpec::Group(
+                    TabGroupSpec::new("workbench-secondary", None, Vec::new())
+                        .with_panel_appearance("workbench")
+                        .with_panel_header_appearance("secondary")
+                        .with_tab_strip_appearance("editor"),
+                ),
             ],
         },
         left_panel_resize: PanelResizePolicy::default(),
@@ -337,6 +339,15 @@ fn find_group_mut_in_workbench<'a>(
         WorkbenchNodeSpec::Split { children, .. } => children
             .iter_mut()
             .find_map(|child| find_group_mut_in_workbench(child, group_id)),
+    }
+}
+
+fn find_group_in_workbench(node: &WorkbenchNodeSpec, group_id: &str) -> bool {
+    match node {
+        WorkbenchNodeSpec::Group(group) => group.id == group_id,
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter()
+            .any(|child| find_group_in_workbench(child, group_id)),
     }
 }
 

@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gtk::prelude::*;
 use gtk::gdk;
+use gtk::prelude::*;
 use gtk::{
     Align, Box as GtkBox, Button, Entry, EventControllerScroll, EventControllerScrollFlags, Label,
-    ListBox, Notebook, Orientation, PolicyType, ScrolledWindow, SelectionMode, TextBuffer, TextView,
+    ListBox, Notebook, Orientation, PolicyType, ScrolledWindow, SelectionMode, TextBuffer,
+    TextView,
 };
 
 use crate::plugins::PluginRuntime;
@@ -202,11 +203,6 @@ pub fn build_tab_page(
         button.set_focus_on_click(false);
         tab_header.append(&button);
         close_button = Some(button);
-    } else {
-        let spacer = GtkBox::new(Orientation::Horizontal, 0);
-        spacer.add_css_class("tab-close-spacer");
-        spacer.set_can_target(false);
-        tab_header.append(&spacer);
     }
 
     BuiltTabPage {
@@ -263,8 +259,7 @@ fn build_plugin_widget(
 }
 
 fn install_shift_scroll(scroller: &ScrolledWindow) {
-    let scroll_controller =
-        EventControllerScroll::new(EventControllerScrollFlags::VERTICAL);
+    let scroll_controller = EventControllerScroll::new(EventControllerScrollFlags::VERTICAL);
     scroll_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
     let scroller_ref = scroller.clone();
     scroll_controller.connect_scroll(move |controller, _dx, dy| {

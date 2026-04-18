@@ -112,7 +112,7 @@ The intended integration surface is the crate root:
 
 Minimal example:
 
-```rust
+```rust,no_run
 use maruzzella::{default_product_spec, run, MaruzzellaConfig, ThemeSpec};
 
 fn main() {

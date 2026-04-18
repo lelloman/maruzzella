@@ -558,7 +558,6 @@ entry {
 .app-window notebook > header scrollbar.horizontal,
 .app-window .workbench-tab-strip-scroller scrollbar.horizontal {
   min-height: 4px;
-  max-height: 4px;
   padding: 0;
   margin: 0;
   border: 0;
@@ -578,7 +577,6 @@ entry {
 .app-window notebook > header scrollbar.horizontal:hover trough,
 .app-window .workbench-tab-strip-scroller scrollbar.horizontal:hover trough {
   min-height: 4px;
-  max-height: 4px;
   padding: 0;
   margin: 2px 0;
   background: alpha({{color_scrollbar_trough}}, 0.18);
@@ -593,7 +591,6 @@ entry {
 .app-window .workbench-tab-strip-scroller scrollbar.horizontal slider:hover {
   min-width: 28px;
   min-height: 4px;
-  max-height: 4px;
   padding: 0;
   margin: 2px 0;
   background: alpha({{color_scrollbar_slider}}, 0.7);
@@ -603,7 +600,6 @@ entry {
 .app-window notebook > header scrollbar.horizontal:hover,
 .app-window .workbench-tab-strip-scroller scrollbar.horizontal:hover {
   min-height: 4px;
-  max-height: 4px;
   padding: 0;
   margin: 0;
   border: 0;
@@ -719,11 +715,6 @@ entry {
   color: {{color_tab_close_text}};
 }
 
-.tab-close-spacer {
-  min-width: 16px;
-  min-height: {{tab_close_height}};
-}
-
 .tab-close-button:hover {
   background: {{color_tab_close_hover}};
   color: @text_0;
@@ -755,6 +746,7 @@ entry {
 .workbench-tab-strip {
   min-height: {{tab_strip_height}};
   padding: 0;
+  border-spacing: 0;
   background: transparent;
 }
 
@@ -763,6 +755,7 @@ entry {
   min-height: {{tab_height}};
   padding: {{workbench_tab_padding}};
   margin: 0;
+  border-spacing: {{space_sm}};
   border-top: 0;
   border-left: 0;
   border-right: 0;

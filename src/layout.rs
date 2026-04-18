@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::product::default_product_spec;
-use crate::spec::ShellSpec;
+use crate::spec::{ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PanePositions {
@@ -226,6 +226,51 @@ fn restore_app_owned_shell_fields(spec: &mut ShellSpec, default_spec: &ShellSpec
     spec.menu_items = default_spec.menu_items.clone();
     spec.commands = default_spec.commands.clone();
     spec.toolbar_items = default_spec.toolbar_items.clone();
+    restore_group_app_owned_fields(&mut spec.left_panel, &default_spec.left_panel);
+    restore_group_app_owned_fields(&mut spec.right_panel, &default_spec.right_panel);
+    restore_group_app_owned_fields(&mut spec.bottom_panel, &default_spec.bottom_panel);
+    restore_workbench_app_owned_fields(&mut spec.workbench, &default_spec.workbench);
+}
+
+fn restore_group_app_owned_fields(group: &mut TabGroupSpec, default_group: &TabGroupSpec) {
+    group.show_tab_strip = default_group.show_tab_strip;
+    group.panel_appearance_id = default_group.panel_appearance_id.clone();
+    group.panel_header_appearance_id = default_group.panel_header_appearance_id.clone();
+    group.tab_strip_appearance_id = default_group.tab_strip_appearance_id.clone();
+    group.text_appearance_id = default_group.text_appearance_id.clone();
+
+    for tab in &mut group.tabs {
+        if let Some(default_tab) = default_group
+            .tabs
+            .iter()
+            .find(|candidate| candidate.id == tab.id)
+        {
+            tab.text_appearance_id = default_tab.text_appearance_id.clone();
+        }
+    }
+}
+
+fn restore_workbench_app_owned_fields(
+    node: &mut WorkbenchNodeSpec,
+    default_node: &WorkbenchNodeSpec,
+) {
+    match (node, default_node) {
+        (WorkbenchNodeSpec::Group(group), WorkbenchNodeSpec::Group(default_group)) => {
+            restore_group_app_owned_fields(group, default_group);
+        }
+        (
+            WorkbenchNodeSpec::Split { children, .. },
+            WorkbenchNodeSpec::Split {
+                children: default_children,
+                ..
+            },
+        ) => {
+            for (child, default_child) in children.iter_mut().zip(default_children.iter()) {
+                restore_workbench_app_owned_fields(child, default_child);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub fn save(persistence_id: &str, shell: &PersistedShell) {
@@ -410,7 +455,8 @@ mod tests {
     use super::{restore_app_owned_shell_fields, PanePositions};
     use crate::product::default_product_spec;
     use crate::spec::{
-        CommandSpec, MenuItemSpec, MenuRootSpec, ToolbarDisplayMode, ToolbarItemSpec,
+        CommandSpec, MenuItemSpec, MenuRootSpec, TabGroupSpec, ToolbarDisplayMode, ToolbarItemSpec,
+        WorkbenchNodeSpec,
     };
 
     #[test]
@@ -487,6 +533,10 @@ mod tests {
             display_mode: ToolbarDisplayMode::TextOnly,
             appearance_id: "primary".to_string(),
         }];
+        current.workbench = WorkbenchNodeSpec::Group(
+            TabGroupSpec::new("workbench-main", None, Vec::new())
+                .with_tab_strip_appearance("current-workbench-tabs"),
+        );
 
         let mut persisted = current.clone();
         persisted.title = "Stale App".to_string();
@@ -498,6 +548,17 @@ mod tests {
         persisted.menu_items.clear();
         persisted.commands.clear();
         persisted.toolbar_items.clear();
+        persisted.left_panel.panel_appearance_id = "stale-panel".to_string();
+        persisted.left_panel.panel_header_appearance_id = "stale-header".to_string();
+        persisted.left_panel.tab_strip_appearance_id = "stale-tabs".to_string();
+        persisted.left_panel.text_appearance_id = "stale-text".to_string();
+        persisted.workbench = WorkbenchNodeSpec::Group({
+            let WorkbenchNodeSpec::Group(mut group) = current.workbench.clone() else {
+                panic!("test workbench should be a group");
+            };
+            group.tab_strip_appearance_id = "stale-workbench-tabs".to_string();
+            group
+        });
         persisted.bottom_panel.active_tab_id = Some("persisted-bottom-tab".to_string());
 
         restore_app_owned_shell_fields(&mut persisted, &current);
@@ -508,6 +569,31 @@ mod tests {
         assert_eq!(persisted.menu_items[0].id, "open");
         assert_eq!(persisted.commands[0].id, "app.open");
         assert_eq!(persisted.toolbar_items[0].id, "open");
+        assert_eq!(
+            persisted.left_panel.panel_appearance_id,
+            current.left_panel.panel_appearance_id
+        );
+        assert_eq!(
+            persisted.left_panel.panel_header_appearance_id,
+            current.left_panel.panel_header_appearance_id
+        );
+        assert_eq!(
+            persisted.left_panel.tab_strip_appearance_id,
+            current.left_panel.tab_strip_appearance_id
+        );
+        assert_eq!(
+            persisted.left_panel.text_appearance_id,
+            current.left_panel.text_appearance_id
+        );
+        match (&persisted.workbench, &current.workbench) {
+            (WorkbenchNodeSpec::Group(group), WorkbenchNodeSpec::Group(current_group)) => {
+                assert_eq!(
+                    group.tab_strip_appearance_id,
+                    current_group.tab_strip_appearance_id
+                );
+            }
+            _ => panic!("test workbench should be a group"),
+        }
         assert_eq!(
             persisted.bottom_panel.active_tab_id.as_deref(),
             Some("persisted-bottom-tab")

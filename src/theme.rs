@@ -916,7 +916,7 @@ fn default_component_tokens() -> BTreeMap<String, String> {
             "tab_strip_scroller_border".to_string(),
             "1px solid #323232".to_string(),
         ),
-        ("tab_strip_height".to_string(), "26px".to_string()),
+        ("tab_strip_height".to_string(), "30px".to_string()),
         (
             "color_workbench_tab_bg".to_string(),
             "transparent".to_string(),
@@ -937,7 +937,7 @@ fn default_component_tokens() -> BTreeMap<String, String> {
             "color_workbench_tab_active".to_string(),
             "transparent".to_string(),
         ),
-        ("workbench_tab_padding".to_string(), "0 0 0 8px".to_string()),
+        ("workbench_tab_padding".to_string(), "0 10px".to_string()),
         ("workbench_tab_border_width".to_string(), "2px".to_string()),
         ("color_drag_preview_bg".to_string(), "#45494a".to_string()),
         (

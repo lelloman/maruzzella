@@ -2,7 +2,7 @@ use gtk::gio;
 use gtk::prelude::*;
 use gtk::{
     Box as GtkBox, Button, Entry, EventControllerMotion, Fixed, Image, Label, Orientation,
-    Overlay, Popover, PopoverMenuBar, PositionType,
+    Overlay, PopoverMenuBar,
 };
 
 use crate::commands::CommandRegistry;
@@ -11,6 +11,7 @@ use crate::spec::{
     command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarDisplayMode, ToolbarItemSpec,
 };
 use crate::theme;
+use maruzzella_sdk::attach_text_tooltip;
 
 struct IconButtonTooltip {
     button: Button,
@@ -270,7 +271,7 @@ fn icon_button(
     button.set_child(Some(&icon));
 
     let tip_label = Label::new(Some(tooltip));
-    tip_label.add_css_class("icon-button-tooltip-label");
+    tip_label.add_css_class("maruzzella-tooltip-label");
     tip_label.add_css_class(&theme::text_css_class("meta"));
 
     tooltips.push(IconButtonTooltip {
@@ -291,28 +292,7 @@ fn standalone_icon_button(icon_name: &str, tooltip: &str, appearance_id: &str) -
     icon.set_icon_size(gtk::IconSize::Normal);
     button.set_child(Some(&icon));
 
-    let popover = Popover::new();
-    popover.add_css_class("icon-button-tooltip-popover");
-    popover.set_has_arrow(false);
-    popover.set_autohide(false);
-    popover.set_position(PositionType::Bottom);
-    popover.set_parent(&button);
-
-    let tip_label = Label::new(Some(tooltip));
-    tip_label.add_css_class("icon-button-tooltip-label");
-    tip_label.add_css_class(&theme::text_css_class("meta"));
-    popover.set_child(Some(&tip_label));
-
-    let hover = EventControllerMotion::new();
-    let popover_enter = popover.clone();
-    hover.connect_enter(move |_, _, _| {
-        popover_enter.popup();
-    });
-    let popover_leave = popover.clone();
-    hover.connect_leave(move |_| {
-        popover_leave.popdown();
-    });
-    button.add_controller(hover);
+    attach_text_tooltip(&button, tooltip);
 
     button
 }

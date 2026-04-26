@@ -441,6 +441,7 @@ dependencies = [
  "gtk4",
  "libloading",
  "maruzzella_api",
+ "maruzzella_sdk",
  "serde",
  "serde_json",
 ]
@@ -457,6 +458,7 @@ dependencies = [
 name = "maruzzella_sdk"
 version = "0.1.0"
 dependencies = [
+ "gtk4",
  "maruzzella_api",
  "serde",
  "serde_json",

@@ -4,6 +4,9 @@
 //! helpers for plugin descriptors, command/menu/view registration, payload
 //! encoding, and host interaction.
 
+use gtk::prelude::*;
+use gtk::{EventControllerMotion, Label, Popover, PositionType, Widget};
+
 pub use maruzzella_api as ffi;
 pub use maruzzella_api::{
     button_css_class, input_css_class, surface_css_class, tab_strip_css_class, text_css_class,
@@ -22,6 +25,41 @@ use maruzzella_api::{
     MZ_ABI_VERSION_V1,
 };
 use serde::{de::DeserializeOwned, Serialize};
+
+pub fn attach_text_tooltip<W: IsA<Widget>>(widget: &W, text: impl AsRef<str>) {
+    let text = text.as_ref();
+    if text.is_empty() {
+        return;
+    }
+
+    let popover = Popover::new();
+    popover.add_css_class("maruzzella-tooltip-popover");
+    popover.set_has_arrow(false);
+    popover.set_autohide(false);
+    popover.set_position(PositionType::Bottom);
+    popover.set_parent(widget);
+
+    let label = Label::new(Some(text));
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_xalign(0.0);
+    label.set_yalign(0.0);
+    label.set_max_width_chars(80);
+    label.add_css_class("maruzzella-tooltip-label");
+    label.add_css_class(&text_css_class("meta"));
+    popover.set_child(Some(&label));
+
+    let hover = EventControllerMotion::new();
+    let popover_enter = popover.clone();
+    hover.connect_enter(move |_, _, _| {
+        popover_enter.popup();
+    });
+    let popover_leave = popover.clone();
+    hover.connect_leave(move |_| {
+        popover_leave.popdown();
+    });
+    widget.add_controller(hover);
+}
 
 pub fn encode_json_payload<T: Serialize>(value: &T) -> Result<Vec<u8>, MzStatusCode> {
     serde_json::to_vec(value).map_err(|_| MzStatusCode::InternalError)

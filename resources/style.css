@@ -1055,7 +1055,8 @@ text,
   padding: {{plugin_footer_padding}};
 }
 
-.icon-button-tooltip-label {
+.icon-button-tooltip-label,
+.maruzzella-tooltip-label {
   padding: 4px 8px;
   background: {{color_popover_bg}};
   color: @text_1;
@@ -1063,7 +1064,9 @@ text,
 }
 
 popover.icon-button-tooltip-popover,
-popover.icon-button-tooltip-popover > contents {
+popover.icon-button-tooltip-popover > contents,
+popover.maruzzella-tooltip-popover,
+popover.maruzzella-tooltip-popover > contents {
   background: transparent;
   border: 0;
   box-shadow: none;

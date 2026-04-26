@@ -28,8 +28,8 @@ use crate::plugin_tabs::{
     GroupHandles, OpenPluginViewOutcome, OpenPluginViewRequest as ShellOpenPluginViewRequest,
     ShellState,
 };
-use crate::spec::ToolbarItemSpec;
 use crate::shell::topbar;
+use crate::spec::ToolbarItemSpec;
 use crate::{MaruzzellaHandle, WorkspaceSession};
 
 const ENTRY_SYMBOL: &[u8] = b"maruzzella_plugin_entry\0";
@@ -122,6 +122,7 @@ pub struct RegisteredCommand {
     pub command_id: String,
     pub title: String,
     pub invoke: Option<maruzzella_api::MzCommandInvokeFn>,
+    pub can_invoke: Option<maruzzella_api::MzCommandCanInvokeFn>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -396,6 +397,15 @@ impl PluginRuntime {
         &self.commands
     }
 
+    pub fn can_dispatch_command(&self, command_id: &str) -> bool {
+        self.commands
+            .iter()
+            .find(|command| command.command_id == command_id)
+            .and_then(|command| command.can_invoke)
+            .map(|can_invoke| can_invoke())
+            .unwrap_or(true)
+    }
+
     pub fn dispatch_command(&self, command_id: &str, payload: &[u8]) -> Result<(), MzStatusCode> {
         let Some(command) = self
             .commands
@@ -405,6 +415,19 @@ impl PluginRuntime {
             self.record_command_diagnostic(None, command_id, payload.len(), MzStatusCode::NotFound);
             return Err(MzStatusCode::NotFound);
         };
+        if command
+            .can_invoke
+            .map(|can_invoke| !can_invoke())
+            .unwrap_or(false)
+        {
+            self.record_command_diagnostic(
+                Some(command.plugin_id.as_str()),
+                command_id,
+                payload.len(),
+                MzStatusCode::InvalidArgument,
+            );
+            return Err(MzStatusCode::InvalidArgument);
+        }
         let Some(invoke) = command.invoke else {
             self.record_command_diagnostic(
                 Some(command.plugin_id.as_str()),
@@ -474,11 +497,7 @@ impl PluginRuntime {
         &self.logs
     }
 
-    pub(crate) fn push_diagnostic(
-        &self,
-        plugin_id: Option<String>,
-        message: impl Into<String>,
-    ) {
+    pub(crate) fn push_diagnostic(&self, plugin_id: Option<String>, message: impl Into<String>) {
         self.diagnostics.borrow_mut().push(PluginDiagnostic {
             level: PluginDiagnosticLevel::Error,
             plugin_id,
@@ -493,9 +512,10 @@ impl PluginRuntime {
         message: impl Into<String>,
     ) {
         let message = message.into();
-        let exists = self.diagnostics.borrow().iter().any(|diagnostic| {
-            diagnostic.plugin_id == plugin_id && diagnostic.message == message
-        });
+        let exists =
+            self.diagnostics.borrow().iter().any(|diagnostic| {
+                diagnostic.plugin_id == plugin_id && diagnostic.message == message
+            });
         if !exists {
             self.push_diagnostic(plugin_id, message);
         }
@@ -1015,10 +1035,7 @@ impl HostState {
                 self.logs.push(PluginLogEntry {
                     plugin_id: subscriber.plugin_id.clone(),
                     level: MzLogLevel::Error,
-                    message: format!(
-                        "host event handler failed: {event_id} ({:?})",
-                        status.code
-                    ),
+                    message: format!("host event handler failed: {event_id} ({:?})", status.code),
                 });
             }
         }
@@ -1066,6 +1083,7 @@ extern "C" fn host_register_command(command: *const MzCommandSpec) -> MzStatus {
         command_id,
         title,
         invoke: command.invoke,
+        can_invoke: command.can_invoke,
     });
     if let Some(invoke) = command.invoke {
         state.command_handlers.insert(handler_command_id, invoke);
@@ -1216,7 +1234,9 @@ extern "C" fn host_register_service(service: *const MzServiceSpec) -> MzStatus {
     MzStatus::OK
 }
 
-extern "C" fn host_create_toolbar_widget(spec: *const MzToolbarWidgetSpec) -> *mut std::ffi::c_void {
+extern "C" fn host_create_toolbar_widget(
+    spec: *const MzToolbarWidgetSpec,
+) -> *mut std::ffi::c_void {
     let Some(shell_host) = current_shell_host() else {
         return std::ptr::null_mut();
     };
@@ -1230,8 +1250,8 @@ extern "C" fn host_create_toolbar_widget(spec: *const MzToolbarWidgetSpec) -> *m
         Ok(value) if !value.is_empty() => value,
         _ => return std::ptr::null_mut(),
     };
-    let appearance_id = decode_runtime_str("toolbar_widget.appearance_id", spec.appearance_id)
-        .unwrap_or_default();
+    let appearance_id =
+        decode_runtime_str("toolbar_widget.appearance_id", spec.appearance_id).unwrap_or_default();
     let payload = bytes_to_vec(spec.payload);
 
     let item = ToolbarItemSpec {
@@ -1280,11 +1300,13 @@ extern "C" fn host_register_host_event_subscriber(
     let Ok(event_id) = decode_runtime_str("event.event_id", event_id) else {
         return MzStatus::new(MzStatusCode::InvalidArgument);
     };
-    state.host_event_subscribers.push(RegisteredHostEventSubscriber {
-        plugin_id: state.plugin_id().to_string(),
-        event_id,
-        handler,
-    });
+    state
+        .host_event_subscribers
+        .push(RegisteredHostEventSubscriber {
+            plugin_id: state.plugin_id().to_string(),
+            event_id,
+            handler,
+        });
     MzStatus::OK
 }
 
@@ -1297,15 +1319,21 @@ extern "C" fn host_dispatch_command(command_id: MzStr, payload: MzBytes) -> MzSt
         let Some(shell_host) = current_shell_host() else {
             return MzStatus::new(MzStatusCode::InvalidArgument);
         };
-        let Some(handle_ptr) = (unsafe { shell_host.window.data::<MaruzzellaHandle>("maruzzella-handle") }) else {
+        let Some(handle_ptr) = (unsafe {
+            shell_host
+                .window
+                .data::<MaruzzellaHandle>("maruzzella-handle")
+        }) else {
             return MzStatus::new(MzStatusCode::NotFound);
         };
         let handle = unsafe { handle_ptr.as_ref().clone() };
-        let project_handle = unsafe { std::slice::from_raw_parts(payload.ptr, payload.len) }.to_vec();
+        let project_handle =
+            unsafe { std::slice::from_raw_parts(payload.ptr, payload.len) }.to_vec();
         return match handle.switch_to_workspace(WorkspaceSession {
             project_handle: Some(project_handle),
             shell_spec: None,
             window_policy: None,
+            chrome: None,
         }) {
             Ok(()) => MzStatus::OK,
             Err(_) => MzStatus::new(MzStatusCode::InternalError),
@@ -2190,6 +2218,7 @@ mod tests {
             command_id: MzStr::from_static("shell.plugins"),
             title: MzStr::from_static("Plugins"),
             invoke: Some(plugin_a_invoke),
+            can_invoke: None,
         };
         let menu = maruzzella_api::MzMenuItemSpec {
             plugin_id: MzStr::from_static("maruzzella.base"),
@@ -2227,7 +2256,10 @@ mod tests {
             .expect("surface registrar")(&surface);
         host.register_service.expect("service registrar")(&service);
         host.register_host_event_subscriber
-            .expect("event registrar")(MzStr::from_static("maruzzella.command.dispatched"), observe_host_event);
+            .expect("event registrar")(
+            MzStr::from_static("maruzzella.command.dispatched"),
+            observe_host_event,
+        );
         maruzzella_api::MzStatus::OK
     }
 

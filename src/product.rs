@@ -368,6 +368,7 @@ mod tests {
             command_id: "shell.plugins".to_string(),
             title: "Plugins".to_string(),
             invoke: None,
+            can_invoke: None,
         }];
         runtime.menu_items = vec![RegisteredMenuItem {
             plugin_id: "maruzzella.base".to_string(),

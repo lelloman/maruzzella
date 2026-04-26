@@ -13,10 +13,10 @@ pub use maruzzella_api::{
     ButtonStyle, MzAboutCatalog, MzCommandCatalog, MzCommandSummary, MzConfigContract,
     MzConfigRecord, MzConfigState, MzConfigStateSummary, MzContributionSurface,
     MzDiagnosticCatalog, MzHostEvent, MzLogLevel, MzMenuSurface, MzPluginDependencySummary,
-    MzPluginSnapshot, MzServiceCatalog, MzServiceSummary, MzSettingsCatalog,
-    MzSettingsCategory, MzStartupTab, MzStatusCode, MzToolbarDisplayMode, MzToolbarItem,
-    MzViewCatalog, MzViewOpenDisposition, MzViewPlacement, MzViewSummary, SurfaceLevel,
-    TabStripStyle, TextRole, Tone,
+    MzPluginSnapshot, MzServiceCatalog, MzServiceSummary, MzSettingsCatalog, MzSettingsCategory,
+    MzStartupTab, MzStatusCode, MzToolbarDisplayMode, MzToolbarItem, MzViewCatalog,
+    MzViewOpenDisposition, MzViewPlacement, MzViewSummary, SurfaceLevel, TabStripStyle, TextRole,
+    Tone,
 };
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,
@@ -176,6 +176,7 @@ pub struct CommandSpec {
     pub command_id: &'static str,
     pub title: &'static str,
     pub invoke: Option<maruzzella_api::MzCommandInvokeFn>,
+    pub can_invoke: Option<maruzzella_api::MzCommandCanInvokeFn>,
 }
 
 impl CommandSpec {
@@ -189,11 +190,17 @@ impl CommandSpec {
             command_id,
             title,
             invoke: None,
+            can_invoke: None,
         }
     }
 
     pub const fn with_handler(mut self, invoke: maruzzella_api::MzCommandInvokeFn) -> Self {
         self.invoke = Some(invoke);
+        self
+    }
+
+    pub const fn with_enabled(mut self, can_invoke: maruzzella_api::MzCommandCanInvokeFn) -> Self {
+        self.can_invoke = Some(can_invoke);
         self
     }
 
@@ -203,6 +210,7 @@ impl CommandSpec {
             command_id: MzStr::from_static(self.command_id),
             title: MzStr::from_static(self.title),
             invoke: self.invoke,
+            can_invoke: self.can_invoke,
         }
     }
 }
@@ -644,11 +652,7 @@ impl<'a> HostApi<'a> {
     ) -> Result<(), MzStatusCode> {
         let payload = encode_json_payload(value)?;
         self.register_service(&ServiceSpec::new(
-            plugin_id,
-            service_id,
-            version,
-            summary,
-            payload,
+            plugin_id, service_id, version, summary, payload,
         ))
     }
 

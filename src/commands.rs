@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 
-use gtk::prelude::*;
 use gtk::gio;
+use gtk::prelude::*;
 use gtk::ApplicationWindow;
 
 use crate::app::{MaruzzellaHandle, WorkspaceSession};
@@ -25,10 +25,12 @@ const BASE_EDITOR_VIEW_ID: &str = base_plugin::VIEW_WORKSPACE_EDITOR;
 const CMD_SWITCH_TO_WORKSPACE: &str = "shell.switch_to_workspace";
 
 type CommandHandler = Rc<dyn Fn(&[u8])>;
+type CommandEnabled = Rc<dyn Fn() -> bool>;
 
 #[derive(Clone, Default)]
 pub struct CommandRegistry {
     handlers: HashMap<String, CommandHandler>,
+    enabled: HashMap<String, CommandEnabled>,
 }
 
 impl CommandRegistry {
@@ -44,8 +46,23 @@ impl CommandRegistry {
             .insert(command_id.to_string(), Rc::new(handler));
     }
 
+    pub fn register_enabled<F>(&mut self, command_id: &str, enabled: F)
+    where
+        F: Fn() -> bool + 'static,
+    {
+        self.enabled
+            .insert(command_id.to_string(), Rc::new(enabled));
+    }
+
     pub fn handler_for(&self, command_id: &str) -> Option<CommandHandler> {
         self.handlers.get(command_id).cloned()
+    }
+
+    pub fn is_enabled(&self, command_id: &str) -> bool {
+        self.enabled
+            .get(command_id)
+            .map(|enabled| enabled())
+            .unwrap_or(true)
     }
 }
 
@@ -70,8 +87,9 @@ pub fn shell_registry(
             "maruzzella: shell.switch_to_workspace received payload_len={}",
             payload.len()
         );
-        let Some(handle) = (unsafe { window_for_workspace_switch.data::<MaruzzellaHandle>("maruzzella-handle") })
-            .map(|ptr| unsafe { ptr.as_ref().clone() })
+        let Some(handle) =
+            (unsafe { window_for_workspace_switch.data::<MaruzzellaHandle>("maruzzella-handle") })
+                .map(|ptr| unsafe { ptr.as_ref().clone() })
         else {
             eprintln!("maruzzella: shell.switch_to_workspace missing maruzzella-handle on window");
             return;
@@ -81,6 +99,7 @@ pub fn shell_registry(
             project_handle: Some(payload.to_vec()),
             shell_spec: None,
             window_policy: None,
+            chrome: None,
         });
         eprintln!(
             "maruzzella: shell.switch_to_workspace result={}",
@@ -230,8 +249,7 @@ pub fn shell_registry(
         if path.is_empty() {
             return;
         }
-        let Ok(document) = base_plugin::file_editor_payload_for_path(Path::new(path))
-        else {
+        let Ok(document) = base_plugin::file_editor_payload_for_path(Path::new(path)) else {
             eprintln!("shell.open_file_editor failed for path: {path}");
             return;
         };
@@ -331,6 +349,11 @@ pub fn shell_registry(
                     eprintln!("plugin command failed: {command_id} ({status:?})");
                 }
             });
+            let command_id = command.id.clone();
+            let runtime = plugin_runtime.clone();
+            registry.register_enabled(&command_id.clone(), move || {
+                runtime.can_dispatch_command(&command_id)
+            });
         }
     }
 
@@ -338,12 +361,20 @@ pub fn shell_registry(
     for item in spec
         .menu_items
         .iter()
-        .map(|item| (item.id.as_str(), item.command_id.as_str(), item.payload.clone()))
-        .chain(
-            spec.toolbar_items
-                .iter()
-                .map(|item| (item.id.as_str(), item.command_id.as_str(), item.payload.clone())),
-        )
+        .map(|item| {
+            (
+                item.id.as_str(),
+                item.command_id.as_str(),
+                item.payload.clone(),
+            )
+        })
+        .chain(spec.toolbar_items.iter().map(|item| {
+            (
+                item.id.as_str(),
+                item.command_id.as_str(),
+                item.payload.clone(),
+            )
+        }))
     {
         if !invocation_ids.insert(item.0.to_string()) {
             continue;
@@ -354,6 +385,11 @@ pub fn shell_registry(
         let Some(handler) = registry.handler_for(&command_id) else {
             continue;
         };
+        let enabled_command_id = command_id.clone();
+        let enabled_registry = registry.clone();
+        registry.register_enabled(&action_id, move || {
+            enabled_registry.is_enabled(&enabled_command_id)
+        });
         registry.register(&action_id, move |_| {
             handler(&payload);
         });
@@ -376,7 +412,13 @@ fn open_editor_document(
     request.instance_key = Some(base_plugin::editor_instance_key(&document.document_id));
     request.payload = base_plugin::editor_payload_to_bytes(document).ok()?;
     request.requested_title = Some(document.display_name.clone());
-    open_or_focus_plugin_view(runtime, persistence_id, shell_state, group_handles, &request)
+    open_or_focus_plugin_view(
+        runtime,
+        persistence_id,
+        shell_state,
+        group_handles,
+        &request,
+    )
 }
 
 fn open_file_picker(
@@ -389,7 +431,9 @@ fn open_file_picker(
     let dialog = gtk::FileDialog::builder()
         .title("Open File")
         .initial_folder(&gio::File::for_path(
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))),
+            std::env::current_dir().unwrap_or_else(|_| {
+                std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))
+            }),
         ))
         .build();
     dialog.open(Some(window), gio::Cancellable::NONE, move |result| {
@@ -428,7 +472,9 @@ fn save_editor_as_picker(
         }
     } else {
         builder = builder.initial_folder(&gio::File::for_path(
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))),
+            std::env::current_dir().unwrap_or_else(|_| {
+                std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))
+            }),
         ));
     }
     let dialog = builder.build();
@@ -480,7 +526,8 @@ fn next_untitled_document_id(shell_state: &ShellState) -> String {
         let Some(instance_key) = tab.instance_key.as_deref() else {
             continue;
         };
-        let Some(document_id) = base_plugin::editor_document_id_from_instance_key(instance_key) else {
+        let Some(document_id) = base_plugin::editor_document_id_from_instance_key(instance_key)
+        else {
             continue;
         };
         if let Some(index) = document_id
@@ -583,7 +630,10 @@ fn update_editor_tab_document(
     Ok(())
 }
 
-fn find_tab_by_instance_key(shell_state: &ShellState, instance_key: &str) -> Option<(String, String)> {
+fn find_tab_by_instance_key(
+    shell_state: &ShellState,
+    instance_key: &str,
+) -> Option<(String, String)> {
     let shell = shell_state.borrow();
     find_tab_in_group(&shell.spec.left_panel, instance_key)
         .or_else(|| find_tab_in_group(&shell.spec.right_panel, instance_key))
@@ -591,7 +641,10 @@ fn find_tab_by_instance_key(shell_state: &ShellState, instance_key: &str) -> Opt
         .or_else(|| find_tab_in_workbench(&shell.spec.workbench, instance_key))
 }
 
-fn find_tab_in_group(group: &crate::spec::TabGroupSpec, instance_key: &str) -> Option<(String, String)> {
+fn find_tab_in_group(
+    group: &crate::spec::TabGroupSpec,
+    instance_key: &str,
+) -> Option<(String, String)> {
     group
         .tabs
         .iter()
@@ -629,8 +682,10 @@ fn workbench_tabs_mut<'a>(
 ) -> Box<dyn Iterator<Item = &'a mut crate::spec::TabSpec> + 'a> {
     match node {
         crate::spec::WorkbenchNodeSpec::Group(group) => Box::new(group.tabs.iter_mut()),
-        crate::spec::WorkbenchNodeSpec::Split { children, .. } => {
-            Box::new(children.iter_mut().flat_map(|child| workbench_tabs_mut(child)))
-        }
+        crate::spec::WorkbenchNodeSpec::Split { children, .. } => Box::new(
+            children
+                .iter_mut()
+                .flat_map(|child| workbench_tabs_mut(child)),
+        ),
     }
 }

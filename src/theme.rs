@@ -268,7 +268,8 @@ impl ThemeAppearances {
         let mut surfaces = BTreeMap::new();
         surfaces.insert(
             "app-shell".to_string(),
-            SurfaceAppearance::new(Tone::Neutral, SurfaceLevel::Sunken, TextRole::Body).borderless(),
+            SurfaceAppearance::new(Tone::Neutral, SurfaceLevel::Sunken, TextRole::Body)
+                .borderless(),
         );
         surfaces.insert(
             "topbar".to_string(),
@@ -276,7 +277,8 @@ impl ThemeAppearances {
         );
         surfaces.insert(
             "menu".to_string(),
-            SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Flat, TextRole::BodyStrong).borderless(),
+            SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Flat, TextRole::BodyStrong)
+                .borderless(),
         );
         surfaces.insert(
             "toolbar".to_string(),
@@ -300,7 +302,8 @@ impl ThemeAppearances {
         );
         surfaces.insert(
             "workbench".to_string(),
-            SurfaceAppearance::new(Tone::Neutral, SurfaceLevel::Sunken, TextRole::Body).borderless(),
+            SurfaceAppearance::new(Tone::Neutral, SurfaceLevel::Sunken, TextRole::Body)
+                .borderless(),
         );
         surfaces.insert(
             "console".to_string(),
@@ -319,6 +322,10 @@ impl ThemeAppearances {
         buttons.insert(
             "secondary".to_string(),
             ButtonAppearance::new(Tone::Primary, ButtonStyle::Soft, TextRole::Body),
+        );
+        buttons.insert(
+            "success".to_string(),
+            ButtonAppearance::new(Tone::Success, ButtonStyle::Solid, TextRole::BodyStrong),
         );
         buttons.insert(
             "ghost".to_string(),
@@ -1197,6 +1204,12 @@ button.{class} label,
 button.{class} image {{
   color: {foreground};
 }}
+button.{class} image {{
+  -gtk-icon-palette: success {foreground}, warning {foreground}, error {foreground};
+}}
+button.{class}:disabled {{
+  opacity: 0.42;
+}}
 ",
         height = spec.density.control_height_medium,
         padding = spec.density.space_xl,
@@ -1255,9 +1268,7 @@ fn render_tab_strip_css(spec: &ThemeSpec, id: &str, appearance: &TabStripAppeara
     let text = text_style(spec, appearance.text_role, appearance.tone);
     let active_background = match appearance.style {
         TabStripStyle::Editor => "transparent".to_string(),
-        TabStripStyle::Utility | TabStripStyle::Console => {
-            lighten(&surface.background, 0.08)
-        }
+        TabStripStyle::Utility | TabStripStyle::Console => lighten(&surface.background, 0.08),
     };
     let tab_height = match appearance.style {
         TabStripStyle::Editor => spec.density.tab_height,
@@ -1315,7 +1326,10 @@ notebook.{class} > header tabs tab:checked {{
         active_border = focused_border,
         unfocused_border = unfocused_border,
         active_fg = active.foreground.clone(),
-    ) + &format_text_css_block(&format!(".workbench-tab-strip.{class} > .tab-header .tab-label"), &text)
+    ) + &format_text_css_block(
+        &format!(".workbench-tab-strip.{class} > .tab-header .tab-label"),
+        &text,
+    )
 }
 
 struct SurfaceColors {

@@ -96,7 +96,8 @@ impl WindowPolicy {
     }
 
     fn workspace_default(density: &theme::ThemeDensity) -> Self {
-        Self::new(density.window_default_width, density.window_default_height).with_start_maximized(true)
+        Self::new(density.window_default_width, density.window_default_height)
+            .with_start_maximized(true)
     }
 }
 
@@ -167,6 +168,7 @@ pub struct WorkspaceSession {
     pub project_handle: Option<Vec<u8>>,
     pub shell_spec: Option<ShellSpec>,
     pub window_policy: Option<WindowPolicy>,
+    pub chrome: Option<ShellChrome>,
 }
 
 impl WorkspaceSession {
@@ -175,6 +177,7 @@ impl WorkspaceSession {
             project_handle: None,
             shell_spec: Some(shell_spec),
             window_policy: None,
+            chrome: None,
         }
     }
 
@@ -285,7 +288,11 @@ struct AppController {
 }
 
 impl AppController {
-    fn new(window: ApplicationWindow, config: MaruzzellaConfig, plugin_host: Rc<PluginHost>) -> Rc<Self> {
+    fn new(
+        window: ApplicationWindow,
+        config: MaruzzellaConfig,
+        plugin_host: Rc<PluginHost>,
+    ) -> Rc<Self> {
         Rc::new(Self {
             window,
             config,
@@ -329,7 +336,11 @@ impl AppController {
     fn show_workspace(&self, session: WorkspaceSession) {
         eprintln!(
             "maruzzella: AppController::show_workspace project_handle_len={}",
-            session.project_handle.as_ref().map(|bytes| bytes.len()).unwrap_or(0)
+            session
+                .project_handle
+                .as_ref()
+                .map(|bytes| bytes.len())
+                .unwrap_or(0)
         );
         let shell_spec = session
             .shell_spec
@@ -338,12 +349,16 @@ impl AppController {
             .window_policy
             .or_else(|| self.config.workspace_window_policy.clone())
             .unwrap_or_else(|| WindowPolicy::workspace_default(&self.config.theme.density));
+        let chrome = session
+            .chrome
+            .or(self.config.workspace_chrome)
+            .unwrap_or_else(ShellChrome::workspace_default);
         self.project_handle.replace(session.project_handle);
         self.render_mode(
             ShellMode::Workspace,
             shell_spec,
             policy,
-            ShellChrome::workspace_default(),
+            chrome,
             self.config.product.include_base_toolbar_items,
         );
     }
@@ -466,7 +481,8 @@ impl AppController {
         root.append(&shell);
 
         self.window.set_title(Some(&spec.title));
-        self.window.set_default_size(window_policy.default_width, window_policy.default_height);
+        self.window
+            .set_default_size(window_policy.default_width, window_policy.default_height);
         if window_policy.start_maximized {
             self.window.maximize();
         } else {
@@ -813,7 +829,9 @@ fn build_launcher_shell(
 fn first_workbench_group(node: &WorkbenchNodeSpec) -> Option<&TabGroupSpec> {
     match node {
         WorkbenchNodeSpec::Group(group) => Some(group),
-        WorkbenchNodeSpec::Split { children, .. } => children.iter().find_map(first_workbench_group),
+        WorkbenchNodeSpec::Split { children, .. } => {
+            children.iter().find_map(first_workbench_group)
+        }
     }
 }
 
@@ -1759,10 +1777,8 @@ fn apply_start_panel_resize_policy(
                 let old_pos = prev_pos.get();
 
                 if old_total > 0 && total > old_total {
-                    let has_preferred = state
-                        .borrow()
-                        .panes
-                        .has_preferred_position(&pane_id, total);
+                    let has_preferred =
+                        state.borrow().panes.has_preferred_position(&pane_id, total);
                     if has_preferred {
                         prev_total.set(total);
                         prev_pos.set(pos);
@@ -1814,10 +1830,8 @@ fn apply_end_panel_resize_policy(
                 let old_panel_size = prev_panel_size.get();
 
                 if old_total > 0 && total > old_total {
-                    let has_preferred = state
-                        .borrow()
-                        .panes
-                        .has_preferred_position(&pane_id, total);
+                    let has_preferred =
+                        state.borrow().panes.has_preferred_position(&pane_id, total);
                     if has_preferred {
                         prev_total.set(total);
                         prev_panel_size.set(panel_size);

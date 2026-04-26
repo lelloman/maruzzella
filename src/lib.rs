@@ -33,9 +33,8 @@ pub use plugins::{
 pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
 pub use spec::{
     plugin_tab, plugin_tab_with_instance, text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec,
-    MenuRootSpec, PanelContentKind, ShellSpec, SplitAxis, TabGroupSpec, TabSpec,
-    PanelResizePolicy, ToolbarDisplayMode, ToolbarItemSpec,
-    WorkbenchNodeSpec,
+    MenuRootSpec, PanelContentKind, PanelResizePolicy, ShellSpec, SplitAxis, TabGroupSpec, TabSpec,
+    ToolbarDisplayMode, ToolbarItemSpec, WorkbenchNodeSpec,
 };
 pub use theme::{
     ButtonAppearance, ButtonStyle, InputAppearance, SurfaceAppearance, SurfaceLevel,
@@ -50,6 +49,7 @@ pub struct MaruzzellaConfig {
     pub product: ProductSpec,
     pub startup_mode: ShellMode,
     pub launcher: Option<LauncherSpec>,
+    pub workspace_chrome: Option<ShellChrome>,
     pub workspace_window_policy: Option<WindowPolicy>,
     pub launcher_window_policy: Option<WindowPolicy>,
     pub theme: ThemeSpec,
@@ -73,6 +73,7 @@ impl MaruzzellaConfig {
             product: default_product_spec(),
             startup_mode: ShellMode::Workspace,
             launcher: None,
+            workspace_chrome: None,
             workspace_window_policy: None,
             launcher_window_policy: None,
             theme: ThemeSpec::default(),
@@ -100,6 +101,11 @@ impl MaruzzellaConfig {
 
     pub fn with_launcher(mut self, launcher: LauncherSpec) -> Self {
         self.launcher = Some(launcher);
+        self
+    }
+
+    pub fn with_workspace_chrome(mut self, chrome: ShellChrome) -> Self {
+        self.workspace_chrome = Some(chrome);
         self
     }
 
@@ -215,7 +221,10 @@ pub fn run(config: MaruzzellaConfig) {
 }
 
 pub fn default_plugin_discovery_dirs(persistence_id: &str) -> Vec<PathBuf> {
-    let mut dirs = vec![plugin_config_root(persistence_id).join("plugins"), PathBuf::from("plugins")];
+    let mut dirs = vec![
+        plugin_config_root(persistence_id).join("plugins"),
+        PathBuf::from("plugins"),
+    ];
     dirs.retain(|dir| !dir.as_os_str().is_empty());
     let mut seen = HashSet::new();
     dirs.into_iter()
@@ -272,16 +281,16 @@ mod tests {
     #[test]
     fn default_plugin_discovery_includes_config_and_local_dirs() {
         let dirs = default_plugin_discovery_dirs("maruzzella-test");
-        assert!(dirs.iter().any(|dir| dir.ends_with("maruzzella-test/plugins")));
+        assert!(dirs
+            .iter()
+            .any(|dir| dir.ends_with("maruzzella-test/plugins")));
         assert!(dirs.iter().any(|dir| dir == Path::new("plugins")));
     }
 
     #[test]
     fn discovery_filters_for_platform_plugin_libraries() {
-        let temp = std::env::temp_dir().join(format!(
-            "maruzzella-discovery-{}",
-            std::process::id()
-        ));
+        let temp =
+            std::env::temp_dir().join(format!("maruzzella-discovery-{}", std::process::id()));
         let _ = fs::create_dir_all(&temp);
         let plugin_name = if cfg!(target_os = "windows") {
             "example_plugin.dll"

@@ -1,12 +1,15 @@
+use std::collections::HashSet;
+use std::rc::Rc;
+
 use gtk::gio;
 use gtk::prelude::*;
 use gtk::{
-    Box as GtkBox, Button, Entry, EventControllerMotion, Fixed, Image, Label, Orientation,
-    Overlay, PopoverMenuBar,
+    Box as GtkBox, Button, Entry, EventControllerMotion, Fixed, Image, Label, Orientation, Overlay,
+    PopoverMenuBar,
 };
 
-use crate::commands::CommandRegistry;
 use crate::app::ShellChrome;
+use crate::commands::CommandRegistry;
 use crate::spec::{
     command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarDisplayMode, ToolbarItemSpec,
 };
@@ -52,8 +55,7 @@ impl TopBar {
             let button_enter = button.clone();
             let fixed_enter = fixed_ref.clone();
             hover.connect_enter(move |_, _, _| {
-                if let Some((bx, by)) = button_enter.translate_coordinates(&fixed_enter, 0.0, 0.0)
-                {
+                if let Some((bx, by)) = button_enter.translate_coordinates(&fixed_enter, 0.0, 0.0) {
                     let bw = button_enter.width() as f64;
                     let bh = button_enter.height() as f64;
                     let lw = label_enter.preferred_size().1.width() as f64;
@@ -141,19 +143,21 @@ pub fn build(spec: &ShellSpec, chrome: ShellChrome) -> Option<TopBar> {
     })
 }
 
-fn action_bar_item_button(
-    item: &ToolbarItemSpec,
-    tooltips: &mut Vec<IconButtonTooltip>,
-) -> Button {
+fn action_bar_item_button(item: &ToolbarItemSpec, tooltips: &mut Vec<IconButtonTooltip>) -> Button {
     let action_ref = menu_action_ref(&item.id);
     match item.display_mode {
         ToolbarDisplayMode::IconOnly => {
-            let icon_name = item
-                .icon_name
-                .as_deref()
-                .unwrap_or_else(|| panic!("toolbar item '{}' is IconOnly but has no icon", item.id));
+            let icon_name = item.icon_name.as_deref().unwrap_or_else(|| {
+                panic!("toolbar item '{}' is IconOnly but has no icon", item.id)
+            });
             let tooltip = item.label.as_deref().unwrap_or(&item.id);
-            icon_button(icon_name, &action_ref, tooltip, &item.appearance_id, tooltips)
+            icon_button(
+                icon_name,
+                &action_ref,
+                tooltip,
+                &item.appearance_id,
+                tooltips,
+            )
         }
         ToolbarDisplayMode::IconAndText => {
             let label = item.label.as_deref().unwrap_or(&item.id);
@@ -338,38 +342,58 @@ pub fn install_actions(
     registry: &CommandRegistry,
 ) -> Vec<String> {
     let mut installed = Vec::new();
-    for command in &spec.commands {
-        let simple = gio::SimpleAction::new(&command_name(&command.id), None);
-        let handler = registry.handler_for(&command.id);
-        let action_name = command_name(&command.id);
-        let title = command.title.clone();
+    let action_bindings = Rc::new(action_bindings(spec, registry));
+    for (action_name, action_id) in action_bindings.iter() {
+        let simple = gio::SimpleAction::new(action_name, None);
+        simple.set_enabled(registry.is_enabled(action_id));
+        let handler = registry.handler_for(action_id);
+        let title = action_id.clone();
+        let window_for_activate = window.clone();
+        let registry = registry.clone();
+        let action_bindings = Rc::clone(&action_bindings);
         simple.connect_activate(move |_, _| {
             if let Some(handler) = handler.as_ref() {
                 handler(&[]);
             } else {
                 eprintln!("unhandled command: {title}");
             }
+            refresh_action_enabled(&window_for_activate, &registry, &action_bindings);
         });
         window.add_action(&simple);
-        installed.push(action_name);
-    }
-
-    for action_id in spec
-        .menu_items
-        .iter()
-        .map(|item| item.id.as_str())
-        .chain(spec.toolbar_items.iter().map(|item| item.id.as_str()))
-    {
-        let Some(handler) = registry.handler_for(action_id) else {
-            continue;
-        };
-        let simple = gio::SimpleAction::new(&command_name(action_id), None);
-        let action_name = command_name(action_id);
-        simple.connect_activate(move |_, _| {
-            handler(&[]);
-        });
-        window.add_action(&simple);
-        installed.push(action_name);
+        installed.push(action_name.clone());
     }
     installed
+}
+
+fn action_bindings(spec: &ShellSpec, registry: &CommandRegistry) -> Vec<(String, String)> {
+    let mut seen = HashSet::new();
+    let mut bindings = Vec::new();
+    for action_id in spec
+        .commands
+        .iter()
+        .map(|command| command.id.as_str())
+        .chain(spec.menu_items.iter().map(|item| item.id.as_str()))
+        .chain(spec.toolbar_items.iter().map(|item| item.id.as_str()))
+    {
+        let action_name = command_name(action_id);
+        if seen.insert(action_name.clone()) && registry.handler_for(action_id).is_some() {
+            bindings.push((action_name, action_id.to_string()));
+        }
+    }
+    bindings
+}
+
+fn refresh_action_enabled(
+    window: &gtk::ApplicationWindow,
+    registry: &CommandRegistry,
+    action_bindings: &[(String, String)],
+) {
+    for (action_name, action_id) in action_bindings {
+        if let Some(action) = window
+            .lookup_action(action_name)
+            .and_then(|action| action.downcast::<gio::SimpleAction>().ok())
+        {
+            action.set_enabled(registry.is_enabled(action_id));
+        }
+    }
 }

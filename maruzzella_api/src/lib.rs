@@ -248,6 +248,7 @@ pub struct MzCommandSpec {
     pub command_id: MzStr,
     pub title: MzStr,
     pub invoke: Option<MzCommandInvokeFn>,
+    pub can_invoke: Option<MzCommandCanInvokeFn>,
 }
 
 #[repr(C)]
@@ -933,14 +934,14 @@ pub struct MzToolbarWidgetSpec {
 
 pub type MzLogFn = extern "C" fn(level: MzLogLevel, message: MzStr);
 pub type MzCommandInvokeFn = extern "C" fn(payload: MzBytes) -> MzStatus;
+pub type MzCommandCanInvokeFn = extern "C" fn() -> bool;
 pub type MzRegisterCommandFn = extern "C" fn(command: *const MzCommandSpec) -> MzStatus;
 pub type MzRegisterMenuItemFn = extern "C" fn(item: *const MzMenuItemSpec) -> MzStatus;
 pub type MzRegisterSurfaceContributionFn =
     extern "C" fn(contribution: *const MzSurfaceContribution) -> MzStatus;
 pub type MzRegisterViewFactoryFn = extern "C" fn(factory: *const MzViewFactorySpec) -> MzStatus;
 pub type MzRegisterServiceFn = extern "C" fn(service: *const MzServiceSpec) -> MzStatus;
-pub type MzCreateToolbarWidgetFn =
-    extern "C" fn(spec: *const MzToolbarWidgetSpec) -> *mut c_void;
+pub type MzCreateToolbarWidgetFn = extern "C" fn(spec: *const MzToolbarWidgetSpec) -> *mut c_void;
 pub type MzHostEventHandlerFn = extern "C" fn(event: MzBytes) -> MzStatus;
 pub type MzRegisterHostEventSubscriberFn =
     extern "C" fn(event_id: MzStr, handler: MzHostEventHandlerFn) -> MzStatus;
@@ -1133,8 +1134,7 @@ mod tests {
         let bytes = catalog
             .to_bytes()
             .expect("service catalog should serialize");
-        let decoded = MzServiceCatalog::from_bytes(&bytes)
-            .expect("service catalog should decode");
+        let decoded = MzServiceCatalog::from_bytes(&bytes).expect("service catalog should decode");
         assert_eq!(decoded, catalog);
     }
 
@@ -1181,7 +1181,10 @@ mod tests {
 
     #[test]
     fn config_state_labels_are_stable() {
-        assert_eq!(MzConfigState::MigrationRequired.label(), "Migration Required");
+        assert_eq!(
+            MzConfigState::MigrationRequired.label(),
+            "Migration Required"
+        );
     }
 
     #[test]

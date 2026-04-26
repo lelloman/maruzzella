@@ -15,8 +15,8 @@ use maruzzella_api::{
     MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
     MzMenuSurface, MzOpenViewRequest, MzPluginDescriptorView, MzPluginSnapshot, MzPluginVTable,
     MzServiceCatalog, MzSettingsCatalog, MzSettingsCategory, MzSettingsPage, MzStartupTab,
-    MzStatus, MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog, MzViewFactorySpec,
-    MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
+    MzStatus, MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog,
+    MzViewFactorySpec, MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
 };
 use serde::{Deserialize, Serialize};
 
@@ -145,60 +145,70 @@ extern "C" fn base_register(host: *const MzHostApi) -> MzStatus {
             command_id: MzStr::from_static("shell.open_command_palette"),
             title: MzStr::from_static("Command Palette"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static("shell.browse_views"),
             title: MzStr::from_static("Browse Views"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static("shell.reload_theme"),
             title: MzStr::from_static("Reload Theme"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static("shell.about"),
             title: MzStr::from_static("About Maruzzella"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static("shell.plugins"),
             title: MzStr::from_static("Plugins"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static("shell.settings"),
             title: MzStr::from_static("Settings"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static(CMD_NEW_BUFFER),
             title: MzStr::from_static("New Buffer"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static(CMD_OPEN_FILE_EDITOR),
             title: MzStr::from_static("Open File In Editor"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static(CMD_SAVE_BUFFER),
             title: MzStr::from_static("Save Active Buffer"),
             invoke: None,
+            can_invoke: None,
         },
         MzCommandSpec {
             plugin_id: MzStr::from_static(BASE_PLUGIN_ID),
             command_id: MzStr::from_static(CMD_SAVE_BUFFER_AS),
             title: MzStr::from_static("Save Buffer As"),
             invoke: None,
+            can_invoke: None,
         },
     ];
 
@@ -1087,7 +1097,12 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
             .services
             .iter()
             .filter(|service| service.plugin_id == plugin.plugin_id)
-            .map(|service| format!("{}  [{}] {}", service.service_id, service.version, service.summary))
+            .map(|service| {
+                format!(
+                    "{}  [{}] {}",
+                    service.service_id, service.version, service.summary
+                )
+            })
             .collect::<Vec<_>>();
         if !plugin_services.is_empty() {
             card.append(&section("Services", &[]));
@@ -1273,7 +1288,10 @@ fn fallback_view(message: &str) -> gtk::Widget {
     root.upcast()
 }
 
-fn load_editor_text(host: &MzHostApi, document: &EditorDocumentPayload) -> Result<(String, bool), String> {
+fn load_editor_text(
+    host: &MzHostApi,
+    document: &EditorDocumentPayload,
+) -> Result<(String, bool), String> {
     if let Some(draft) = read_editor_draft(host, &document.document_id) {
         return Ok((draft.text, draft.dirty));
     }
@@ -1289,7 +1307,6 @@ fn load_editor_text(host: &MzHostApi, document: &EditorDocumentPayload) -> Resul
         }
     }
 }
-
 
 fn decode_editor_payload(payload: MzBytes) -> Result<EditorDocumentPayload, String> {
     if payload.ptr.is_null() || payload.len == 0 {
@@ -1586,7 +1603,11 @@ pub fn is_editor_view(plugin_view_id: Option<&str>) -> bool {
     plugin_view_id == Some(VIEW_WORKSPACE_EDITOR)
 }
 
-pub fn bind_editor_close_button(plugin_view_id: Option<&str>, instance_key: Option<&str>, button: &Button) {
+pub fn bind_editor_close_button(
+    plugin_view_id: Option<&str>,
+    instance_key: Option<&str>,
+    button: &Button,
+) {
     if !is_editor_view(plugin_view_id) {
         return;
     }
@@ -1634,7 +1655,11 @@ pub fn editor_text_for_instance_key(instance_key: &str) -> Option<String> {
         sessions.borrow().get(instance_key).map(|session| {
             session
                 .buffer
-                .text(&session.buffer.start_iter(), &session.buffer.end_iter(), true)
+                .text(
+                    &session.buffer.start_iter(),
+                    &session.buffer.end_iter(),
+                    true,
+                )
                 .to_string()
         })
     })
@@ -1656,7 +1681,11 @@ pub fn save_editor_by_instance_key(instance_key: &str) -> Result<bool, String> {
                 };
                 let text = session
                     .buffer
-                    .text(&session.buffer.start_iter(), &session.buffer.end_iter(), true)
+                    .text(
+                        &session.buffer.start_iter(),
+                        &session.buffer.end_iter(),
+                        true,
+                    )
                     .to_string();
                 fs::write(path, text)
                     .map_err(|error| format!("Failed to write {path}: {error}"))?;
@@ -1698,7 +1727,11 @@ pub fn persist_editor_draft(instance_key: &str) -> Result<bool, String> {
         };
         let text = session
             .buffer
-            .text(&session.buffer.start_iter(), &session.buffer.end_iter(), true)
+            .text(
+                &session.buffer.start_iter(),
+                &session.buffer.end_iter(),
+                true,
+            )
             .to_string();
         write_editor_draft(
             &session.host,
@@ -1715,7 +1748,9 @@ pub fn persist_editor_draft(instance_key: &str) -> Result<bool, String> {
 
 fn register_editor_session(instance_key: &str, session: EditorSession) {
     EDITOR_SESSIONS.with(|sessions| {
-        sessions.borrow_mut().insert(instance_key.to_string(), session);
+        sessions
+            .borrow_mut()
+            .insert(instance_key.to_string(), session);
     });
 }
 
@@ -1740,7 +1775,11 @@ fn set_editor_dirty(instance_key: &str, dirty: bool) {
                     document: session.document.clone(),
                     text: session
                         .buffer
-                        .text(&session.buffer.start_iter(), &session.buffer.end_iter(), true)
+                        .text(
+                            &session.buffer.start_iter(),
+                            &session.buffer.end_iter(),
+                            true,
+                        )
                         .to_string(),
                     dirty: true,
                 },
@@ -1787,8 +1826,9 @@ fn read_base_plugin_config(host: &MzHostApi) -> BasePluginConfig {
     if bytes.ptr.is_null() || bytes.len == 0 {
         return BasePluginConfig::default();
     }
-    let record = MzConfigRecord::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
-        .unwrap_or_default();
+    let record =
+        MzConfigRecord::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
+            .unwrap_or_default();
     serde_json::from_slice(&record.payload).unwrap_or_default()
 }
 
@@ -1797,7 +1837,8 @@ fn write_base_plugin_config(host: &MzHostApi, config: &BasePluginConfig) -> Resu
         return Err("config write API is unavailable".to_string());
     };
     let payload = serde_json::to_vec(config).map_err(|error| error.to_string())?;
-    let record = MzConfigRecord::new(payload).with_schema_version(BASE_PLUGIN_CONFIG_SCHEMA_VERSION);
+    let record =
+        MzConfigRecord::new(payload).with_schema_version(BASE_PLUGIN_CONFIG_SCHEMA_VERSION);
     let record = record.to_bytes().map_err(|error| error.to_string())?;
     let status = write(MzBytes {
         ptr: record.as_ptr(),
@@ -1816,7 +1857,11 @@ fn read_editor_draft(host: &MzHostApi, document_id: &str) -> Option<EditorDraft>
         .remove(document_id)
 }
 
-fn write_editor_draft(host: &MzHostApi, document_id: &str, draft: EditorDraft) -> Result<(), String> {
+fn write_editor_draft(
+    host: &MzHostApi,
+    document_id: &str,
+    draft: EditorDraft,
+) -> Result<(), String> {
     let mut config = read_base_plugin_config(host);
     config.editor_drafts.insert(document_id.to_string(), draft);
     write_base_plugin_config(host, &config)
@@ -1828,7 +1873,6 @@ fn clear_editor_draft(host: &MzHostApi, document_id: &str) {
         let _ = write_base_plugin_config(host, &config);
     }
 }
-
 
 pub fn file_editor_payload_for_path(path: &Path) -> Result<EditorDocumentPayload, String> {
     let absolute = absolute_existing_path(path)?;
@@ -1859,7 +1903,10 @@ pub fn editor_payload_to_bytes(payload: &EditorDocumentPayload) -> Result<Vec<u8
     payload.to_bytes().map_err(|error| error.to_string())
 }
 
-pub fn write_editor_contents_to_path(instance_key: &str, path: &Path) -> Result<EditorDocumentPayload, String> {
+pub fn write_editor_contents_to_path(
+    instance_key: &str,
+    path: &Path,
+) -> Result<EditorDocumentPayload, String> {
     let payload = match file_editor_payload_for_path(path) {
         Ok(payload) => payload,
         Err(_) => {
@@ -1890,7 +1937,8 @@ pub fn write_editor_contents_to_path(instance_key: &str, path: &Path) -> Result<
         .as_deref()
         .map(PathBuf::from)
         .ok_or_else(|| "file payload is missing a path".to_string())?;
-    fs::write(&path, text).map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
+    fs::write(&path, text)
+        .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
     Ok(payload)
 }
 
@@ -2129,10 +2177,16 @@ mod tests {
                 close_buttons: Vec::new(),
             },
         );
-        assert!(!is_editor_tab_dirty(Some(VIEW_WORKSPACE_EDITOR), Some(&instance_key)));
+        assert!(!is_editor_tab_dirty(
+            Some(VIEW_WORKSPACE_EDITOR),
+            Some(&instance_key)
+        ));
 
         set_editor_dirty(&instance_key, true);
-        assert!(is_editor_tab_dirty(Some(VIEW_WORKSPACE_EDITOR), Some(&instance_key)));
+        assert!(is_editor_tab_dirty(
+            Some(VIEW_WORKSPACE_EDITOR),
+            Some(&instance_key)
+        ));
 
         unregister_editor_session(&instance_key);
     }

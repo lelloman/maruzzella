@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use gtk::gio;
 use gtk::prelude::*;
+use gtk::{gio, glib};
 use gtk::{
     Box as GtkBox, Button, Entry, EventControllerMotion, Fixed, Image, Label, Orientation, Overlay,
     PopoverMenuBar,
@@ -25,6 +25,11 @@ pub struct TopBar {
     pub root: GtkBox,
     pub search: Entry,
     tooltips: Vec<IconButtonTooltip>,
+}
+
+pub struct InstalledActions {
+    pub action_names: Vec<String>,
+    pub refresh_source: Option<glib::SourceId>,
 }
 
 impl TopBar {
@@ -340,7 +345,7 @@ pub fn install_actions(
     window: &gtk::ApplicationWindow,
     spec: &ShellSpec,
     registry: &CommandRegistry,
-) -> Vec<String> {
+) -> InstalledActions {
     let mut installed = Vec::new();
     let action_bindings = Rc::new(action_bindings(spec, registry));
     for (action_name, action_id) in action_bindings.iter() {
@@ -362,7 +367,21 @@ pub fn install_actions(
         window.add_action(&simple);
         installed.push(action_name.clone());
     }
-    installed
+    let refresh_source = if action_bindings.is_empty() {
+        None
+    } else {
+        let window = window.clone();
+        let registry = registry.clone();
+        let action_bindings = Rc::clone(&action_bindings);
+        Some(glib::timeout_add_seconds_local(1, move || {
+            refresh_action_enabled(&window, &registry, &action_bindings);
+            glib::ControlFlow::Continue
+        }))
+    };
+    InstalledActions {
+        action_names: installed,
+        refresh_source,
+    }
 }
 
 fn action_bindings(spec: &ShellSpec, registry: &CommandRegistry) -> Vec<(String, String)> {

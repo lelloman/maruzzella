@@ -1,6 +1,6 @@
 [package]
 name = "maruzzella_sdk"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "Rust SDK for building Maruzzella plugins."
@@ -15,6 +15,6 @@ path = "src/lib.rs"
 
 [dependencies]
 gtk = { package = "gtk4", version = "0.9" }
-maruzzella_api = { version = "0.1.0", path = "../maruzzella_api" }
+maruzzella_api = { version = "0.1.1", path = "../maruzzella_api" }
 serde = "1"
 serde_json = "1"

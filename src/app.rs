@@ -285,7 +285,6 @@ struct AppController {
     mode: RefCell<ShellMode>,
     project_handle: RefCell<Option<Vec<u8>>>,
     installed_actions: RefCell<Vec<String>>,
-    installed_action_refresh: RefCell<Option<gtk::glib::SourceId>>,
 }
 
 impl AppController {
@@ -301,7 +300,6 @@ impl AppController {
             mode: RefCell::new(ShellMode::Workspace),
             project_handle: RefCell::new(None),
             installed_actions: RefCell::new(Vec::new()),
-            installed_action_refresh: RefCell::new(None),
         })
     }
 
@@ -456,14 +454,8 @@ impl AppController {
         for action_name in self.installed_actions.borrow_mut().drain(..) {
             self.window.remove_action(&action_name);
         }
-        if let Some(source_id) = self.installed_action_refresh.borrow_mut().take() {
-            source_id.remove();
-        }
         let installed_actions = topbar::install_actions(&self.window, &spec, &registry);
-        self.installed_actions
-            .replace(installed_actions.action_names);
-        self.installed_action_refresh
-            .replace(installed_actions.refresh_source);
+        self.installed_actions.replace(installed_actions);
 
         let root = GtkBox::new(Orientation::Vertical, 0);
         root.add_css_class("app-root");

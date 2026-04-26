@@ -900,6 +900,14 @@ button.tab-close-button:hover label {
   background: {{dense_row_hover_bg}};
 }
 
+.dense-row:selected:hover,
+.app-window list row:selected:hover,
+.app-window listview row:selected:hover,
+.app-window row:selected:hover {
+  background: {{dense_row_selected_bg}};
+  color: {{dense_row_selected_text}};
+}
+
 .list-row-box {
   padding: {{list_row_padding}};
   border-radius: {{radius_small}};
@@ -1201,6 +1209,11 @@ popover.background separator {
 .pane-focused row:hover,
 .pane-focused list row:hover {
   background: alpha(#2d5c88, 0.3);
+}
+
+.pane-focused row:selected:hover,
+.pane-focused list row:selected:hover {
+  background: {{dense_row_selected_bg}};
 }
 
 .workbench-tab-strip > .tab-header,

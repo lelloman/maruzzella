@@ -705,7 +705,11 @@ entry {
   letter-spacing: 0;
 }
 
-.tab-close-button {
+.tab-header.closable > button.tab-close-button {
+  margin-left: {{space_xs}};
+}
+
+button.tab-close-button {
   min-width: {{tab_close_width}};
   min-height: {{tab_close_height}};
   padding: {{tab_close_padding}};
@@ -715,8 +719,18 @@ entry {
   color: {{color_tab_close_text}};
 }
 
-.tab-close-button:hover {
+button.tab-close-button image,
+button.tab-close-button label {
+  color: {{color_tab_close_text}};
+}
+
+button.tab-close-button:hover {
   background: {{color_tab_close_hover}};
+  color: @text_0;
+}
+
+button.tab-close-button:hover image,
+button.tab-close-button:hover label {
   color: @text_0;
 }
 
@@ -763,6 +777,10 @@ entry {
   border-radius: {{tab_radius}};
   background: {{color_workbench_tab_bg}};
   color: {{color_workbench_tab_text}};
+}
+
+.workbench-tab-strip > .tab-header.closable {
+  padding-right: 0;
 }
 
 .workbench-tab-strip > .tab-header:hover {

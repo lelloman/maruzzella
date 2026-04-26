@@ -196,6 +196,8 @@ pub fn build_tab_page(
     tab_header.add_css_class("tab-header");
     tab_header.append(&tab_label);
     if tab.closable {
+        tab_header.add_css_class("closable");
+        tab_header.set_spacing(2);
         let button = Button::new();
         button.set_icon_name("window-close-symbolic");
         button.add_css_class("tab-close-button");

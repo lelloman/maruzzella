@@ -360,6 +360,8 @@ impl AppController {
             policy,
             chrome,
             self.config.product.include_base_toolbar_items,
+            self.config.product.include_base_menu_items,
+            self.config.product.include_base_startup_tabs,
         );
     }
 
@@ -379,6 +381,8 @@ impl AppController {
             policy,
             launcher.chrome,
             launcher.include_base_toolbar_items,
+            true,
+            true,
         );
         Ok(())
     }
@@ -390,6 +394,8 @@ impl AppController {
         window_policy: WindowPolicy,
         chrome: ShellChrome,
         include_base_toolbar_items: bool,
+        include_base_menu_items: bool,
+        include_base_startup_tabs: bool,
     ) {
         eprintln!(
             "maruzzella: render_mode mode={:?} persistence_slot={}",
@@ -407,10 +413,18 @@ impl AppController {
             &default_spec,
         )));
         let mut spec = state.borrow().spec.clone();
+        if mode == ShellMode::Workspace && !include_base_startup_tabs {
+            clear_empty_product_bottom_panel(&mut spec, &default_spec);
+        }
         if let Some(runtime) = self.plugin_host.runtime() {
-            product::merge_plugin_runtime(&mut spec, runtime, include_base_toolbar_items);
+            product::merge_plugin_runtime(
+                &mut spec,
+                runtime,
+                include_base_toolbar_items,
+                include_base_menu_items,
+            );
             if mode == ShellMode::Workspace && !has_persisted_layout {
-                product::merge_runtime_startup_tabs(&mut spec, runtime);
+                product::merge_runtime_startup_tabs(&mut spec, runtime, include_base_startup_tabs);
             }
             state.borrow_mut().spec = spec.clone();
         }
@@ -492,6 +506,14 @@ impl AppController {
         self.window.present();
         self.mode.replace(mode);
     }
+}
+
+fn clear_empty_product_bottom_panel(spec: &mut ShellSpec, default_spec: &ShellSpec) {
+    if !default_spec.bottom_panel.tabs.is_empty() {
+        return;
+    }
+    spec.bottom_panel.tabs.clear();
+    spec.bottom_panel.active_tab_id = None;
 }
 
 pub fn build(application: &Application, config: &MaruzzellaConfig, handle: &MaruzzellaHandle) {
@@ -586,6 +608,7 @@ fn build_shell(
 ) -> (gtk::Widget, Vec<gtk::Widget>) {
     let spec = state.borrow().spec.clone();
     let has_right_panel = !spec.right_panel.tabs.is_empty();
+    let has_bottom_panel = !spec.bottom_panel.tabs.is_empty();
     let left = build_group(
         &spec.left_panel,
         state.clone(),
@@ -613,19 +636,22 @@ fn build_shell(
             .set_size_request(density.min_side_panel_width, -1);
         right
     });
-    let bottom = build_group(
-        &spec.bottom_panel,
-        state.clone(),
-        persistence_id.clone(),
-        plugin_runtime.clone(),
-        group_handles.clone(),
-    );
-    group_handles
-        .borrow_mut()
-        .insert(spec.bottom_panel.id.clone(), bottom.handle.clone());
-    bottom
-        .root
-        .set_size_request(-1, density.min_bottom_panel_height);
+    let bottom = has_bottom_panel.then(|| {
+        let bottom = build_group(
+            &spec.bottom_panel,
+            state.clone(),
+            persistence_id.clone(),
+            plugin_runtime.clone(),
+            group_handles.clone(),
+        );
+        group_handles
+            .borrow_mut()
+            .insert(spec.bottom_panel.id.clone(), bottom.handle.clone());
+        bottom
+            .root
+            .set_size_request(-1, density.min_bottom_panel_height);
+        bottom
+    });
     let workbench = build_workbench_node(
         &spec.workbench,
         state.clone(),
@@ -644,11 +670,10 @@ fn build_shell(
         workbench_drag_context,
     );
 
-    let mut pane_roots: Vec<gtk::Widget> = vec![
-        left.root.clone().upcast(),
-        bottom.root.clone().upcast(),
-        workbench.clone(),
-    ];
+    let mut pane_roots: Vec<gtk::Widget> = vec![left.root.clone().upcast(), workbench.clone()];
+    if let Some(ref bottom) = bottom {
+        pane_roots.push(bottom.root.clone().upcast());
+    }
     if let Some(ref right) = right {
         pane_roots.push(right.root.clone().upcast());
     }
@@ -681,112 +706,140 @@ fn build_shell(
     let min_side = density.min_side_panel_width;
     let min_bottom = density.min_bottom_panel_height;
 
-    let shell = match spec.bottom_panel_layout {
-        BottomPanelLayout::CenterOnly => {
-            let vertical = Paned::new(Orientation::Vertical);
-            let vertical_controller = Rc::new(PanePositionController::default());
-            vertical.set_wide_handle(true);
-            vertical.set_shrink_end_child(false);
-            vertical.set_start_child(Some(&left_center));
-            vertical.set_end_child(Some(&bottom.root));
-            apply_end_panel_resize_policy(
-                &vertical,
-                bottom_resize,
-                vertical_controller.clone(),
-                state.clone(),
-                "shell.vertical".to_string(),
-                min_bottom,
-            );
-            restore_pane_position(
-                &vertical,
-                &state,
-                &persistence_id,
-                vertical_controller.clone(),
-                "shell.vertical",
-                720,
-            );
-
-            if let Some(right) = right {
-                let outer = Paned::new(Orientation::Horizontal);
-                let outer_controller = Rc::new(PanePositionController::default());
-                outer.set_wide_handle(true);
-                outer.set_shrink_end_child(false);
-                outer.set_start_child(Some(&vertical));
-                outer.set_end_child(Some(&right.root));
+    let shell = if let Some(bottom) = bottom {
+        match spec.bottom_panel_layout {
+            BottomPanelLayout::CenterOnly => {
+                let vertical = Paned::new(Orientation::Vertical);
+                let vertical_controller = Rc::new(PanePositionController::default());
+                vertical.set_wide_handle(true);
+                vertical.set_shrink_end_child(false);
+                vertical.set_start_child(Some(&left_center));
+                vertical.set_end_child(Some(&bottom.root));
                 apply_end_panel_resize_policy(
-                    &outer,
-                    right_resize,
-                    outer_controller.clone(),
+                    &vertical,
+                    bottom_resize,
+                    vertical_controller.clone(),
                     state.clone(),
-                    "shell.outer".to_string(),
-                    min_side,
+                    "shell.vertical".to_string(),
+                    min_bottom,
                 );
                 restore_pane_position(
-                    &outer,
+                    &vertical,
                     &state,
                     &persistence_id,
-                    outer_controller.clone(),
-                    "shell.outer",
-                    1260,
+                    vertical_controller.clone(),
+                    "shell.vertical",
+                    720,
                 );
-                outer.upcast::<gtk::Widget>()
-            } else {
+
+                if let Some(right) = right {
+                    let outer = Paned::new(Orientation::Horizontal);
+                    let outer_controller = Rc::new(PanePositionController::default());
+                    outer.set_wide_handle(true);
+                    outer.set_shrink_end_child(false);
+                    outer.set_start_child(Some(&vertical));
+                    outer.set_end_child(Some(&right.root));
+                    apply_end_panel_resize_policy(
+                        &outer,
+                        right_resize,
+                        outer_controller.clone(),
+                        state.clone(),
+                        "shell.outer".to_string(),
+                        min_side,
+                    );
+                    restore_pane_position(
+                        &outer,
+                        &state,
+                        &persistence_id,
+                        outer_controller.clone(),
+                        "shell.outer",
+                        1260,
+                    );
+                    outer.upcast::<gtk::Widget>()
+                } else {
+                    vertical.upcast::<gtk::Widget>()
+                }
+            }
+            BottomPanelLayout::FullWidth => {
+                let upper = if let Some(right) = right {
+                    let upper = Paned::new(Orientation::Horizontal);
+                    let upper_controller = Rc::new(PanePositionController::default());
+                    upper.set_wide_handle(true);
+                    upper.set_shrink_end_child(false);
+                    upper.set_start_child(Some(&left_center));
+                    upper.set_end_child(Some(&right.root));
+                    apply_end_panel_resize_policy(
+                        &upper,
+                        right_resize,
+                        upper_controller.clone(),
+                        state.clone(),
+                        "shell.outer".to_string(),
+                        min_side,
+                    );
+                    restore_pane_position(
+                        &upper,
+                        &state,
+                        &persistence_id,
+                        upper_controller.clone(),
+                        "shell.outer",
+                        1260,
+                    );
+                    upper.upcast::<gtk::Widget>()
+                } else {
+                    left_center.upcast::<gtk::Widget>()
+                };
+
+                let vertical = Paned::new(Orientation::Vertical);
+                let vertical_controller = Rc::new(PanePositionController::default());
+                vertical.set_wide_handle(true);
+                vertical.set_shrink_end_child(false);
+                vertical.set_start_child(Some(&upper));
+                vertical.set_end_child(Some(&bottom.root));
+                apply_end_panel_resize_policy(
+                    &vertical,
+                    bottom_resize,
+                    vertical_controller.clone(),
+                    state.clone(),
+                    "shell.vertical".to_string(),
+                    min_bottom,
+                );
+                restore_pane_position(
+                    &vertical,
+                    &state,
+                    &persistence_id,
+                    vertical_controller.clone(),
+                    "shell.vertical",
+                    720,
+                );
                 vertical.upcast::<gtk::Widget>()
             }
         }
-        BottomPanelLayout::FullWidth => {
-            let upper = if let Some(right) = right {
-                let upper = Paned::new(Orientation::Horizontal);
-                let upper_controller = Rc::new(PanePositionController::default());
-                upper.set_wide_handle(true);
-                upper.set_shrink_end_child(false);
-                upper.set_start_child(Some(&left_center));
-                upper.set_end_child(Some(&right.root));
-                apply_end_panel_resize_policy(
-                    &upper,
-                    right_resize,
-                    upper_controller.clone(),
-                    state.clone(),
-                    "shell.outer".to_string(),
-                    min_side,
-                );
-                restore_pane_position(
-                    &upper,
-                    &state,
-                    &persistence_id,
-                    upper_controller.clone(),
-                    "shell.outer",
-                    1260,
-                );
-                upper.upcast::<gtk::Widget>()
-            } else {
-                left_center.upcast::<gtk::Widget>()
-            };
-
-            let vertical = Paned::new(Orientation::Vertical);
-            let vertical_controller = Rc::new(PanePositionController::default());
-            vertical.set_wide_handle(true);
-            vertical.set_shrink_end_child(false);
-            vertical.set_start_child(Some(&upper));
-            vertical.set_end_child(Some(&bottom.root));
-            apply_end_panel_resize_policy(
-                &vertical,
-                bottom_resize,
-                vertical_controller.clone(),
-                state.clone(),
-                "shell.vertical".to_string(),
-                min_bottom,
-            );
-            restore_pane_position(
-                &vertical,
-                &state,
-                &persistence_id,
-                vertical_controller.clone(),
-                "shell.vertical",
-                720,
-            );
-            vertical.upcast::<gtk::Widget>()
-        }
+    } else if let Some(right) = right {
+        let outer = Paned::new(Orientation::Horizontal);
+        let outer_controller = Rc::new(PanePositionController::default());
+        outer.set_wide_handle(true);
+        outer.set_shrink_end_child(false);
+        outer.set_start_child(Some(&left_center));
+        outer.set_end_child(Some(&right.root));
+        apply_end_panel_resize_policy(
+            &outer,
+            right_resize,
+            outer_controller.clone(),
+            state.clone(),
+            "shell.outer".to_string(),
+            min_side,
+        );
+        restore_pane_position(
+            &outer,
+            &state,
+            &persistence_id,
+            outer_controller.clone(),
+            "shell.outer",
+            1260,
+        );
+        outer.upcast::<gtk::Widget>()
+    } else {
+        left_center.upcast::<gtk::Widget>()
     };
 
     (shell, pane_roots)

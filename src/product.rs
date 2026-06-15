@@ -37,6 +37,8 @@ pub struct ProductSpec {
     pub commands: Vec<CommandSpec>,
     pub toolbar_items: Vec<ToolbarItemSpec>,
     pub include_base_toolbar_items: bool,
+    pub include_base_menu_items: bool,
+    pub include_base_startup_tabs: bool,
     pub layout: LayoutContribution,
 }
 
@@ -78,18 +80,27 @@ pub fn merge_plugin_runtime(
     spec: &mut ShellSpec,
     runtime: &PluginRuntime,
     include_base_toolbar_items: bool,
+    include_base_menu_items: bool,
 ) {
     merge_runtime_commands(spec, runtime);
-    merge_runtime_menus(spec, runtime);
+    merge_runtime_menus(spec, runtime, include_base_menu_items);
     merge_runtime_toolbar(spec, runtime, include_base_toolbar_items);
 }
 
-pub fn merge_runtime_startup_tabs(spec: &mut ShellSpec, runtime: &PluginRuntime) {
+pub fn merge_runtime_startup_tabs(
+    spec: &mut ShellSpec,
+    runtime: &PluginRuntime,
+    include_base_startup_tabs: bool,
+) {
     for contribution in runtime
         .surface_contributions()
         .iter()
         .filter(|contribution| contribution.surface == Some(MzContributionSurface::StartupTabs))
     {
+        if !include_base_startup_tabs && contribution.plugin_id == "maruzzella.base" {
+            continue;
+        }
+
         let Ok(tab) = MzStartupTab::from_bytes(&contribution.payload) else {
             runtime.push_diagnostic(
                 Some(contribution.plugin_id.clone()),
@@ -142,7 +153,11 @@ fn merge_runtime_commands(spec: &mut ShellSpec, runtime: &PluginRuntime) {
     }
 }
 
-fn merge_runtime_menus(spec: &mut ShellSpec, runtime: &PluginRuntime) {
+fn merge_runtime_menus(
+    spec: &mut ShellSpec,
+    runtime: &PluginRuntime,
+    include_base_menu_items: bool,
+) {
     let mut known_root_ids = spec
         .menu_roots
         .iter()
@@ -155,6 +170,10 @@ fn merge_runtime_menus(spec: &mut ShellSpec, runtime: &PluginRuntime) {
         .collect::<HashSet<_>>();
 
     for item in runtime.menu_items() {
+        if !include_base_menu_items && item.plugin_id == "maruzzella.base" {
+            continue;
+        }
+
         let Some(parent_surface) = item.parent_surface else {
             if !known_root_ids.contains(&item.parent_id) {
                 continue;
@@ -313,6 +332,8 @@ pub fn default_product_spec() -> ProductSpec {
         commands,
         toolbar_items,
         include_base_toolbar_items: true,
+        include_base_menu_items: true,
+        include_base_startup_tabs: true,
         layout,
     }
 }
@@ -357,7 +378,7 @@ mod tests {
     use crate::plugins::{
         PluginRuntime, RegisteredCommand, RegisteredMenuItem, RegisteredSurfaceContribution,
     };
-    use maruzzella_api::MzMenuSurface;
+    use maruzzella_api::{MzContributionSurface, MzMenuSurface, MzStartupTab};
 
     #[test]
     fn merges_plugin_commands_and_surface_backed_menu_roots() {
@@ -388,7 +409,7 @@ mod tests {
         }];
 
         let mut spec = default_product_spec().shell_spec();
-        merge_plugin_runtime(&mut spec, &runtime, true);
+        merge_plugin_runtime(&mut spec, &runtime, true, true);
 
         assert!(spec
             .commands
@@ -399,5 +420,58 @@ mod tests {
             .menu_items
             .iter()
             .any(|item| item.id == "plugins" && item.root_id == "file"));
+    }
+    #[test]
+    fn can_skip_base_menu_contributions() {
+        let mut runtime = PluginRuntime::empty_for_tests();
+        runtime.commands = vec![RegisteredCommand {
+            plugin_id: "maruzzella.base".to_string(),
+            command_id: "shell.plugins".to_string(),
+            title: "Plugins".to_string(),
+            invoke: None,
+            can_invoke: None,
+        }];
+        runtime.menu_items = vec![RegisteredMenuItem {
+            plugin_id: "maruzzella.base".to_string(),
+            menu_id: "plugins".to_string(),
+            parent_id: "maruzzella.menu.file.items".to_string(),
+            parent_surface: Some(MzMenuSurface::FileItems),
+            title: "Plugins".to_string(),
+            command_id: "shell.plugins".to_string(),
+            payload: Vec::new(),
+        }];
+
+        let mut spec = default_product_spec().shell_spec();
+        merge_plugin_runtime(&mut spec, &runtime, true, false);
+
+        assert!(spec
+            .commands
+            .iter()
+            .any(|command| command.id == "shell.plugins"));
+        assert!(!spec.menu_roots.iter().any(|root| root.id == "file"));
+        assert!(!spec.menu_items.iter().any(|item| item.id == "plugins"));
+    }
+    #[test]
+    fn can_skip_base_startup_tabs() {
+        let mut runtime = PluginRuntime::empty_for_tests();
+        runtime.surface_contributions = vec![RegisteredSurfaceContribution {
+            plugin_id: "maruzzella.base".to_string(),
+            surface_id: "maruzzella.startup.tabs".to_string(),
+            surface: Some(MzContributionSurface::StartupTabs),
+            contribution_id: "base.activity".to_string(),
+            payload: MzStartupTab::new(
+                "panel-bottom",
+                "runtime-activity",
+                "Activity",
+                "maruzzella.base.activity",
+            )
+            .to_bytes()
+            .expect("startup tab should serialize"),
+        }];
+
+        let mut spec = default_product_spec().shell_spec();
+        merge_runtime_startup_tabs(&mut spec, &runtime, false);
+
+        assert!(spec.bottom_panel.tabs.is_empty());
     }
 }

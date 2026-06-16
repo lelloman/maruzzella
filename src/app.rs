@@ -477,7 +477,7 @@ impl AppController {
         let app_overlay = Overlay::new();
         app_overlay.set_child(Some(&root));
 
-        if let Some(topbar) = topbar::build(&spec, chrome) {
+        if let Some(topbar) = topbar::build(&spec, chrome, Some(&registry)) {
             if let Some(search_command_id) = &spec.search_command_id {
                 if let Some(handler) = registry.handler_for(search_command_id) {
                     topbar.search.connect_changed(move |entry| {

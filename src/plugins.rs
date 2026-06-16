@@ -1265,12 +1265,15 @@ extern "C" fn host_create_toolbar_widget(
             MzToolbarDisplayMode::IconOnly => crate::spec::ToolbarDisplayMode::IconOnly,
             MzToolbarDisplayMode::IconAndText => crate::spec::ToolbarDisplayMode::IconAndText,
             MzToolbarDisplayMode::TextOnly => crate::spec::ToolbarDisplayMode::TextOnly,
+            MzToolbarDisplayMode::Dropdown => crate::spec::ToolbarDisplayMode::Dropdown,
         },
         appearance_id: if appearance_id.is_empty() {
             "ghost".to_string()
         } else {
             appearance_id
         },
+        options: Vec::new(),
+        selected_index: 0,
     };
 
     let button = topbar::standalone_toolbar_item_button(&item);

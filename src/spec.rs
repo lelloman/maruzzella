@@ -198,6 +198,14 @@ pub enum ToolbarDisplayMode {
     #[default]
     IconAndText,
     TextOnly,
+    Dropdown,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolbarOptionSpec {
+    pub label: String,
+    #[serde(default)]
+    pub payload: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -213,6 +221,10 @@ pub struct ToolbarItemSpec {
     pub display_mode: ToolbarDisplayMode,
     #[serde(default = "default_button_appearance")]
     pub appearance_id: String,
+    #[serde(default)]
+    pub options: Vec<ToolbarOptionSpec>,
+    #[serde(default)]
+    pub selected_index: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

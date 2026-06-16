@@ -4,8 +4,8 @@ use std::rc::Rc;
 use gtk::gio;
 use gtk::prelude::*;
 use gtk::{
-    Box as GtkBox, Button, Entry, EventControllerMotion, Fixed, Image, Label, Orientation, Overlay,
-    PopoverMenuBar,
+    Box as GtkBox, Button, DropDown, Entry, EventControllerMotion, Fixed, Image, Label,
+    Orientation, Overlay, PopoverMenuBar,
 };
 
 use crate::app::ShellChrome;
@@ -74,7 +74,11 @@ impl TopBar {
     }
 }
 
-pub fn build(spec: &ShellSpec, chrome: ShellChrome) -> Option<TopBar> {
+pub fn build(
+    spec: &ShellSpec,
+    chrome: ShellChrome,
+    registry: Option<&CommandRegistry>,
+) -> Option<TopBar> {
     if !chrome.show_menu_bar && !chrome.show_toolbar && !chrome.show_search {
         return None;
     }
@@ -118,17 +122,23 @@ pub fn build(spec: &ShellSpec, chrome: ShellChrome) -> Option<TopBar> {
         }
 
         if chrome.show_toolbar {
+            if !chrome.show_search {
+                let spacer = GtkBox::new(Orientation::Horizontal, 0);
+                spacer.set_hexpand(true);
+                toolbar.append(&spacer);
+            }
+
             let actions_group = GtkBox::new(Orientation::Horizontal, 8);
             actions_group.add_css_class("toolbar-actions");
             for item in spec.toolbar_items.iter().filter(|item| !item.secondary) {
-                actions_group.append(&action_bar_item_button(item, &mut tooltips));
+                actions_group.append(&action_bar_item_widget(item, &mut tooltips, registry));
             }
             toolbar.append(&actions_group);
 
             let utility_group = GtkBox::new(Orientation::Horizontal, 6);
             utility_group.add_css_class("toolbar-utility-group");
             for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
-                utility_group.append(&action_bar_item_button(item, &mut tooltips));
+                utility_group.append(&action_bar_item_widget(item, &mut tooltips, registry));
             }
             toolbar.append(&utility_group);
         }
@@ -143,7 +153,11 @@ pub fn build(spec: &ShellSpec, chrome: ShellChrome) -> Option<TopBar> {
     })
 }
 
-fn action_bar_item_button(item: &ToolbarItemSpec, tooltips: &mut Vec<IconButtonTooltip>) -> Button {
+fn action_bar_item_widget(
+    item: &ToolbarItemSpec,
+    tooltips: &mut Vec<IconButtonTooltip>,
+    registry: Option<&CommandRegistry>,
+) -> gtk::Widget {
     let action_ref = menu_action_ref(&item.id);
     match item.display_mode {
         ToolbarDisplayMode::IconOnly => {
@@ -158,6 +172,7 @@ fn action_bar_item_button(item: &ToolbarItemSpec, tooltips: &mut Vec<IconButtonT
                 &item.appearance_id,
                 tooltips,
             )
+            .upcast()
         }
         ToolbarDisplayMode::IconAndText => {
             let label = item.label.as_deref().unwrap_or(&item.id);
@@ -165,12 +180,13 @@ fn action_bar_item_button(item: &ToolbarItemSpec, tooltips: &mut Vec<IconButtonT
                 .icon_name
                 .as_deref()
                 .unwrap_or("applications-system-symbolic");
-            toolbar_button(icon_name, label, &action_ref, &item.appearance_id)
+            toolbar_button(icon_name, label, &action_ref, &item.appearance_id).upcast()
         }
         ToolbarDisplayMode::TextOnly => {
             let label = item.label.as_deref().unwrap_or(&item.id);
-            text_button(label, &action_ref, &item.appearance_id)
+            text_button(label, &action_ref, &item.appearance_id).upcast()
         }
+        ToolbarDisplayMode::Dropdown => dropdown_item(item, registry).upcast(),
     }
 }
 
@@ -192,11 +208,55 @@ pub fn standalone_toolbar_item_button(item: &ToolbarItemSpec) -> Button {
                 .unwrap_or("applications-system-symbolic");
             standalone_toolbar_button(icon_name, label, &item.appearance_id)
         }
-        ToolbarDisplayMode::TextOnly => {
+        ToolbarDisplayMode::TextOnly | ToolbarDisplayMode::Dropdown => {
             let label = item.label.as_deref().unwrap_or(&item.id);
             standalone_text_button(label, &item.appearance_id)
         }
     }
+}
+
+fn dropdown_item(item: &ToolbarItemSpec, registry: Option<&CommandRegistry>) -> DropDown {
+    let labels = if item.options.is_empty() {
+        vec![item.label.clone().unwrap_or_else(|| item.id.clone())]
+    } else {
+        item.options
+            .iter()
+            .map(|option| option.label.clone())
+            .collect::<Vec<_>>()
+    };
+    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+    let dropdown = DropDown::from_strings(&label_refs);
+    dropdown.add_css_class("toolbar-dropdown");
+    dropdown.set_width_request(176);
+    if let Some(label) = &item.label {
+        dropdown.set_tooltip_text(Some(label));
+    }
+    let selected_index = item
+        .selected_index
+        .min(item.options.len().saturating_sub(1) as u32);
+    dropdown.set_selected(selected_index);
+
+    if item.options.is_empty() {
+        dropdown.set_sensitive(false);
+        return dropdown;
+    }
+
+    if let Some(handler) = registry.and_then(|registry| registry.handler_for(&item.command_id)) {
+        let options = item.options.clone();
+        dropdown.connect_selected_notify(move |dropdown| {
+            let selected = dropdown.selected();
+            if selected == gtk::INVALID_LIST_POSITION {
+                return;
+            }
+            if let Some(option) = options.get(selected as usize) {
+                handler(&option.payload);
+            }
+        });
+    } else {
+        dropdown.set_sensitive(false);
+    }
+
+    dropdown
 }
 
 fn toolbar_button(icon_name: &str, label: &str, action_name: &str, appearance_id: &str) -> Button {

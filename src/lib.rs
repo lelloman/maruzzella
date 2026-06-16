@@ -34,7 +34,7 @@ pub use product::{default_product_spec, BrandingSpec, LayoutContribution, Produc
 pub use spec::{
     plugin_tab, plugin_tab_with_instance, text_tab, BottomPanelLayout, CommandSpec, MenuItemSpec,
     MenuRootSpec, PanelContentKind, PanelResizePolicy, ShellSpec, SplitAxis, TabGroupSpec, TabSpec,
-    ToolbarDisplayMode, ToolbarItemSpec, WorkbenchNodeSpec,
+    ToolbarDisplayMode, ToolbarItemSpec, ToolbarOptionSpec, WorkbenchNodeSpec,
 };
 pub use theme::{
     ButtonAppearance, ButtonStyle, InputAppearance, SurfaceAppearance, SurfaceLevel,

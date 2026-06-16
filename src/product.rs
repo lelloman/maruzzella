@@ -6,7 +6,7 @@ use crate::plugins::PluginRuntime;
 use crate::spec::{
     make_workbench_tabs_closeable, plugin_tab_with_instance, BottomPanelLayout, CommandSpec,
     MenuItemSpec, MenuRootSpec, PanelResizePolicy, ShellSpec, SplitAxis, TabGroupSpec,
-    ToolbarItemSpec, WorkbenchNodeSpec,
+    ToolbarItemSpec, ToolbarOptionSpec, WorkbenchNodeSpec,
 };
 
 #[derive(Clone, Debug)]
@@ -259,6 +259,9 @@ fn merge_runtime_toolbar(
                     maruzzella_api::MzToolbarDisplayMode::TextOnly => {
                         crate::spec::ToolbarDisplayMode::TextOnly
                     }
+                    maruzzella_api::MzToolbarDisplayMode::Dropdown => {
+                        crate::spec::ToolbarDisplayMode::Dropdown
+                    }
                 },
                 appearance_id: if item.appearance_id.is_empty() {
                     if item.secondary {
@@ -269,6 +272,15 @@ fn merge_runtime_toolbar(
                 } else {
                     item.appearance_id
                 },
+                options: item
+                    .options
+                    .into_iter()
+                    .map(|option| ToolbarOptionSpec {
+                        label: option.label,
+                        payload: option.payload,
+                    })
+                    .collect(),
+                selected_index: item.selected_index,
             });
         }
     }

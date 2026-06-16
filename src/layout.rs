@@ -533,6 +533,8 @@ mod tests {
             secondary: false,
             display_mode: ToolbarDisplayMode::TextOnly,
             appearance_id: "primary".to_string(),
+            options: Vec::new(),
+            selected_index: 0,
         }];
         current.workbench = WorkbenchNodeSpec::Group(
             TabGroupSpec::new(

@@ -409,6 +409,11 @@ entry {
   background: {{color_search_focus_bg}};
 }
 
+.toolbar-dropdown {
+  min-width: 176px;
+  min-height: {{control_height_button}};
+}
+
 .toolbar-icon-button {
   min-width: {{icon_button_width}};
   min-height: {{icon_button_height}};

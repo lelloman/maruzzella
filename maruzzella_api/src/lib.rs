@@ -408,6 +408,14 @@ pub enum MzToolbarDisplayMode {
     #[default]
     IconAndText,
     TextOnly,
+    Dropdown,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzToolbarOption {
+    pub label: String,
+    #[serde(default)]
+    pub payload: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -423,6 +431,10 @@ pub struct MzToolbarItem {
     pub display_mode: MzToolbarDisplayMode,
     #[serde(default)]
     pub appearance_id: String,
+    #[serde(default)]
+    pub options: Vec<MzToolbarOption>,
+    #[serde(default)]
+    pub selected_index: u32,
 }
 
 impl MzToolbarItem {
@@ -442,6 +454,8 @@ impl MzToolbarItem {
             secondary,
             display_mode: MzToolbarDisplayMode::default(),
             appearance_id: String::new(),
+            options: Vec::new(),
+            selected_index: 0,
         }
     }
 
@@ -457,6 +471,16 @@ impl MzToolbarItem {
 
     pub fn with_payload(mut self, payload: impl Into<Vec<u8>>) -> Self {
         self.payload = payload.into();
+        self
+    }
+
+    pub fn with_options(mut self, options: impl Into<Vec<MzToolbarOption>>) -> Self {
+        self.options = options.into();
+        self
+    }
+
+    pub fn with_selected_index(mut self, selected_index: u32) -> Self {
+        self.selected_index = selected_index;
         self
     }
 

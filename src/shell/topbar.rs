@@ -241,6 +241,14 @@ fn dropdown_item(item: &ToolbarItemSpec, registry: Option<&CommandRegistry>) -> 
         return dropdown;
     }
 
+    if registry
+        .map(|registry| !registry.is_enabled(&item.command_id))
+        .unwrap_or(false)
+    {
+        dropdown.set_sensitive(false);
+        return dropdown;
+    }
+
     if let Some(handler) = registry.and_then(|registry| registry.handler_for(&item.command_id)) {
         let options = item.options.clone();
         dropdown.connect_selected_notify(move |dropdown| {

@@ -607,19 +607,23 @@ fn build_shell(
     density: &theme::ThemeDensity,
 ) -> (gtk::Widget, Vec<gtk::Widget>) {
     let spec = state.borrow().spec.clone();
+    let has_left_panel = !spec.left_panel.tabs.is_empty();
     let has_right_panel = !spec.right_panel.tabs.is_empty();
     let has_bottom_panel = !spec.bottom_panel.tabs.is_empty();
-    let left = build_group(
-        &spec.left_panel,
-        state.clone(),
-        persistence_id.clone(),
-        plugin_runtime.clone(),
-        group_handles.clone(),
-    );
-    group_handles
-        .borrow_mut()
-        .insert(spec.left_panel.id.clone(), left.handle.clone());
-    left.root.set_size_request(density.min_side_panel_width, -1);
+    let left = has_left_panel.then(|| {
+        let left = build_group(
+            &spec.left_panel,
+            state.clone(),
+            persistence_id.clone(),
+            plugin_runtime.clone(),
+            group_handles.clone(),
+        );
+        group_handles
+            .borrow_mut()
+            .insert(spec.left_panel.id.clone(), left.handle.clone());
+        left.root.set_size_request(density.min_side_panel_width, -1);
+        left
+    });
     let right = has_right_panel.then(|| {
         let right = build_group(
             &spec.right_panel,
@@ -670,7 +674,11 @@ fn build_shell(
         workbench_drag_context,
     );
 
-    let mut pane_roots: Vec<gtk::Widget> = vec![left.root.clone().upcast(), workbench.clone()];
+    let mut pane_roots: Vec<gtk::Widget> = Vec::new();
+    if let Some(ref left) = left {
+        pane_roots.push(left.root.clone().upcast());
+    }
+    pane_roots.push(workbench.clone());
     if let Some(ref bottom) = bottom {
         pane_roots.push(bottom.root.clone().upcast());
     }
@@ -678,28 +686,33 @@ fn build_shell(
         pane_roots.push(right.root.clone().upcast());
     }
 
-    let left_center = Paned::new(Orientation::Horizontal);
-    let left_center_controller = Rc::new(PanePositionController::default());
-    left_center.set_wide_handle(true);
-    left_center.set_shrink_start_child(false);
-    left_center.set_start_child(Some(&left.root));
-    left_center.set_end_child(Some(&workbench));
-    apply_start_panel_resize_policy(
-        &left_center,
-        spec.left_panel_resize,
-        left_center_controller.clone(),
-        state.clone(),
-        "shell.horizontal".to_string(),
-        density.min_side_panel_width,
-    );
-    restore_pane_position(
-        &left_center,
-        &state,
-        &persistence_id,
-        left_center_controller.clone(),
-        "shell.horizontal",
-        280,
-    );
+    let center = if let Some(left) = left.as_ref() {
+        let left_center = Paned::new(Orientation::Horizontal);
+        let left_center_controller = Rc::new(PanePositionController::default());
+        left_center.set_wide_handle(true);
+        left_center.set_shrink_start_child(false);
+        left_center.set_start_child(Some(&left.root));
+        left_center.set_end_child(Some(&workbench));
+        apply_start_panel_resize_policy(
+            &left_center,
+            spec.left_panel_resize,
+            left_center_controller.clone(),
+            state.clone(),
+            "shell.horizontal".to_string(),
+            density.min_side_panel_width,
+        );
+        restore_pane_position(
+            &left_center,
+            &state,
+            &persistence_id,
+            left_center_controller.clone(),
+            "shell.horizontal",
+            280,
+        );
+        left_center.upcast::<gtk::Widget>()
+    } else {
+        workbench.clone()
+    };
 
     let bottom_resize = spec.bottom_panel_resize;
     let right_resize = spec.right_panel_resize;
@@ -713,7 +726,7 @@ fn build_shell(
                 let vertical_controller = Rc::new(PanePositionController::default());
                 vertical.set_wide_handle(true);
                 vertical.set_shrink_end_child(false);
-                vertical.set_start_child(Some(&left_center));
+                vertical.set_start_child(Some(&center));
                 vertical.set_end_child(Some(&bottom.root));
                 apply_end_panel_resize_policy(
                     &vertical,
@@ -766,7 +779,7 @@ fn build_shell(
                     let upper_controller = Rc::new(PanePositionController::default());
                     upper.set_wide_handle(true);
                     upper.set_shrink_end_child(false);
-                    upper.set_start_child(Some(&left_center));
+                    upper.set_start_child(Some(&center));
                     upper.set_end_child(Some(&right.root));
                     apply_end_panel_resize_policy(
                         &upper,
@@ -786,7 +799,7 @@ fn build_shell(
                     );
                     upper.upcast::<gtk::Widget>()
                 } else {
-                    left_center.upcast::<gtk::Widget>()
+                    center.clone()
                 };
 
                 let vertical = Paned::new(Orientation::Vertical);
@@ -819,7 +832,7 @@ fn build_shell(
         let outer_controller = Rc::new(PanePositionController::default());
         outer.set_wide_handle(true);
         outer.set_shrink_end_child(false);
-        outer.set_start_child(Some(&left_center));
+        outer.set_start_child(Some(&center));
         outer.set_end_child(Some(&right.root));
         apply_end_panel_resize_policy(
             &outer,
@@ -839,7 +852,7 @@ fn build_shell(
         );
         outer.upcast::<gtk::Widget>()
     } else {
-        left_center.upcast::<gtk::Widget>()
+        center.clone()
     };
 
     (shell, pane_roots)

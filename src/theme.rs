@@ -969,11 +969,11 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("workbench_split_margin".to_string(), "10px".to_string()),
         (
             "workbench_split_fill".to_string(),
-            "alpha(#4b6eaf, 0.18)".to_string(),
+            "alpha(#4b6eaf, 0.12)".to_string(),
         ),
         (
             "workbench_split_border".to_string(),
-            "1px solid alpha(#a9b7c6, 0.42)".to_string(),
+            "1px solid alpha(#a9b7c6, 0.34)".to_string(),
         ),
         ("split_preview_side_width".to_string(), "120px".to_string()),
         (

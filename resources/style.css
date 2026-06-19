@@ -824,6 +824,8 @@ button.tab-close-button:hover label {
   background: {{tab_drag_gap_bg}};
 }
 
+.app-window box.workbench-split-preview,
+.app-root box.workbench-split-preview,
 .workbench-split-preview {
   margin: {{workbench_split_margin}};
   background: {{workbench_split_fill}};

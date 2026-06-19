@@ -7,8 +7,8 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{
     Align, Box as GtkBox, Button, Entry, EventControllerMotion, Fixed, GestureClick, GestureDrag,
-    Label, ListBox, Orientation, Overlay, PolicyType, Revealer, ScrolledWindow, Stack,
-    StackTransitionType, TextBuffer, Widget,
+    Label, ListBox, Orientation, Overlay, PolicyType, Revealer, RevealerTransitionType,
+    ScrolledWindow, Stack, StackTransitionType, TextBuffer, Widget,
 };
 
 use crate::plugins::PluginRuntime;
@@ -215,19 +215,19 @@ impl CustomWorkbenchGroupHandle {
                 self.preview_inner.add_css_class("split-preview-left");
                 self.preview.set_halign(Align::Start);
                 self.preview.set_valign(Align::Fill);
-                self.preview_inner.set_size_request(180, -1);
+                self.preview_inner.set_size_request(120, -1);
             }
             SplitPreviewSide::Right => {
                 self.preview_inner.add_css_class("split-preview-right");
                 self.preview.set_halign(Align::End);
                 self.preview.set_valign(Align::Fill);
-                self.preview_inner.set_size_request(180, -1);
+                self.preview_inner.set_size_request(120, -1);
             }
             SplitPreviewSide::Bottom => {
                 self.preview_inner.add_css_class("split-preview-bottom");
                 self.preview.set_halign(Align::Fill);
                 self.preview.set_valign(Align::End);
-                self.preview_inner.set_size_request(-1, 140);
+                self.preview_inner.set_size_request(-1, 96);
             }
         }
         self.preview.set_reveal_child(true);
@@ -694,8 +694,15 @@ pub fn build_group(
     stack.set_transition_type(StackTransitionType::None);
     stack.add_css_class("workbench-stack");
 
+    let content_overlay = Overlay::new();
+    content_overlay.set_halign(Align::Fill);
+    content_overlay.set_valign(Align::Fill);
+    content_overlay.set_hexpand(true);
+    content_overlay.set_vexpand(true);
+    content_overlay.set_child(Some(&stack));
+
     root.append(&tab_scroller);
-    root.append(&stack);
+    root.append(&content_overlay);
     overlay.set_child(Some(&root));
 
     let preview_inner = GtkBox::new(Orientation::Vertical, 0);
@@ -706,8 +713,9 @@ pub fn build_group(
     let preview = Revealer::new();
     preview.set_can_target(false);
     preview.set_reveal_child(false);
+    preview.set_transition_type(RevealerTransitionType::None);
     preview.set_child(Some(&preview_inner));
-    overlay.add_overlay(&preview);
+    content_overlay.add_overlay(&preview);
 
     let drag_layer = Fixed::new();
     drag_layer.set_hexpand(true);

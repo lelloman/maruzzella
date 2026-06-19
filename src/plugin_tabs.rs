@@ -141,7 +141,11 @@ pub fn close_plugin_view_tab(
             tab.plugin_view_id.as_deref(),
             tab.instance_key.as_deref(),
         ) {
-            let display_name = if tab.title.is_empty() { tab.id.clone() } else { tab.title.clone() };
+            let display_name = if tab.title.is_empty() {
+                tab.id.clone()
+            } else {
+                tab.title.clone()
+            };
             let shell_state = shell_state.clone();
             let persistence_id = persistence_id.to_string();
             let group_handles = group_handles.cloned();
@@ -170,8 +174,11 @@ pub fn close_plugin_view_tab(
         return false;
     };
     group.tabs.retain(|tab| tab.id != tab_id);
-    group.active_tab_id = active_tab_id
-        .filter(|active| remaining_tab_ids.iter().any(|tab| tab == active));
+    group.active_tab_id =
+        active_tab_id.filter(|active| remaining_tab_ids.iter().any(|tab| tab == active));
+    if remaining_tab_ids.is_empty() && group_id.starts_with("workbench") {
+        normalize_workbench_node(&mut shell.spec.workbench);
+    }
     crate::layout::save(persistence_id, &shell.clone());
     drop(shell);
 
@@ -200,8 +207,11 @@ fn force_close_plugin_view_tab(
         return;
     };
     group.tabs.retain(|tab| tab.id != tab_id);
-    group.active_tab_id = active_tab_id
-        .filter(|active| remaining_tab_ids.iter().any(|tab| tab == active));
+    group.active_tab_id =
+        active_tab_id.filter(|active| remaining_tab_ids.iter().any(|tab| tab == active));
+    if remaining_tab_ids.is_empty() && group_id.starts_with("workbench") {
+        normalize_workbench_node(&mut shell.spec.workbench);
+    }
     crate::layout::save(persistence_id, &shell.clone());
     drop(shell);
 
@@ -330,10 +340,12 @@ pub fn remember_active_plugin_tab(shell_state: &ShellState, group_id: &str, tab_
         find_group(&shell.spec, group_id)
             .and_then(|group| group.tabs.iter().find(|tab| tab.id == tab_id))
             .and_then(|tab| {
-                tab.plugin_view_id.as_ref().map(|plugin_view_id| ActivePluginTab {
-                    plugin_view_id: plugin_view_id.clone(),
-                    instance_key: tab.instance_key.clone(),
-                })
+                tab.plugin_view_id
+                    .as_ref()
+                    .map(|plugin_view_id| ActivePluginTab {
+                        plugin_view_id: plugin_view_id.clone(),
+                        instance_key: tab.instance_key.clone(),
+                    })
             })
     };
     LAST_ACTIVE_PLUGIN_TAB.with(|slot| {
@@ -561,6 +573,30 @@ fn find_group_mut_in_workbench<'a>(
         WorkbenchNodeSpec::Split { children, .. } => children
             .iter_mut()
             .find_map(|child| find_group_mut_in_workbench(child, group_id)),
+    }
+}
+
+fn normalize_workbench_node(node: &mut WorkbenchNodeSpec) -> bool {
+    match node {
+        WorkbenchNodeSpec::Group(group) => group.tabs.is_empty(),
+        WorkbenchNodeSpec::Split { children, .. } => {
+            let mut index = 0usize;
+            while index < children.len() {
+                if normalize_workbench_node(&mut children[index]) {
+                    children.remove(index);
+                } else {
+                    index += 1;
+                }
+            }
+            if children.is_empty() {
+                true
+            } else if children.len() == 1 {
+                *node = children.remove(0);
+                false
+            } else {
+                false
+            }
+        }
     }
 }
 

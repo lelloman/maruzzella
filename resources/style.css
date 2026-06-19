@@ -228,6 +228,10 @@ undershoot.left {
   margin: 0;
 }
 
+.menu-bar > child:first-child > button {
+  padding-left: 0;
+}
+
 .menu-bar > child > button,
 .menu-bar button {
   min-height: {{control_height_small}};

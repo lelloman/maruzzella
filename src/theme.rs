@@ -713,7 +713,7 @@ fn default_component_tokens() -> BTreeMap<String, String> {
         ("color_window_meta".to_string(), "#787878".to_string()),
         ("color_window_title".to_string(), "#bbbbbb".to_string()),
         ("color_window_branch_bg".to_string(), "#313335".to_string()),
-        ("space_window_strip_inline".to_string(), "16px".to_string()),
+        ("space_window_strip_inline".to_string(), "0px".to_string()),
         ("window_strip_height".to_string(), "26px".to_string()),
         ("window_branch_padding".to_string(), "0 10px".to_string()),
         ("window_controls_spacing".to_string(), "8px".to_string()),

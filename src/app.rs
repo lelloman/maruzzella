@@ -1248,7 +1248,16 @@ fn update_cross_group_drop_target(
     group_handles: &GroupHandles,
     drag_context: &Rc<RefCell<WorkbenchDragContext>>,
 ) {
-    let Some((source_x, source_y, _, _)) = source_handle.bounds_in(workbench_root) else {
+    let coordinate_root = source_handle
+        .widget()
+        .root()
+        .and_then(|root| {
+            root.downcast::<ApplicationWindow>()
+                .ok()
+                .map(|window| window.upcast::<gtk::Widget>())
+        })
+        .unwrap_or_else(|| workbench_root.clone());
+    let Some((source_x, source_y, _, _)) = source_handle.bounds_in(&coordinate_root) else {
         clear_drop_placeholders(group_handles);
         reset_drag_context(drag_context);
         return;
@@ -1261,7 +1270,7 @@ fn update_cross_group_drop_target(
         if !handle.group_id().starts_with("workbench") {
             continue;
         }
-        let Some((group_x, group_y, group_width, _)) = handle.bounds_in(workbench_root) else {
+        let Some((group_x, group_y, group_width, _)) = handle.bounds_in(&coordinate_root) else {
             continue;
         };
         let local_x = host_x - group_x;

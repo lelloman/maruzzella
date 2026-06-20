@@ -122,18 +122,18 @@ pub fn build(
         }
 
         if chrome.show_toolbar {
-            if !chrome.show_search {
-                let spacer = GtkBox::new(Orientation::Horizontal, 0);
-                spacer.set_hexpand(true);
-                toolbar.append(&spacer);
-            }
-
             let actions_group = GtkBox::new(Orientation::Horizontal, 8);
             actions_group.add_css_class("toolbar-actions");
             for item in spec.toolbar_items.iter().filter(|item| !item.secondary) {
                 actions_group.append(&action_bar_item_widget(item, &mut tooltips, registry));
             }
             toolbar.append(&actions_group);
+
+            if !chrome.show_search {
+                let spacer = GtkBox::new(Orientation::Horizontal, 0);
+                spacer.set_hexpand(true);
+                toolbar.append(&spacer);
+            }
 
             let utility_group = GtkBox::new(Orientation::Horizontal, 6);
             utility_group.add_css_class("toolbar-utility-group");

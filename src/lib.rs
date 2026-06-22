@@ -22,7 +22,7 @@ pub use app::{
     LauncherSpec, MaruzzellaHandle, ModeSwitchError, ShellChrome, ShellMode, WindowPolicy,
     WorkspaceSession,
 };
-pub use maruzzella_sdk::attach_text_tooltip;
+pub use maruzzella_sdk::{attach_text_tooltip, mark_clickable};
 pub use plugins::{
     diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, load_static_plugin,
     resolve_load_order, LoadedPlugin, PluginDependencySpec, PluginDescriptor, PluginDiagnostic,

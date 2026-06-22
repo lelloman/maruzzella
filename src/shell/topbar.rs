@@ -14,7 +14,7 @@ use crate::spec::{
     command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarDisplayMode, ToolbarItemSpec,
 };
 use crate::theme;
-use maruzzella_sdk::attach_text_tooltip;
+use maruzzella_sdk::{attach_text_tooltip, mark_clickable};
 
 struct IconButtonTooltip {
     button: Button,
@@ -226,6 +226,7 @@ fn dropdown_item(item: &ToolbarItemSpec, registry: Option<&CommandRegistry>) -> 
     };
     let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
     let dropdown = DropDown::from_strings(&label_refs);
+    mark_clickable(&dropdown);
     dropdown.add_css_class("toolbar-dropdown");
     dropdown.set_width_request(176);
     if let Some(label) = &item.label {
@@ -269,6 +270,7 @@ fn dropdown_item(item: &ToolbarItemSpec, registry: Option<&CommandRegistry>) -> 
 
 fn toolbar_button(icon_name: &str, label: &str, action_name: &str, appearance_id: &str) -> Button {
     let button = Button::new();
+    mark_clickable(&button);
     button.add_css_class("toolbar-button");
     button.add_css_class(&theme::button_css_class(appearance_id));
     button.set_action_name(Some(action_name));
@@ -287,6 +289,7 @@ fn toolbar_button(icon_name: &str, label: &str, action_name: &str, appearance_id
 
 fn text_button(label: &str, action_name: &str, appearance_id: &str) -> Button {
     let button = Button::new();
+    mark_clickable(&button);
     button.add_css_class("toolbar-button");
     button.add_css_class(&theme::button_css_class(appearance_id));
     button.set_action_name(Some(action_name));
@@ -299,6 +302,7 @@ fn text_button(label: &str, action_name: &str, appearance_id: &str) -> Button {
 
 fn standalone_toolbar_button(icon_name: &str, label: &str, appearance_id: &str) -> Button {
     let button = Button::new();
+    mark_clickable(&button);
     button.add_css_class("toolbar-button");
     button.add_css_class(&theme::button_css_class(appearance_id));
 
@@ -316,6 +320,7 @@ fn standalone_toolbar_button(icon_name: &str, label: &str, appearance_id: &str) 
 
 fn standalone_text_button(label: &str, appearance_id: &str) -> Button {
     let button = Button::new();
+    mark_clickable(&button);
     button.add_css_class("toolbar-button");
     button.add_css_class(&theme::button_css_class(appearance_id));
     let text = Label::new(Some(label));
@@ -333,6 +338,7 @@ fn icon_button(
     tooltips: &mut Vec<IconButtonTooltip>,
 ) -> Button {
     let button = Button::new();
+    mark_clickable(&button);
     button.add_css_class("toolbar-button");
     button.add_css_class("toolbar-icon-button");
     button.add_css_class(&theme::button_css_class(appearance_id));
@@ -356,6 +362,7 @@ fn icon_button(
 
 fn standalone_icon_button(icon_name: &str, tooltip: &str, appearance_id: &str) -> Button {
     let button = Button::new();
+    mark_clickable(&button);
     button.add_css_class("toolbar-button");
     button.add_css_class("toolbar-icon-button");
     button.add_css_class(&theme::button_css_class(appearance_id));

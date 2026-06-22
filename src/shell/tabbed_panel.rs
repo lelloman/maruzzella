@@ -12,6 +12,7 @@ use gtk::{
 use crate::plugins::PluginRuntime;
 use crate::spec::{PanelContentKind, TabSpec};
 use crate::theme;
+use maruzzella_sdk::mark_clickable;
 
 use super::{bare_pane_container, scrolled, section_title};
 
@@ -193,12 +194,14 @@ pub fn build_tab_page(
     tab_label.add_css_class("tab-label");
     tab_label.add_css_class(&theme::text_css_class("tab-label"));
     let tab_header = GtkBox::new(Orientation::Horizontal, 0);
+    mark_clickable(&tab_header);
     tab_header.add_css_class("tab-header");
     tab_header.append(&tab_label);
     if tab.closable {
         tab_header.add_css_class("closable");
         tab_header.set_spacing(2);
         let button = Button::new();
+        mark_clickable(&button);
         button.set_icon_name("window-close-symbolic");
         button.add_css_class("tab-close-button");
         button.add_css_class(&theme::button_css_class("ghost"));

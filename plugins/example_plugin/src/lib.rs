@@ -2,10 +2,10 @@ use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
-    decode_json_payload, export_plugin, CommandSpec, HostApi, MenuItemSpec, MzConfigContract,
-    MzHostEvent, MzMenuSurface, MzSettingsCategory, MzStatusCode, MzToolbarItem,
-    MzViewPlacement, Plugin, PluginDependency, PluginDescriptor, SurfaceContributionSpec,
-    Version, ViewFactorySpec,
+    decode_json_payload, export_plugin, mark_clickable, CommandSpec, HostApi, MenuItemSpec,
+    MzConfigContract, MzHostEvent, MzMenuSurface, MzSettingsCategory, MzStatusCode, MzToolbarItem,
+    MzViewPlacement, Plugin, PluginDependency, PluginDescriptor, SurfaceContributionSpec, Version,
+    ViewFactorySpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +29,9 @@ extern "C" fn show_example_plugin(
     maruzzella_sdk::ffi::MzStatus::OK
 }
 
-extern "C" fn observe_host_event(payload: maruzzella_sdk::ffi::MzBytes) -> maruzzella_sdk::ffi::MzStatus {
+extern "C" fn observe_host_event(
+    payload: maruzzella_sdk::ffi::MzBytes,
+) -> maruzzella_sdk::ffi::MzStatus {
     match decode_json_payload::<MzHostEvent>(payload) {
         Ok(_) => maruzzella_sdk::ffi::MzStatus::OK,
         Err(_) => maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument),
@@ -69,10 +71,7 @@ impl Plugin for ExamplePlugin {
             "Example runtime state service",
             &config,
         )?;
-        host.register_host_event_subscriber(
-            "maruzzella.command.dispatched",
-            observe_host_event,
-        )?;
+        host.register_host_event_subscriber("maruzzella.command.dispatched", observe_host_event)?;
         host.register_host_event_subscriber("maruzzella.runtime.ready", observe_host_event)?;
 
         host.register_command(
@@ -84,14 +83,16 @@ impl Plugin for ExamplePlugin {
             .with_handler(show_example_plugin),
         )?;
 
-        host.register_menu_item(MenuItemSpec::new(
-            "com.example.hello",
-            "example-plugin",
-            MzMenuSurface::FileItems,
-            "Example Plugin",
-            "example.hello.show",
-        )
-        .with_payload(b"\"open-from-menu\""))?;
+        host.register_menu_item(
+            MenuItemSpec::new(
+                "com.example.hello",
+                "example-plugin",
+                MzMenuSurface::FileItems,
+                "Example Plugin",
+                "example.hello.show",
+            )
+            .with_payload(b"\"open-from-menu\""),
+        )?;
 
         host.register_surface_contribution(SurfaceContributionSpec::about_section(
             "com.example.hello",
@@ -218,6 +219,7 @@ extern "C" fn create_example_settings_view(
     refresh_launches();
 
     let increment = Button::with_label("Increment");
+    mark_clickable(&increment);
     increment.set_halign(Align::Start);
     {
         let host_copy = *host;
@@ -231,6 +233,7 @@ extern "C" fn create_example_settings_view(
     }
 
     let reset = Button::with_label("Reset Counter");
+    mark_clickable(&reset);
     reset.set_halign(Align::Start);
     {
         let host_copy = *host;
@@ -279,6 +282,7 @@ extern "C" fn create_example_view(
     body.set_wrap(true);
 
     let button = Button::with_label("Run Example Command");
+    mark_clickable(&button);
     button.set_halign(gtk::Align::Start);
     button.connect_clicked(|_| {
         let _ = show_example_plugin(maruzzella_sdk::ffi::MzBytes::empty());

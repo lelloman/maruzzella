@@ -61,6 +61,22 @@ pub fn attach_text_tooltip<W: IsA<Widget>>(widget: &W, text: impl AsRef<str>) {
     widget.add_controller(hover);
 }
 
+/// Marks a GTK widget as clickable by using a hand cursor while it is sensitive.
+pub fn mark_clickable<W: IsA<Widget>>(widget: &W) {
+    update_clickable_cursor(widget);
+    widget.connect_sensitive_notify(|widget| {
+        update_clickable_cursor(widget);
+    });
+}
+
+fn update_clickable_cursor<W: IsA<Widget>>(widget: &W) {
+    if widget.is_sensitive() {
+        widget.set_cursor_from_name(Some("pointer"));
+    } else {
+        widget.set_cursor_from_name(None);
+    }
+}
+
 pub fn encode_json_payload<T: Serialize>(value: &T) -> Result<Vec<u8>, MzStatusCode> {
     serde_json::to_vec(value).map_err(|_| MzStatusCode::InternalError)
 }

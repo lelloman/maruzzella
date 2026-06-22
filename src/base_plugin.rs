@@ -18,6 +18,7 @@ use maruzzella_api::{
     MzStatus, MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog,
     MzViewFactorySpec, MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
 };
+use maruzzella_sdk::mark_clickable;
 use serde::{Deserialize, Serialize};
 
 use crate::plugins::{LoadedPlugin, PluginDescriptor, Version};
@@ -1517,6 +1518,7 @@ fn settings_page_list(
 
 fn action_button(label_text: &str, icon_name: Option<&str>) -> Button {
     let button = Button::with_label(label_text);
+    mark_clickable(&button);
     button.set_halign(Align::Start);
     if let Some(icon_name) = icon_name {
         button.set_icon_name(icon_name);

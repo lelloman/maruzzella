@@ -521,7 +521,7 @@ impl PluginRuntime {
         }
     }
 
-    fn emit_host_event(
+    pub(crate) fn emit_host_event(
         &self,
         event_id: &str,
         plugin_id: Option<&str>,

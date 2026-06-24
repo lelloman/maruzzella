@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use maruzzella::{
-    default_product_spec, plugin_tab, run, ButtonAppearance, ButtonStyle, MaruzzellaConfig,
-    SurfaceAppearance, SurfaceLevel, TabGroupSpec, TabStripAppearance, TabStripStyle, TextRole,
-    ThemeSpec, Tone, WorkbenchNodeSpec,
+    default_product_spec, plugin_tab, run, text_tab, BottomPanelLayout, ButtonAppearance,
+    ButtonStyle, MaruzzellaConfig, SurfaceAppearance, SurfaceLevel, TabGroupSpec,
+    TabStripAppearance, TabStripStyle, TextRole, ThemeSpec, Tone, WorkbenchNodeSpec,
 };
 
 fn main() {
@@ -21,6 +21,55 @@ fn main() {
     product.branding.search_placeholder = "Search plugin demo".to_string();
     product.branding.status_text = "Plugin-backed GTK view with semantic shell styling".to_string();
 
+    product.layout.left_panel = TabGroupSpec::new(
+        "panel-left",
+        Some("navigation"),
+        vec![text_tab(
+            "navigation",
+            "panel-left",
+            "Navigation",
+            "Clicking this left-panel tab changes focus, but the right context observer should keep showing the active workbench tab.",
+            false,
+        )],
+    )
+    .with_panel_appearance("demo-side")
+    .with_panel_header_appearance("demo-header")
+    .with_tab_strip_appearance("demo-tabs");
+
+    product.layout.right_panel = TabGroupSpec::new(
+        "panel-right",
+        Some("context-observer"),
+        vec![plugin_tab(
+            "context-observer",
+            "panel-right",
+            "Context",
+            "com.example.hello.context-observer",
+            "The active context observer could not be created.",
+            false,
+        )],
+    )
+    .with_panel_appearance("demo-side")
+    .with_panel_header_appearance("demo-header")
+    .with_tab_strip_appearance("demo-tabs");
+
+    product.layout.bottom_panel = TabGroupSpec::new(
+        "panel-bottom",
+        Some("console"),
+        vec![text_tab(
+            "console",
+            "panel-bottom",
+            "Console",
+            "Clicking this bottom panel changes focus but does not replace the active workbench context.",
+            false,
+        )
+        .with_text_appearance("code")],
+    )
+    .with_panel_appearance("demo-console")
+    .with_panel_header_appearance("demo-header")
+    .with_tab_strip_appearance("demo-tabs")
+    .with_text_appearance("code");
+    product.layout.bottom_panel_layout = BottomPanelLayout::FullWidth;
+
     product.layout.workbench = WorkbenchNodeSpec::Group(
         TabGroupSpec::new(
             "workbench-plugin-demo",
@@ -34,11 +83,11 @@ fn main() {
                     "The example plugin view could not be created.",
                     false,
                 ),
-                maruzzella::text_tab(
+                text_tab(
                     "notes",
                     "workbench-plugin-demo",
                     "Notes",
-                    "This second tab remains host-owned placeholder content.",
+                    "Selecting this workbench tab should update the right-panel active context observer.",
                     true,
                 ),
             ],
@@ -49,7 +98,7 @@ fn main() {
     );
 
     let config = MaruzzellaConfig::new("com.example.maruzzella.plugin-view")
-        .with_persistence_id("plugin-view-demo")
+        .with_persistence_id("plugin-view-context-demo")
         .with_theme(plugin_demo_theme())
         .with_product(product)
         .with_plugin_path(plugin_path);
@@ -104,6 +153,14 @@ fn plugin_demo_theme() -> ThemeSpec {
             "demo-workbench",
             SurfaceAppearance::new(Tone::Neutral, SurfaceLevel::Sunken, TextRole::Body)
                 .borderless(),
+        )
+        .with_surface_appearance(
+            "demo-side",
+            SurfaceAppearance::new(Tone::Secondary, SurfaceLevel::Raised, TextRole::Body),
+        )
+        .with_surface_appearance(
+            "demo-console",
+            SurfaceAppearance::new(Tone::Tertiary, SurfaceLevel::Sunken, TextRole::Code),
         )
         .with_surface_appearance(
             "demo-header",

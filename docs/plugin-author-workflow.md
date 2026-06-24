@@ -101,6 +101,13 @@ That keeps plugins aligned with the host without inventing ad hoc JSON formats f
 
 For visual styling, prefer the host shell's semantic appearance API rather than plugin-local assumptions about Maruzzella's GTK CSS. Product apps should configure shell appearances through `ThemeSpec` and shell spec appearance ids; plugin views should generally style only their own internal content.
 
+Plugins that need contextual UI can observe shell surface events through `register_host_event_subscriber`:
+
+- `maruzzella.surface.focused` fires when interaction focus moves to a shell tab surface.
+- `maruzzella.context.active_changed` fires when the focused surface is allowed to become the active context subject.
+
+Both events carry an `MzSurfaceFocusEvent` payload. The right inspector panel should usually follow `maruzzella.context.active_changed`, not raw focus, so clicking navigation, inspector, or console panels does not accidentally replace the workbench tab being inspected.
+
 ## 6. Versioning Expectations
 
 - `MZ_ABI_VERSION_V1` means host and plugin agree on the current ABI layout

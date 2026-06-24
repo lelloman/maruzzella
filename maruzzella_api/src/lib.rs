@@ -56,6 +56,82 @@ pub enum TabStripStyle {
     Console,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MzSurfaceArea {
+    Workbench,
+    LeftPanel,
+    RightPanel,
+    BottomPanel,
+    Dialog,
+}
+
+impl Default for MzSurfaceArea {
+    fn default() -> Self {
+        Self::Workbench
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MzSurfaceRole {
+    PrimaryDocument,
+    Navigation,
+    Inspector,
+    Console,
+    Settings,
+    Tool,
+    Dialog,
+}
+
+impl Default for MzSurfaceRole {
+    fn default() -> Self {
+        Self::Tool
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MzContextActivationPolicy {
+    Never,
+    OnFocus,
+    OnSelection,
+    Manual,
+}
+
+impl Default for MzContextActivationPolicy {
+    fn default() -> Self {
+        Self::Never
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzSurfaceDescriptor {
+    pub area: MzSurfaceArea,
+    pub role: MzSurfaceRole,
+    pub context_activation: MzContextActivationPolicy,
+    pub group_id: String,
+    pub tab_id: String,
+    pub title: String,
+    pub view_kind: String,
+    pub plugin_view_id: Option<String>,
+    pub instance_key: Option<String>,
+    pub can_be_context_subject: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MzSurfaceFocusEvent {
+    pub previous: Option<MzSurfaceDescriptor>,
+    pub current: MzSurfaceDescriptor,
+}
+
+impl MzSurfaceFocusEvent {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
 pub fn surface_css_class(id: &str) -> String {
     format!("mz-surface-{}", sanitize_css_identifier(id))
 }

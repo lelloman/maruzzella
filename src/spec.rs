@@ -1,3 +1,4 @@
+use maruzzella_api::{MzContextActivationPolicy, MzSurfaceRole};
 use serde::{Deserialize, Serialize};
 
 fn default_shell_surface_appearance() -> String {
@@ -97,11 +98,25 @@ pub struct TabSpec {
     pub close_prompt: Option<String>,
     #[serde(default = "default_text_appearance")]
     pub text_appearance_id: String,
+    #[serde(default)]
+    pub surface_role: Option<MzSurfaceRole>,
+    #[serde(default)]
+    pub context_activation: Option<MzContextActivationPolicy>,
 }
 
 impl TabSpec {
     pub fn with_text_appearance(mut self, appearance_id: impl Into<String>) -> Self {
         self.text_appearance_id = appearance_id.into();
+        self
+    }
+
+    pub fn with_surface_role(mut self, role: MzSurfaceRole) -> Self {
+        self.surface_role = Some(role);
+        self
+    }
+
+    pub fn with_context_activation(mut self, policy: MzContextActivationPolicy) -> Self {
+        self.context_activation = Some(policy);
         self
     }
 }
@@ -309,6 +324,8 @@ pub fn text_tab(id: &str, panel_id: &str, title: &str, body: &str, closable: boo
         closable,
         close_prompt: None,
         text_appearance_id: default_text_appearance(),
+        surface_role: None,
+        context_activation: None,
     }
 }
 
@@ -333,6 +350,8 @@ pub fn plugin_tab(
         closable,
         close_prompt: None,
         text_appearance_id: default_text_appearance(),
+        surface_role: None,
+        context_activation: None,
     }
 }
 
@@ -359,5 +378,7 @@ pub fn plugin_tab_with_instance(
         closable,
         close_prompt: None,
         text_appearance_id: default_text_appearance(),
+        surface_role: None,
+        context_activation: None,
     }
 }

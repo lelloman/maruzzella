@@ -1,11 +1,13 @@
+use std::cell::RefCell;
+
 use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, Label, Orientation};
 use maruzzella_sdk::{
     decode_json_payload, export_plugin, mark_clickable, CommandSpec, HostApi, MenuItemSpec,
-    MzConfigContract, MzHostEvent, MzMenuSurface, MzSettingsCategory, MzStatusCode, MzToolbarItem,
-    MzViewPlacement, Plugin, PluginDependency, PluginDescriptor, SurfaceContributionSpec, Version,
-    ViewFactorySpec,
+    MzConfigContract, MzHostEvent, MzMenuSurface, MzSettingsCategory, MzStatusCode,
+    MzSurfaceFocusEvent, MzToolbarItem, MzViewPlacement, Plugin, PluginDependency,
+    PluginDescriptor, SurfaceContributionSpec, Version, ViewFactorySpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +16,11 @@ struct ExamplePlugin;
 const CONFIG_SCHEMA_VERSION: u32 = 1;
 const CONFIG_MIGRATION_HOOK: &str = "com.example.hello.config.v1";
 const EXAMPLE_SERVICE_ID: &str = "com.example.hello.runtime";
+
+thread_local! {
+    static CONTEXT_OBSERVER_LABELS: RefCell<Vec<Label>> = const { RefCell::new(Vec::new()) };
+    static LAST_CONTEXT_SUMMARY: RefCell<String> = RefCell::new("No active context event received yet.".to_string());
+}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct ExamplePluginConfig {
@@ -36,6 +43,67 @@ extern "C" fn observe_host_event(
         Ok(_) => maruzzella_sdk::ffi::MzStatus::OK,
         Err(_) => maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument),
     }
+}
+
+extern "C" fn observe_context_event(
+    payload: maruzzella_sdk::ffi::MzBytes,
+) -> maruzzella_sdk::ffi::MzStatus {
+    let event = match decode_json_payload::<MzHostEvent>(payload) {
+        Ok(Some(event)) => event,
+        Ok(None) | Err(_) => {
+            return maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument);
+        }
+    };
+    let context = match MzSurfaceFocusEvent::from_bytes(&event.payload) {
+        Ok(context) => context,
+        Err(_) => return maruzzella_sdk::ffi::MzStatus::new(MzStatusCode::InvalidArgument),
+    };
+    update_context_observer_labels(format_context_summary(&context));
+    maruzzella_sdk::ffi::MzStatus::OK
+}
+
+fn format_context_summary(event: &MzSurfaceFocusEvent) -> String {
+    let current = &event.current;
+    let previous = event
+        .previous
+        .as_ref()
+        .map(|surface| format!("{} / {}", surface.group_id, surface.tab_id))
+        .unwrap_or_else(|| "none".to_string());
+
+    format!(
+        "Current context
+  title: {}
+  area: {:?}
+  role: {:?}
+  group: {}
+  tab: {}
+  view kind: {}
+  plugin view: {}
+  instance: {}
+  previous: {}",
+        current.title,
+        current.area,
+        current.role,
+        current.group_id,
+        current.tab_id,
+        current.view_kind,
+        current.plugin_view_id.as_deref().unwrap_or("none"),
+        current.instance_key.as_deref().unwrap_or("none"),
+        previous
+    )
+}
+
+fn update_context_observer_labels(summary: String) {
+    LAST_CONTEXT_SUMMARY.with(|slot| {
+        *slot.borrow_mut() = summary.clone();
+    });
+    CONTEXT_OBSERVER_LABELS.with(|labels| {
+        let mut labels = labels.borrow_mut();
+        labels.retain(|label| label.parent().is_some());
+        for label in labels.iter() {
+            label.set_label(&summary);
+        }
+    });
 }
 
 impl Plugin for ExamplePlugin {
@@ -73,6 +141,10 @@ impl Plugin for ExamplePlugin {
         )?;
         host.register_host_event_subscriber("maruzzella.command.dispatched", observe_host_event)?;
         host.register_host_event_subscriber("maruzzella.runtime.ready", observe_host_event)?;
+        host.register_host_event_subscriber(
+            "maruzzella.context.active_changed",
+            observe_context_event,
+        )?;
 
         host.register_command(
             CommandSpec::new(
@@ -158,6 +230,14 @@ impl Plugin for ExamplePlugin {
             "Example Plugin Settings",
             MzViewPlacement::Workbench,
             create_example_settings_view,
+        ))?;
+
+        host.register_view_factory(ViewFactorySpec::new(
+            "com.example.hello",
+            "com.example.hello.context-observer",
+            "Active Context Observer",
+            MzViewPlacement::SidePanel,
+            create_context_observer_view,
         ))?;
 
         Ok(())
@@ -250,6 +330,53 @@ extern "C" fn create_example_settings_view(
     root.append(&launches);
     root.append(&increment);
     root.append(&reset);
+
+    unsafe {
+        <gtk::Widget as IntoGlibPtr<*mut gtk::ffi::GtkWidget>>::into_glib_ptr(root.upcast())
+            as *mut std::ffi::c_void
+    }
+}
+
+extern "C" fn create_context_observer_view(
+    _host: *const maruzzella_sdk::ffi::MzHostApi,
+    _request: *const maruzzella_sdk::ffi::MzViewRequest,
+) -> *mut std::ffi::c_void {
+    if !gtk::is_initialized_main_thread() && gtk::init().is_err() {
+        return std::ptr::null_mut();
+    }
+
+    let root = GtkBox::new(Orientation::Vertical, 12);
+    root.set_margin_top(18);
+    root.set_margin_bottom(18);
+    root.set_margin_start(18);
+    root.set_margin_end(18);
+
+    let title = Label::new(Some("Active Context"));
+    title.set_xalign(0.0);
+    title.add_css_class("title-3");
+
+    let body = Label::new(Some(
+        "This right-panel view follows maruzzella.context.active_changed, not raw focus.",
+    ));
+    body.set_xalign(0.0);
+    body.set_wrap(true);
+
+    let context = Label::new(None);
+    context.set_xalign(0.0);
+    context.set_yalign(0.0);
+    context.set_wrap(true);
+    context.set_selectable(true);
+    context.add_css_class("monospace");
+    LAST_CONTEXT_SUMMARY.with(|summary| {
+        context.set_label(&summary.borrow());
+    });
+    CONTEXT_OBSERVER_LABELS.with(|labels| {
+        labels.borrow_mut().push(context.clone());
+    });
+
+    root.append(&title);
+    root.append(&body);
+    root.append(&context);
 
     unsafe {
         <gtk::Widget as IntoGlibPtr<*mut gtk::ffi::GtkWidget>>::into_glib_ptr(root.upcast())

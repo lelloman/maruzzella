@@ -7,6 +7,10 @@ use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box as GtkBox, GestureClick, Orientation, Overlay, Paned,
 };
+use maruzzella_api::{
+    MzContextActivationPolicy, MzSurfaceArea, MzSurfaceDescriptor, MzSurfaceFocusEvent,
+    MzSurfaceRole,
+};
 
 use crate::base_plugin;
 use crate::commands;
@@ -29,6 +33,19 @@ use crate::theme;
 use crate::{MaruzzellaConfig, ProductSpec};
 
 type ShellState = Rc<RefCell<PersistedShell>>;
+
+const EVENT_SURFACE_FOCUSED: &str = "maruzzella.surface.focused";
+const EVENT_CONTEXT_ACTIVE_CHANGED: &str = "maruzzella.context.active_changed";
+
+#[derive(Default)]
+struct SurfaceObserverState {
+    focused_surface: Option<MzSurfaceDescriptor>,
+    active_context_surface: Option<MzSurfaceDescriptor>,
+}
+
+thread_local! {
+    static SURFACE_OBSERVER_STATE: RefCell<SurfaceObserverState> = RefCell::new(SurfaceObserverState::default());
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellMode {
@@ -914,6 +931,7 @@ fn build_group(
         } else {
             vec![]
         };
+    let runtime_for_events = plugin_runtime.clone();
     let built = workbench_custom::build_group(
         &group.id,
         &extra_classes,
@@ -956,7 +974,7 @@ fn build_group(
             }
         });
     }
-    install_group_persistence(&built.handle, state, persistence_id);
+    install_group_persistence(&built.handle, state, persistence_id, runtime_for_events);
     built
 }
 
@@ -1030,11 +1048,13 @@ fn install_group_persistence(
     handle: &CustomWorkbenchGroupHandle,
     state: ShellState,
     persistence_id: String,
+    plugin_runtime: Option<Rc<PluginRuntime>>,
 ) {
     let handle_for_active = handle.clone();
     let state_for_active = state.clone();
     let persistence_id_for_active = persistence_id.clone();
     let group_id_for_active = handle.group_id().to_string();
+    let plugin_runtime_for_active = plugin_runtime.clone();
     handle.set_active_changed_handler(move |tab_id| {
         sync_group_into_state(
             &state_for_active,
@@ -1042,7 +1062,30 @@ fn install_group_persistence(
             &persistence_id_for_active,
         );
         plugin_tabs::remember_active_plugin_tab(&state_for_active, &group_id_for_active, &tab_id);
+        notify_surface_activation(
+            &state_for_active,
+            plugin_runtime_for_active.as_ref(),
+            &group_id_for_active,
+            &tab_id,
+        );
     });
+
+    let handle_for_focus = handle.clone();
+    let state_for_focus = state.clone();
+    let group_id_for_focus = handle.group_id().to_string();
+    let plugin_runtime_for_focus = plugin_runtime.clone();
+    let focus_click = GestureClick::new();
+    focus_click.connect_pressed(move |_, _, _, _| {
+        if let Some(tab_id) = handle_for_focus.active_tab_id() {
+            notify_surface_activation(
+                &state_for_focus,
+                plugin_runtime_for_focus.as_ref(),
+                &group_id_for_focus,
+                &tab_id,
+            );
+        }
+    });
+    handle.widget().add_controller(focus_click);
 
     let handle_for_drag = handle.clone();
     let state_for_drag = state;
@@ -1050,6 +1093,178 @@ fn install_group_persistence(
     handle.set_drag_end_handler(move || {
         sync_group_into_state(&state_for_drag, &handle_for_drag, &persistence_id_for_drag);
     });
+}
+
+fn notify_surface_activation(
+    state: &ShellState,
+    runtime: Option<&Rc<PluginRuntime>>,
+    group_id: &str,
+    tab_id: &str,
+) {
+    let Some(current) = surface_descriptor_for_tab(&state.borrow().spec, group_id, tab_id) else {
+        return;
+    };
+
+    let focused_event = SURFACE_OBSERVER_STATE.with(|slot| {
+        let mut state = slot.borrow_mut();
+        if state.focused_surface.as_ref() == Some(&current) {
+            return None;
+        }
+        let event = MzSurfaceFocusEvent {
+            previous: state.focused_surface.clone(),
+            current: current.clone(),
+        };
+        state.focused_surface = Some(current.clone());
+        Some(event)
+    });
+    emit_surface_event(
+        runtime,
+        EVENT_SURFACE_FOCUSED,
+        focused_event,
+        &current.tab_id,
+    );
+
+    if matches!(
+        current.context_activation,
+        MzContextActivationPolicy::OnFocus | MzContextActivationPolicy::OnSelection
+    ) {
+        let context_event = SURFACE_OBSERVER_STATE.with(|slot| {
+            let mut state = slot.borrow_mut();
+            if state.active_context_surface.as_ref() == Some(&current) {
+                return None;
+            }
+            let event = MzSurfaceFocusEvent {
+                previous: state.active_context_surface.clone(),
+                current: current.clone(),
+            };
+            state.active_context_surface = Some(current.clone());
+            Some(event)
+        });
+        emit_surface_event(
+            runtime,
+            EVENT_CONTEXT_ACTIVE_CHANGED,
+            context_event,
+            &current.tab_id,
+        );
+    }
+}
+
+fn emit_surface_event(
+    runtime: Option<&Rc<PluginRuntime>>,
+    event_id: &str,
+    event: Option<MzSurfaceFocusEvent>,
+    subject_id: &str,
+) {
+    let (Some(runtime), Some(event)) = (runtime, event) else {
+        return;
+    };
+    let Ok(payload) = event.to_bytes() else {
+        runtime.push_diagnostic(
+            None,
+            format!("failed to serialize surface event {event_id}"),
+        );
+        return;
+    };
+    runtime.emit_host_event(event_id, None, Some(subject_id), &payload);
+}
+
+fn surface_descriptor_for_tab(
+    spec: &ShellSpec,
+    group_id: &str,
+    tab_id: &str,
+) -> Option<MzSurfaceDescriptor> {
+    let group = find_group_for_surface(spec, group_id)?;
+    let tab = group.tabs.iter().find(|tab| tab.id == tab_id)?;
+    let area = surface_area_for_group(group_id);
+    let role = tab
+        .surface_role
+        .unwrap_or_else(|| default_surface_role(area, group_id));
+    let context_activation = tab
+        .context_activation
+        .unwrap_or_else(|| default_context_activation(area, role));
+    Some(MzSurfaceDescriptor {
+        area,
+        role,
+        context_activation,
+        group_id: group_id.to_string(),
+        tab_id: tab.id.clone(),
+        title: tab.title.clone(),
+        view_kind: tab.view_kind.clone(),
+        plugin_view_id: tab.plugin_view_id.clone(),
+        instance_key: tab.instance_key.clone(),
+        can_be_context_subject: matches!(
+            context_activation,
+            MzContextActivationPolicy::OnFocus
+                | MzContextActivationPolicy::OnSelection
+                | MzContextActivationPolicy::Manual
+        ),
+    })
+}
+
+fn find_group_for_surface<'a>(spec: &'a ShellSpec, group_id: &str) -> Option<&'a TabGroupSpec> {
+    if spec.left_panel.id == group_id {
+        return Some(&spec.left_panel);
+    }
+    if spec.right_panel.id == group_id {
+        return Some(&spec.right_panel);
+    }
+    if spec.bottom_panel.id == group_id {
+        return Some(&spec.bottom_panel);
+    }
+    find_workbench_group_for_surface(&spec.workbench, group_id)
+}
+
+fn find_workbench_group_for_surface<'a>(
+    node: &'a WorkbenchNodeSpec,
+    group_id: &str,
+) -> Option<&'a TabGroupSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => (group.id == group_id).then_some(group),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter()
+            .find_map(|child| find_workbench_group_for_surface(child, group_id)),
+    }
+}
+
+fn surface_area_for_group(group_id: &str) -> MzSurfaceArea {
+    if group_id.starts_with("panel-left") || group_id.starts_with("launcher-left") {
+        MzSurfaceArea::LeftPanel
+    } else if group_id.starts_with("panel-right") || group_id.starts_with("launcher-right") {
+        MzSurfaceArea::RightPanel
+    } else if group_id.starts_with("panel-bottom") || group_id.starts_with("launcher-bottom") {
+        MzSurfaceArea::BottomPanel
+    } else {
+        MzSurfaceArea::Workbench
+    }
+}
+
+fn default_surface_role(area: MzSurfaceArea, group_id: &str) -> MzSurfaceRole {
+    match area {
+        MzSurfaceArea::Workbench => {
+            if group_id.starts_with("launcher") {
+                MzSurfaceRole::Tool
+            } else {
+                MzSurfaceRole::PrimaryDocument
+            }
+        }
+        MzSurfaceArea::LeftPanel => MzSurfaceRole::Navigation,
+        MzSurfaceArea::RightPanel => MzSurfaceRole::Inspector,
+        MzSurfaceArea::BottomPanel => MzSurfaceRole::Console,
+        MzSurfaceArea::Dialog => MzSurfaceRole::Dialog,
+    }
+}
+
+fn default_context_activation(
+    area: MzSurfaceArea,
+    role: MzSurfaceRole,
+) -> MzContextActivationPolicy {
+    match (area, role) {
+        (MzSurfaceArea::Workbench, MzSurfaceRole::PrimaryDocument) => {
+            MzContextActivationPolicy::OnFocus
+        }
+        (_, MzSurfaceRole::PrimaryDocument) => MzContextActivationPolicy::OnSelection,
+        _ => MzContextActivationPolicy::Never,
+    }
 }
 
 fn install_workbench_group_interactions(
@@ -1946,5 +2161,54 @@ fn install_pane_focus_tracking(panes: &[gtk::Widget]) {
             }
         });
         pane.add_controller(click);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_surface_roles_follow_shell_areas() {
+        assert_eq!(
+            default_surface_role(MzSurfaceArea::Workbench, "workbench-main"),
+            MzSurfaceRole::PrimaryDocument
+        );
+        assert_eq!(
+            default_surface_role(MzSurfaceArea::LeftPanel, "panel-left"),
+            MzSurfaceRole::Navigation
+        );
+        assert_eq!(
+            default_surface_role(MzSurfaceArea::RightPanel, "panel-right"),
+            MzSurfaceRole::Inspector
+        );
+        assert_eq!(
+            default_surface_role(MzSurfaceArea::BottomPanel, "panel-bottom"),
+            MzSurfaceRole::Console
+        );
+    }
+
+    #[test]
+    fn only_primary_surfaces_default_to_context_subjects() {
+        assert_eq!(
+            default_context_activation(MzSurfaceArea::Workbench, MzSurfaceRole::PrimaryDocument),
+            MzContextActivationPolicy::OnFocus
+        );
+        assert_eq!(
+            default_context_activation(MzSurfaceArea::LeftPanel, MzSurfaceRole::Navigation),
+            MzContextActivationPolicy::Never
+        );
+        assert_eq!(
+            default_context_activation(MzSurfaceArea::RightPanel, MzSurfaceRole::Inspector),
+            MzContextActivationPolicy::Never
+        );
+        assert_eq!(
+            default_context_activation(MzSurfaceArea::BottomPanel, MzSurfaceRole::Console),
+            MzContextActivationPolicy::Never
+        );
+        assert_eq!(
+            default_context_activation(MzSurfaceArea::LeftPanel, MzSurfaceRole::PrimaryDocument),
+            MzContextActivationPolicy::OnSelection
+        );
     }
 }

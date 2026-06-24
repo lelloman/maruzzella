@@ -68,7 +68,13 @@ Start the app with:
 cargo run
 ```
 
-Run the example app with:
+Run the default-theme example with:
+
+```bash
+cargo run --example default_theme
+```
+
+Run the notebook example app with:
 
 ```bash
 cargo run --example notebook

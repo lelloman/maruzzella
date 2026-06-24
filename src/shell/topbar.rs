@@ -8,7 +8,7 @@ use gtk::{
     Orientation, Overlay, PopoverMenuBar,
 };
 
-use crate::app::ShellChrome;
+use crate::app::{ShellChrome, ToolbarPlacement};
 use crate::commands::CommandRegistry;
 use crate::spec::{
     command_name, menu_action_ref, MenuItemSpec, ShellSpec, ToolbarDisplayMode, ToolbarItemSpec,
@@ -92,58 +92,33 @@ pub fn build(
     search.add_css_class(&theme::input_css_class(&spec.search_input_appearance_id));
     let mut tooltips = Vec::new();
 
-    if chrome.show_menu_bar {
+    let inline_chrome = chrome.show_menu_bar
+        && (chrome.show_toolbar || chrome.show_search)
+        && chrome.toolbar_placement == ToolbarPlacement::InlineWithMenu;
+
+    if inline_chrome {
         let masthead = GtkBox::new(Orientation::Horizontal, 12);
         masthead.add_css_class("topbar-masthead");
+        masthead.add_css_class("topbar-masthead-inline");
         masthead.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
 
-        let menu_model = build_menu_model(spec);
-        let menu_bar = PopoverMenuBar::from_model(Some(&menu_model));
-        menu_bar.add_css_class("menu-bar");
-        menu_bar.add_css_class(&theme::surface_css_class(&spec.menu_appearance_id));
-        menu_bar.set_hexpand(true);
-        masthead.append(&menu_bar);
+        masthead.append(&menu_bar(spec));
+        let toolbar = toolbar_row(spec, chrome, registry, &search, &mut tooltips);
+        toolbar.add_css_class("studio-toolbar-inline");
+        masthead.append(&toolbar);
         root.append(&masthead);
-    }
-
-    if chrome.show_toolbar || chrome.show_search {
-        let toolbar = GtkBox::new(Orientation::Horizontal, 12);
-        toolbar.add_css_class("studio-toolbar");
-        toolbar.add_css_class(&theme::surface_css_class(&spec.toolbar_appearance_id));
-
-        if chrome.show_search {
-            let search_cluster = GtkBox::new(Orientation::Horizontal, 0);
-            search_cluster.add_css_class("toolbar-search-cluster");
-            search_cluster.set_hexpand(true);
-            search.add_css_class("toolbar-search");
-            search.set_hexpand(true);
-            search_cluster.append(&search);
-            toolbar.append(&search_cluster);
+    } else {
+        if chrome.show_menu_bar {
+            let masthead = GtkBox::new(Orientation::Horizontal, 12);
+            masthead.add_css_class("topbar-masthead");
+            masthead.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
+            masthead.append(&menu_bar(spec));
+            root.append(&masthead);
         }
 
-        if chrome.show_toolbar {
-            let actions_group = GtkBox::new(Orientation::Horizontal, 8);
-            actions_group.add_css_class("toolbar-actions");
-            for item in spec.toolbar_items.iter().filter(|item| !item.secondary) {
-                actions_group.append(&action_bar_item_widget(item, &mut tooltips, registry));
-            }
-            toolbar.append(&actions_group);
-
-            if !chrome.show_search {
-                let spacer = GtkBox::new(Orientation::Horizontal, 0);
-                spacer.set_hexpand(true);
-                toolbar.append(&spacer);
-            }
-
-            let utility_group = GtkBox::new(Orientation::Horizontal, 6);
-            utility_group.add_css_class("toolbar-utility-group");
-            for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
-                utility_group.append(&action_bar_item_widget(item, &mut tooltips, registry));
-            }
-            toolbar.append(&utility_group);
+        if chrome.show_toolbar || chrome.show_search {
+            root.append(&toolbar_row(spec, chrome, registry, &search, &mut tooltips));
         }
-
-        root.append(&toolbar);
     }
 
     Some(TopBar {
@@ -151,6 +126,61 @@ pub fn build(
         search,
         tooltips,
     })
+}
+
+fn menu_bar(spec: &ShellSpec) -> PopoverMenuBar {
+    let menu_model = build_menu_model(spec);
+    let menu_bar = PopoverMenuBar::from_model(Some(&menu_model));
+    menu_bar.add_css_class("menu-bar");
+    menu_bar.add_css_class(&theme::surface_css_class(&spec.menu_appearance_id));
+    menu_bar.set_hexpand(true);
+    menu_bar
+}
+
+fn toolbar_row(
+    spec: &ShellSpec,
+    chrome: ShellChrome,
+    registry: Option<&CommandRegistry>,
+    search: &Entry,
+    tooltips: &mut Vec<IconButtonTooltip>,
+) -> GtkBox {
+    let toolbar = GtkBox::new(Orientation::Horizontal, 12);
+    toolbar.add_css_class("studio-toolbar");
+    toolbar.add_css_class(&theme::surface_css_class(&spec.toolbar_appearance_id));
+
+    if chrome.show_search {
+        let search_cluster = GtkBox::new(Orientation::Horizontal, 0);
+        search_cluster.add_css_class("toolbar-search-cluster");
+        search_cluster.set_hexpand(true);
+        search.add_css_class("toolbar-search");
+        search.set_hexpand(true);
+        search_cluster.append(search);
+        toolbar.append(&search_cluster);
+    }
+
+    if chrome.show_toolbar {
+        let actions_group = GtkBox::new(Orientation::Horizontal, 8);
+        actions_group.add_css_class("toolbar-actions");
+        for item in spec.toolbar_items.iter().filter(|item| !item.secondary) {
+            actions_group.append(&action_bar_item_widget(item, tooltips, registry));
+        }
+        toolbar.append(&actions_group);
+
+        if !chrome.show_search {
+            let spacer = GtkBox::new(Orientation::Horizontal, 0);
+            spacer.set_hexpand(true);
+            toolbar.append(&spacer);
+        }
+
+        let utility_group = GtkBox::new(Orientation::Horizontal, 6);
+        utility_group.add_css_class("toolbar-utility-group");
+        for item in spec.toolbar_items.iter().filter(|item| item.secondary) {
+            utility_group.append(&action_bar_item_widget(item, tooltips, registry));
+        }
+        toolbar.append(&utility_group);
+    }
+
+    toolbar
 }
 
 fn action_bar_item_widget(

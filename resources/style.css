@@ -258,6 +258,26 @@ undershoot.left {
   border-bottom: {{toolbar_bottom_border}};
 }
 
+.topbar-masthead-inline .menu-bar {
+  min-width: 0;
+}
+
+.studio-toolbar-inline {
+  min-height: {{menu_bar_height}};
+  padding: 0;
+  background: transparent;
+  border-bottom: 0;
+}
+
+.studio-toolbar-inline .toolbar-search-cluster {
+  min-width: 240px;
+  margin-right: {{space_sm}};
+}
+
+.studio-toolbar-inline .toolbar-search {
+  min-width: 240px;
+}
+
 .toolbar-search-cluster {
   min-width: 320px;
   margin-right: {{space_md}};

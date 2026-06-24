@@ -19,8 +19,8 @@ use gtk::prelude::*;
 use gtk::Application;
 
 pub use app::{
-    LauncherSpec, MaruzzellaHandle, ModeSwitchError, ShellChrome, ShellMode, WindowPolicy,
-    WorkspaceSession,
+    LauncherSpec, MaruzzellaHandle, ModeSwitchError, ShellChrome, ShellMode, ToolbarPlacement,
+    WindowPolicy, WorkspaceSession,
 };
 pub use maruzzella_sdk::{
     attach_text_tooltip, mark_clickable, MzContextActivationPolicy, MzSurfaceArea,

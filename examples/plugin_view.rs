@@ -2,8 +2,9 @@ use std::path::PathBuf;
 
 use maruzzella::{
     default_product_spec, plugin_tab, run, text_tab, BottomPanelLayout, ButtonAppearance,
-    ButtonStyle, MaruzzellaConfig, SurfaceAppearance, SurfaceLevel, TabGroupSpec,
-    TabStripAppearance, TabStripStyle, TextRole, ThemeSpec, Tone, WorkbenchNodeSpec,
+    ButtonStyle, MaruzzellaConfig, ShellChrome, SurfaceAppearance, SurfaceLevel, TabGroupSpec,
+    TabStripAppearance, TabStripStyle, TextRole, ThemeSpec, Tone, ToolbarPlacement,
+    WorkbenchNodeSpec,
 };
 
 fn main() {
@@ -99,6 +100,10 @@ fn main() {
 
     let config = MaruzzellaConfig::new("com.example.maruzzella.plugin-view")
         .with_persistence_id("plugin-view-context-demo")
+        .with_workspace_chrome(
+            ShellChrome::workspace_default()
+                .with_toolbar_placement(ToolbarPlacement::InlineWithMenu),
+        )
         .with_theme(plugin_demo_theme())
         .with_product(product)
         .with_plugin_path(plugin_path);

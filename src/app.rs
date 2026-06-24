@@ -63,10 +63,23 @@ impl ShellMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolbarPlacement {
+    BelowMenu,
+    InlineWithMenu,
+}
+
+impl Default for ToolbarPlacement {
+    fn default() -> Self {
+        Self::BelowMenu
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ShellChrome {
     pub show_menu_bar: bool,
     pub show_toolbar: bool,
     pub show_search: bool,
+    pub toolbar_placement: ToolbarPlacement,
 }
 
 impl ShellChrome {
@@ -75,6 +88,7 @@ impl ShellChrome {
             show_menu_bar: false,
             show_toolbar: false,
             show_search: false,
+            toolbar_placement: ToolbarPlacement::BelowMenu,
         }
     }
 
@@ -83,7 +97,13 @@ impl ShellChrome {
             show_menu_bar: true,
             show_toolbar: true,
             show_search: true,
+            toolbar_placement: ToolbarPlacement::BelowMenu,
         }
+    }
+
+    pub fn with_toolbar_placement(mut self, placement: ToolbarPlacement) -> Self {
+        self.toolbar_placement = placement;
+        self
     }
 }
 

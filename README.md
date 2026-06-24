@@ -109,7 +109,7 @@ The intended integration surface is the crate root:
 - `run(config)`: launch a configured shell
 - `build_application(config)`: build a GTK application without running it yet
 - `ProductSpec` and related spec types: define branding, menus, toolbar actions, panels, and workbench layout
-- `ShellChrome::with_toolbar_placement(...)`: choose whether toolbar/search controls render below the menu bar or inline with it
+- `ShellChrome::with_toolbar_placement(...)`: choose whether toolbar/search controls render below the menu bar, inline with it, or adapt based on width
 
 Minimal example:
 

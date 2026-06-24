@@ -101,8 +101,7 @@ fn main() {
     let config = MaruzzellaConfig::new("com.example.maruzzella.plugin-view")
         .with_persistence_id("plugin-view-context-demo")
         .with_workspace_chrome(
-            ShellChrome::workspace_default()
-                .with_toolbar_placement(ToolbarPlacement::InlineWithMenu),
+            ShellChrome::workspace_default().with_toolbar_placement(ToolbarPlacement::Adaptive),
         )
         .with_theme(plugin_demo_theme())
         .with_product(product)

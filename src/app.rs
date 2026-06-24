@@ -66,6 +66,7 @@ impl ShellMode {
 pub enum ToolbarPlacement {
     BelowMenu,
     InlineWithMenu,
+    Adaptive,
 }
 
 impl Default for ToolbarPlacement {

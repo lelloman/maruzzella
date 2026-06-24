@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -92,32 +93,30 @@ pub fn build(
     search.add_css_class(&theme::input_css_class(&spec.search_input_appearance_id));
     let mut tooltips = Vec::new();
 
-    let inline_chrome = chrome.show_menu_bar
-        && (chrome.show_toolbar || chrome.show_search)
-        && chrome.toolbar_placement == ToolbarPlacement::InlineWithMenu;
-
-    if inline_chrome {
-        let masthead = GtkBox::new(Orientation::Horizontal, 12);
-        masthead.add_css_class("topbar-masthead");
-        masthead.add_css_class("topbar-masthead-inline");
-        masthead.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
-
-        masthead.append(&menu_bar(spec));
-        let toolbar = toolbar_row(spec, chrome, registry, &search, &mut tooltips);
-        toolbar.add_css_class("studio-toolbar-inline");
-        masthead.append(&toolbar);
-        root.append(&masthead);
-    } else {
-        if chrome.show_menu_bar {
-            let masthead = GtkBox::new(Orientation::Horizontal, 12);
-            masthead.add_css_class("topbar-masthead");
-            masthead.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
-            masthead.append(&menu_bar(spec));
-            root.append(&masthead);
+    let has_toolbar_row = chrome.show_toolbar || chrome.show_search;
+    match chrome.toolbar_placement {
+        ToolbarPlacement::InlineWithMenu if chrome.show_menu_bar && has_toolbar_row => {
+            root.append(&inline_topbar_row(
+                spec,
+                chrome,
+                registry,
+                &search,
+                &mut tooltips,
+            ));
         }
+        ToolbarPlacement::Adaptive if chrome.show_menu_bar && has_toolbar_row => {
+            install_adaptive_topbar(&root, spec, chrome, registry, &search, &mut tooltips);
+        }
+        ToolbarPlacement::BelowMenu
+        | ToolbarPlacement::InlineWithMenu
+        | ToolbarPlacement::Adaptive => {
+            if chrome.show_menu_bar {
+                root.append(&menu_topbar_row(spec));
+            }
 
-        if chrome.show_toolbar || chrome.show_search {
-            root.append(&toolbar_row(spec, chrome, registry, &search, &mut tooltips));
+            if has_toolbar_row {
+                root.append(&toolbar_row(spec, chrome, registry, &search, &mut tooltips));
+            }
         }
     }
 
@@ -126,6 +125,147 @@ pub fn build(
         search,
         tooltips,
     })
+}
+
+fn inline_topbar_row(
+    spec: &ShellSpec,
+    chrome: ShellChrome,
+    registry: Option<&CommandRegistry>,
+    search: &Entry,
+    tooltips: &mut Vec<IconButtonTooltip>,
+) -> GtkBox {
+    let masthead = GtkBox::new(Orientation::Horizontal, 12);
+    masthead.add_css_class("topbar-masthead");
+    masthead.add_css_class("topbar-masthead-inline");
+    masthead.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
+
+    masthead.append(&menu_bar(spec));
+    let toolbar = toolbar_row(spec, chrome, registry, search, tooltips);
+    toolbar.add_css_class("studio-toolbar-inline");
+    masthead.append(&toolbar);
+    masthead
+}
+
+fn menu_topbar_row(spec: &ShellSpec) -> GtkBox {
+    let masthead = GtkBox::new(Orientation::Horizontal, 12);
+    masthead.add_css_class("topbar-masthead");
+    masthead.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
+    masthead.append(&menu_bar(spec));
+    masthead
+}
+
+fn install_adaptive_topbar(
+    root: &GtkBox,
+    spec: &ShellSpec,
+    chrome: ShellChrome,
+    registry: Option<&CommandRegistry>,
+    search: &Entry,
+    tooltips: &mut Vec<IconButtonTooltip>,
+) {
+    let inline_row = GtkBox::new(Orientation::Horizontal, 12);
+    inline_row.add_css_class("topbar-masthead");
+    inline_row.add_css_class("topbar-masthead-inline");
+    inline_row.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
+
+    let menu_row = GtkBox::new(Orientation::Horizontal, 12);
+    menu_row.add_css_class("topbar-masthead");
+    menu_row.add_css_class(&theme::surface_css_class(&spec.topbar_appearance_id));
+
+    let menu = menu_bar(spec);
+    let toolbar = toolbar_row(spec, chrome, registry, search, tooltips);
+
+    root.append(&inline_row);
+    root.append(&menu_row);
+
+    let active_inline = Rc::new(RefCell::new(None));
+    apply_adaptive_topbar_layout(
+        root,
+        &inline_row,
+        &menu_row,
+        &menu,
+        &toolbar,
+        active_inline.clone(),
+    );
+
+    let inline_row_for_tick = inline_row.clone();
+    let menu_row_for_tick = menu_row.clone();
+    let menu_for_tick = menu.clone();
+    let toolbar_for_tick = toolbar.clone();
+    let active_inline_for_tick = active_inline.clone();
+    let last_width = Rc::new(RefCell::new(0));
+    root.add_tick_callback(move |root, _| {
+        let width = root.width();
+        if *last_width.borrow() != width {
+            *last_width.borrow_mut() = width;
+            apply_adaptive_topbar_layout(
+                root,
+                &inline_row_for_tick,
+                &menu_row_for_tick,
+                &menu_for_tick,
+                &toolbar_for_tick,
+                active_inline_for_tick.clone(),
+            );
+        }
+        gtk::glib::ControlFlow::Continue
+    });
+}
+
+fn apply_adaptive_topbar_layout(
+    root: &GtkBox,
+    inline_row: &GtkBox,
+    menu_row: &GtkBox,
+    menu: &PopoverMenuBar,
+    toolbar: &GtkBox,
+    active_inline: Rc<RefCell<Option<bool>>>,
+) {
+    let inline = should_use_inline_topbar(root, menu, toolbar);
+    if active_inline.borrow().as_ref() == Some(&inline) {
+        return;
+    }
+
+    if inline {
+        move_to_box(inline_row, menu);
+        toolbar.add_css_class("studio-toolbar-inline");
+        move_to_box(inline_row, toolbar);
+        inline_row.set_visible(true);
+        menu_row.set_visible(false);
+    } else {
+        move_to_box(menu_row, menu);
+        toolbar.remove_css_class("studio-toolbar-inline");
+        move_to_box(root, toolbar);
+        inline_row.set_visible(false);
+        menu_row.set_visible(true);
+    }
+
+    *active_inline.borrow_mut() = Some(inline);
+}
+
+fn should_use_inline_topbar(root: &GtkBox, menu: &PopoverMenuBar, toolbar: &GtkBox) -> bool {
+    const FALLBACK_INLINE_WIDTH: i32 = 960;
+    const INLINE_GUTTER: i32 = 48;
+
+    let width = root.width();
+    if width <= 1 {
+        return false;
+    }
+
+    let menu_width = menu.preferred_size().1.width();
+    let toolbar_width = toolbar.preferred_size().1.width();
+    let required_width = if menu_width > 1 && toolbar_width > 1 {
+        menu_width + toolbar_width + INLINE_GUTTER
+    } else {
+        FALLBACK_INLINE_WIDTH
+    };
+    width >= required_width
+}
+
+fn move_to_box<W: IsA<gtk::Widget>>(container: &GtkBox, child: &W) {
+    if let Some(parent) = child.parent() {
+        if let Ok(parent_box) = parent.downcast::<GtkBox>() {
+            parent_box.remove(child);
+        }
+    }
+    container.append(child);
 }
 
 fn menu_bar(spec: &ShellSpec) -> PopoverMenuBar {

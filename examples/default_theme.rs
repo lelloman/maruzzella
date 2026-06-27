@@ -88,7 +88,7 @@ fn main() {
                 "log",
                 "panel-bottom",
                 "Log",
-                "Default theme demo started.\nUse this example as the visual baseline.",
+                "Default theme demo started.\nUse this example to review the high-density engineering workbench theme.",
                 false,
             )
             .with_text_appearance("code"),
@@ -106,7 +106,7 @@ fn main() {
                 "welcome",
                 "workbench-main",
                 "Welcome",
-                "This example intentionally uses ThemeSpec::default() through MaruzzellaConfig::new. It shows the bundled shell styling without custom palette, typography, density, or appearance overrides.",
+                "This example intentionally uses ThemeSpec::default() through MaruzzellaConfig::new. It shows the default engineering workbench styling without custom palette, typography, density, or appearance overrides.",
                 false,
             ),
             text_tab(

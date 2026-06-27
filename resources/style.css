@@ -37,10 +37,11 @@
 
 .app-dialog,
 .app-dialog headerbar {
-  background: @bg_0;
+  background: @bg_1;
   color: @text_1;
   font-size: {{font_size_base}};
   font-family: {{font_family_base}};
+  border: 1px solid @border;
 }
 
 .app-dialog scrolledwindow,
@@ -117,7 +118,7 @@
   padding: 0 {{space_entry_inline}};
   background: {{color_entry_bg}};
   color: @text_0;
-  border: 0;
+  border: 1px solid @border;
   border-radius: {{search_radius}};
   font-size: {{font_size_ui}};
 }
@@ -133,7 +134,7 @@
 }
 
 .app-dialog entry:focus {
-  border-color: @accent;
+  border: 1px solid @accent;
   box-shadow: none;
 }
 
@@ -414,7 +415,7 @@ entry {
   padding: 0 {{space_entry_inline}};
   background: {{color_entry_bg}};
   color: @text_0;
-  border: 0;
+  border: 1px solid @border;
   border-radius: {{search_radius}};
   font-size: {{font_size_ui}};
 }
@@ -463,7 +464,7 @@ entry {
 }
 
 .app-window entry:focus {
-  border-color: @accent;
+  border: 1px solid @accent;
   box-shadow: none;
 }
 
@@ -485,7 +486,7 @@ entry {
 
 .workspace-pane {
   background: @panel_left;
-  border-right: 1px solid alpha(@border, 0.32);
+  border-right: 1px solid @border;
 }
 
 .workspace-pane.tool-window,
@@ -494,7 +495,7 @@ entry {
 }
 
 .workspace-pane.console-pane {
-  border-top: 1px solid alpha(@border, 0.28);
+  border-top: 1px solid @border;
 }
 
 .workspace-pane.workbench {
@@ -502,10 +503,6 @@ entry {
   border-right: 0;
 }
 
-.workspace-pane > box,
-.workspace-pane > widget,
-.workspace-pane viewport,
-.workspace-pane text,
 .workspace-pane label {
   background-color: transparent;
 }
@@ -526,7 +523,27 @@ entry {
   background: @panel_left;
 }
 
+.tool-window box,
+.tool-window grid,
+.tool-window scrolledwindow,
+.tool-window viewport,
+.tool-window list,
+.tool-window listview,
+.tool-window row {
+  background: @panel_left;
+}
+
 .inspector-pane {
+  background: @panel_right;
+}
+
+.inspector-pane box,
+.inspector-pane grid,
+.inspector-pane scrolledwindow,
+.inspector-pane viewport,
+.inspector-pane list,
+.inspector-pane listview,
+.inspector-pane row {
   background: @panel_right;
 }
 
@@ -534,9 +551,26 @@ entry {
   background: @panel_bottom;
 }
 
+.console-pane box,
+.console-pane grid,
+.console-pane scrolledwindow,
+.console-pane viewport,
+.console-pane list,
+.console-pane listview,
+.console-pane row {
+  background: @panel_bottom;
+}
+
 .workbench {
   background: @workbench;
   border-top: 0;
+}
+
+.workbench box,
+.workbench grid,
+.workbench scrolledwindow,
+.workbench viewport {
+  background: @workbench;
 }
 
 .workbench-drop-zone {
@@ -563,12 +597,12 @@ entry {
 
 .app-window notebook header,
 .app-window notebook.workbench-tabs > header {
-  background: transparent;
-  border-bottom: 0;
+  background: @bg_1;
+  border-bottom: 1px solid @border;
 }
 
 .app-window .console-pane notebook header {
-  background: transparent;
+  background: @panel_bottom;
 }
 
 .app-window notebook.workbench-tabs,
@@ -581,7 +615,7 @@ entry {
 
 .app-window notebook header tabs,
 .app-window notebook.workbench-tabs > header tabs {
-  background: transparent;
+  background: @bg_1;
 }
 
 .app-window notebook > header scrollbar.horizontal,
@@ -647,7 +681,7 @@ entry {
 .app-window notebook.workbench-tabs > header tabs tab {
   min-height: {{control_height_medium}};
   padding: {{notebook_tab_padding}};
-  margin: 4px 4px 4px 0;
+  margin: 0;
   border-radius: {{tab_radius}};
   border-right: 0;
   border-top: 0;
@@ -686,7 +720,7 @@ entry {
 
 
 .app-window notebook.editor-tabs > header {
-  background: transparent;
+  background: {{color_tab_strip_scroller_bg}};
 }
 
 .app-window notebook.editor-tabs > header tabs tab {
@@ -698,7 +732,7 @@ entry {
 }
 
 .app-window notebook.tool-tabs > header {
-  background: transparent;
+  background: @panel_left;
 }
 
 .app-window notebook.tool-tabs > header tabs tab {
@@ -713,7 +747,7 @@ entry {
 }
 
 .app-window notebook.bottom-tabs > header {
-  background: transparent;
+  background: @panel_bottom;
 }
 
 .app-window notebook.bottom-tabs > header tabs tab {
@@ -864,8 +898,8 @@ button.tab-close-button:hover label {
 .panel-header {
   min-height: {{panel_header_height}};
   padding: 0 {{space_lg}};
-  background: alpha(@bg_1, 0.28);
-  border-bottom: 1px solid alpha(@border, 0.24);
+  background: @bg_1;
+  border-bottom: 1px solid @border;
 }
 
 .panel-title {
@@ -912,7 +946,7 @@ button.tab-close-button:hover label {
 .dense-row {
   min-height: {{dense_row_height}};
   padding: 0;
-  margin: 2px 0;
+  margin: 0;
   border-bottom: 0;
   background: transparent;
 }
@@ -1009,20 +1043,6 @@ text,
   background: @workbench;
 }
 
-.tool-window listview,
-.tool-window list,
-.tool-window row,
-.tool-window viewport {
-  background: {{color_tool_window_surface}};
-}
-
-.inspector-pane viewport,
-.inspector-pane box,
-.inspector-pane list,
-.inspector-pane row {
-  background: {{color_tool_window_surface}};
-}
-
 .console-view,
 .console-view text,
 .console-pane viewport,
@@ -1049,7 +1069,7 @@ text,
   min-height: {{status_bar_height}};
   padding: 0 {{space_md}};
   background: {{color_status_bar_bg}};
-  border-top: 0;
+  border-top: 1px solid @border;
 }
 
 .status-item {
@@ -1239,7 +1259,7 @@ popover.background separator {
 
 .pane-focused row:hover,
 .pane-focused list row:hover {
-  background: alpha(#2d5c88, 0.3);
+  background: {{dense_row_hover_bg}};
 }
 
 .pane-focused row:selected:hover,
@@ -1256,6 +1276,6 @@ popover.background separator {
 
 
 .pane-focused .linked > button:checked {
-  background: #2d5c88;
-  color: #ffffff;
+  background: {{dense_row_selected_bg}};
+  color: {{dense_row_selected_text}};
 }

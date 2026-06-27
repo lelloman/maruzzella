@@ -199,7 +199,7 @@ let config = MaruzzellaConfig::new("com.example.my-app")
 
 The preferred downstream styling path is now semantic, not selector-driven.
 
-- `ThemeSpec::default()` gives the bundled Maruzzella look
+- `ThemeSpec::default()` gives the high-density dark engineering workbench look
 - `ThemeSpec` exposes typed palette, typography, density, and semantic appearance registries
 - downstream apps can define or override named appearances such as `primary`, `secondary`, `workbench`, `console`, `toolbar`, `title`, or `danger`
 - `ShellSpec`, `TabGroupSpec`, `TabSpec`, and `ToolbarItemSpec` reference those appearances by stable ids

@@ -2068,7 +2068,7 @@ fn apply_start_panel_resize_policy(
     controller: Rc<PanePositionController>,
     state: ShellState,
     pane_id: String,
-    _min_size: i32,
+    min_size: i32,
 ) {
     paned.set_resize_start_child(true);
     paned.set_resize_end_child(true);
@@ -2096,9 +2096,10 @@ fn apply_start_panel_resize_policy(
                         return;
                     }
                     // Window grew — restore panel to its previous size.
-                    if pos != old_pos {
+                    let restored_pos = old_pos.max(min_size);
+                    if pos != restored_pos {
                         controller.run_programmatic_update(|| {
-                            paned.set_position(old_pos);
+                            paned.set_position(restored_pos);
                         });
                         prev_total.set(total);
                         return;
@@ -2121,7 +2122,7 @@ fn apply_end_panel_resize_policy(
     controller: Rc<PanePositionController>,
     state: ShellState,
     pane_id: String,
-    _min_size: i32,
+    min_size: i32,
 ) {
     paned.set_resize_start_child(true);
     paned.set_resize_end_child(true);
@@ -2149,9 +2150,10 @@ fn apply_end_panel_resize_policy(
                         return;
                     }
                     // Window grew — restore panel to its previous size.
-                    if panel_size != old_panel_size {
+                    let restored_panel_size = old_panel_size.max(min_size);
+                    if panel_size != restored_panel_size {
                         controller.run_programmatic_update(|| {
-                            paned.set_position(total - old_panel_size);
+                            paned.set_position(total - restored_panel_size);
                         });
                         prev_total.set(total);
                         return;

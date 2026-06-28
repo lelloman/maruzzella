@@ -565,6 +565,18 @@ impl ThemeSpec {
                 self.palette.accent_strong.clone(),
             ),
             (
+                "color_success".to_string(),
+                tone_color(&self.palette, Tone::Success),
+            ),
+            (
+                "color_warning".to_string(),
+                tone_color(&self.palette, Tone::Warning),
+            ),
+            (
+                "color_danger".to_string(),
+                tone_color(&self.palette, Tone::Danger),
+            ),
+            (
                 "font_family_base".to_string(),
                 self.typography.font_family.clone(),
             ),

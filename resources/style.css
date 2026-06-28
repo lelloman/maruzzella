@@ -11,6 +11,9 @@
 @define-color text_2 {{color_text_2}};
 @define-color accent {{color_accent}};
 @define-color accent_strong {{color_accent_strong}};
+@define-color success {{color_success}};
+@define-color warning {{color_warning}};
+@define-color danger {{color_danger}};
 
 .app-window,
 .app-window box,

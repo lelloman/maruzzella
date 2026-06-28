@@ -654,7 +654,9 @@ pub fn build_group(
     overlay.set_valign(Align::Fill);
     overlay.set_hexpand(true);
     overlay.set_vexpand(true);
-    overlay.add_css_class("custom-workbench-group");
+    if group_id.starts_with("workbench") {
+        overlay.add_css_class("custom-workbench-group");
+    }
 
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.set_halign(Align::Fill);
@@ -662,7 +664,9 @@ pub fn build_group(
     root.set_hexpand(true);
     root.set_vexpand(true);
     root.add_css_class("workspace-pane");
-    root.add_css_class("workbench");
+    if group_id.starts_with("workbench") {
+        root.add_css_class("workbench");
+    }
     root.add_css_class(&theme::surface_css_class(panel_appearance_id));
     root.add_css_class(&theme::text_css_class(text_appearance_id));
     for class in extra_css_classes {

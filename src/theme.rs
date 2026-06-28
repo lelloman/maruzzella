@@ -118,19 +118,19 @@ pub struct ThemePalette {
 impl Default for ThemePalette {
     fn default() -> Self {
         Self {
-            bg_0: "#161a1d".to_string(),
-            bg_1: "#20242a".to_string(),
-            workbench: "#111417".to_string(),
-            panel_left: "#1c2025".to_string(),
-            panel_right: "#20242a".to_string(),
-            panel_bottom: "#181c20".to_string(),
-            border: "#4a5261".to_string(),
-            border_strong: "#9099aa".to_string(),
-            text_0: "#e2e2e6".to_string(),
-            text_1: "#c8d0df".to_string(),
-            text_2: "#9099aa".to_string(),
+            bg_0: "#2b2d30".to_string(),
+            bg_1: "#3c3f41".to_string(),
+            workbench: "#2b2d30".to_string(),
+            panel_left: "#3c3f41".to_string(),
+            panel_right: "#3c3f41".to_string(),
+            panel_bottom: "#3c3f41".to_string(),
+            border: "#43454a".to_string(),
+            border_strong: "#54585d".to_string(),
+            text_0: "#dfe1e5".to_string(),
+            text_1: "#adb0b9".to_string(),
+            text_2: "#787878".to_string(),
             accent: "#3574f0".to_string(),
-            accent_strong: "#b1c5ff".to_string(),
+            accent_strong: "#589df6".to_string(),
         }
     }
 }
@@ -153,8 +153,8 @@ impl Default for ThemeTypography {
             mono_font_family: "\"JetBrains Mono\", monospace".to_string(),
             font_size_base: 13,
             font_size_ui: 12,
-            font_size_small: 12,
-            font_size_tiny: 11,
+            font_size_small: 11,
+            font_size_tiny: 10,
             font_size_title: 20,
         }
     }
@@ -193,13 +193,13 @@ impl Default for ThemeDensity {
         Self {
             window_default_width: 1600,
             window_default_height: 980,
-            min_side_panel_width: 320,
+            min_side_panel_width: 200,
             min_bottom_panel_height: 200,
             radius_none: 0,
             radius_small: 2,
             radius_medium: 2,
             radius_large: 4,
-            radius_pill: 999,
+            radius_pill: 3,
             space_xs: 2,
             space_sm: 4,
             space_md: 4,
@@ -209,12 +209,12 @@ impl Default for ThemeDensity {
             control_height_medium: 28,
             control_height_large: 32,
             toolbar_height: 32,
-            tab_height: 30,
+            tab_height: 26,
             icon_size: 16,
             search_width_min: 300,
             search_width_max: 420,
             command_width_min: 220,
-            panel_header_height: 28,
+            panel_header_height: 26,
         }
     }
 }
@@ -710,8 +710,8 @@ impl ThemeSpec {
 
 fn default_component_tokens(spec: &ThemeSpec) -> BTreeMap<String, String> {
     let p = &spec.palette;
-    let hover = "#2a3037";
-    let hover_strong = "#353c45";
+    let hover = "#4e5157";
+    let hover_strong = "#54585d";
     let selected_text = "#ffffff";
     let warning = "#ffc66d";
     let success = "#83d0ae";
@@ -896,8 +896,8 @@ fn default_component_tokens(spec: &ThemeSpec) -> BTreeMap<String, String> {
             format!("inset 0 -2px {}", p.accent_strong),
         ),
         ("color_editor_tab_bg".to_string(), p.bg_1.clone()),
-        ("color_editor_tab_active".to_string(), p.panel_right.clone()),
-        ("tool_tab_height".to_string(), "30px".to_string()),
+        ("color_editor_tab_active".to_string(), p.workbench.clone()),
+        ("tool_tab_height".to_string(), "26px".to_string()),
         ("space_tab_header".to_string(), "8px".to_string()),
         ("tab_close_width".to_string(), "22px".to_string()),
         ("tab_close_height".to_string(), "22px".to_string()),
@@ -970,13 +970,16 @@ fn default_component_tokens(spec: &ThemeSpec) -> BTreeMap<String, String> {
         ("panel_title_color".to_string(), p.text_2.clone()),
         ("section_title_tracking".to_string(), "0.04em".to_string()),
         ("panel_content_padding".to_string(), "8px".to_string()),
-        ("dense_row_height".to_string(), "24px".to_string()),
-        ("dense_row_selected_bg".to_string(), p.accent.clone()),
+        ("dense_row_height".to_string(), "22px".to_string()),
+        ("dense_row_selected_bg".to_string(), "#2d5c88".to_string()),
         (
             "dense_row_selected_text".to_string(),
             selected_text.to_string(),
         ),
-        ("dense_row_hover_bg".to_string(), hover.to_string()),
+        (
+            "dense_row_hover_bg".to_string(),
+            "alpha(#43454a, 0.45)".to_string(),
+        ),
         ("list_row_padding".to_string(), "4px 8px".to_string()),
         ("inspector_value_color".to_string(), p.text_0.clone()),
         ("status_badge_padding".to_string(), "4px 8px".to_string()),
@@ -1502,8 +1505,8 @@ mod tests {
     #[test]
     fn renders_builtin_template_with_default_tokens() {
         let stylesheet = build_stylesheet(&ThemeSpec::default()).expect("default theme renders");
-        assert!(stylesheet.contains("@define-color bg_0 #161a1d;"));
-        assert!(stylesheet.contains("border: 1px solid #4a5261;"));
+        assert!(stylesheet.contains("@define-color bg_0 #2b2d30;"));
+        assert!(stylesheet.contains("border: 1px solid #43454a;"));
         assert!(stylesheet.contains("font-size: 12px;"));
         assert!(!stylesheet.contains("{{"));
     }

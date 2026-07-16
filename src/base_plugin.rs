@@ -1151,58 +1151,8 @@ fn plugins_view(host: &MzHostApi) -> gtk::Widget {
     root.upcast()
 }
 
-fn settings_view(host: &MzHostApi, instance_key: Option<&str>) -> gtk::Widget {
-    let root = view_root();
-    let snapshot = read_plugin_state(host);
-    let settings_catalog = read_settings_catalog(host);
-    let selected_plugin_id = instance_key.and_then(parse_plugin_instance_key);
-    root.append(&hero(
-        "Settings",
-        "Plugin-owned settings entries are aggregated here by the base plugin. Entries can either summarize config state or open concrete plugin settings views.",
-        Some(("Surface-driven", "status-running")),
-    ));
-
-    let plugin_ids = if let Some(plugin_id) = selected_plugin_id {
-        vec![plugin_id.to_string()]
-    } else {
-        snapshot
-            .plugins
-            .iter()
-            .map(|plugin| plugin.plugin_id.clone())
-            .collect::<Vec<_>>()
-    };
-
-    let mut rendered_any = false;
-    for plugin_id in plugin_ids {
-        let plugin_settings = settings_catalog
-            .pages
-            .iter()
-            .filter(|page| page.plugin_id == plugin_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        if plugin_settings.is_empty() {
-            continue;
-        }
-        rendered_any = true;
-        let plugin_title = snapshot
-            .plugins
-            .iter()
-            .find(|plugin| plugin.plugin_id == plugin_id)
-            .map(|plugin| plugin.name.clone())
-            .unwrap_or_else(|| plugin_id.clone());
-        root.append(&section(&plugin_title, &[plugin_id.as_str()]));
-        root.append(&settings_page_list(&plugin_settings, Some(host)));
-        root.append(&Separator::new(Orientation::Horizontal));
-    }
-
-    if !rendered_any {
-        root.append(&section(
-            "Settings",
-            &["No plugin settings pages are currently registered."],
-        ));
-    }
-
-    root.upcast()
+fn settings_view(_host: &MzHostApi, _instance_key: Option<&str>) -> gtk::Widget {
+    view_root().upcast()
 }
 
 fn about_view(host: &MzHostApi) -> gtk::Widget {
@@ -1967,10 +1917,6 @@ impl EditorDocumentPayload {
     fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
-}
-
-fn parse_plugin_instance_key(value: &str) -> Option<&str> {
-    value.strip_prefix("plugin:")
 }
 
 fn toolbar_item_payload(

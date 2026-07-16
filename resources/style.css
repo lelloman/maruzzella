@@ -1131,6 +1131,37 @@ text,
   color: {{color_plugin_overview}};
 }
 
+.settings-page {
+  background: transparent;
+}
+
+.settings-row-description {
+  color: @text_2;
+}
+
+.settings-group {
+  background: transparent;
+}
+
+.settings-row,
+.settings-palette-option {
+  padding: 15px 18px;
+}
+
+.settings-row-title {
+  font-weight: 600;
+  color: @text_1;
+}
+
+.settings-control {
+  min-width: 220px;
+}
+
+.settings-palette-preview {
+  border: 1px solid @border;
+  border-radius: {{radius_small}};
+}
+
 .plugin-manager-footer {
   padding: {{plugin_footer_padding}};
 }

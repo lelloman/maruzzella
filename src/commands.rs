@@ -159,13 +159,17 @@ pub fn shell_registry(
     let persistence_id_for_settings = persistence_id.to_string();
     let state_for_settings = shell_state.clone();
     let handles_for_settings = group_handles.clone();
-    registry.register("shell.settings", move |_| {
+    registry.register("shell.settings", move |payload| {
+        let view_id = std::str::from_utf8(payload)
+            .ok()
+            .filter(|view_id| !view_id.is_empty())
+            .unwrap_or(BASE_SETTINGS_VIEW_ID);
         open_base_view(
             host_for_settings.as_deref(),
             &persistence_id_for_settings,
             state_for_settings.as_ref(),
             handles_for_settings.as_ref(),
-            BASE_SETTINGS_VIEW_ID,
+            view_id,
             "Settings",
         );
     });

@@ -16,14 +16,15 @@ pub use maruzzella_api::{
     MzPluginDependencySummary, MzPluginSnapshot, MzServiceCatalog, MzServiceSummary,
     MzSettingsCatalog, MzSettingsCategory, MzStartupTab, MzStatusCode, MzSurfaceArea,
     MzSurfaceDescriptor, MzSurfaceFocusEvent, MzSurfaceRole, MzToolbarDisplayMode, MzToolbarItem,
-    MzViewCatalog, MzViewOpenDisposition, MzViewPlacement, MzViewSummary, SurfaceLevel,
-    TabStripStyle, TextRole, Tone,
+    MzViewCatalog, MzViewOpenDisposition, MzViewPlacement, MzViewSummary, MzViewTeardownDecision,
+    MzViewTeardownReason, MzViewTeardownRequest, MzViewTeardownResult, SurfaceLevel, TabStripStyle,
+    TextRole, Tone,
 };
 use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,
     MzPluginDescriptorView, MzPluginVTable, MzServiceQuery, MzServiceSpec, MzStatus, MzStr,
     MzSurfaceContribution, MzToolbarWidgetSpec, MzVersion, MzViewFactorySpec, MzViewQuery,
-    MZ_ABI_VERSION_V1,
+    MZ_ABI_VERSION_V2,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -167,7 +168,7 @@ impl PluginDescriptor {
             version,
             description: "",
             dependencies: &[],
-            required_abi_version: MZ_ABI_VERSION_V1,
+            required_abi_version: MZ_ABI_VERSION_V2,
         }
     }
 
@@ -295,6 +296,7 @@ pub struct ViewFactorySpec {
     pub title: &'static str,
     pub placement: MzViewPlacement,
     pub create: maruzzella_api::MzCreateViewFn,
+    pub prepare_teardown: Option<maruzzella_api::MzPrepareViewTeardownFn>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -320,7 +322,16 @@ impl ViewFactorySpec {
             title,
             placement,
             create,
+            prepare_teardown: None,
         }
+    }
+
+    pub const fn with_prepare_teardown(
+        mut self,
+        prepare_teardown: maruzzella_api::MzPrepareViewTeardownFn,
+    ) -> Self {
+        self.prepare_teardown = Some(prepare_teardown);
+        self
     }
 
     fn into_ffi(self) -> MzViewFactorySpec {
@@ -330,6 +341,7 @@ impl ViewFactorySpec {
             title: MzStr::from_static(self.title),
             placement: self.placement,
             create: self.create,
+            prepare_teardown: self.prepare_teardown,
         }
     }
 }
@@ -715,9 +727,6 @@ impl<'a> HostApi<'a> {
         &self,
         request: &OpenViewRequest<'_>,
     ) -> Result<MzViewOpenDisposition, MzStatusCode> {
-        let Some(open) = self.raw.open_view else {
-            return Err(MzStatusCode::NotFound);
-        };
         let instance_key = request.instance_key.unwrap_or("");
         let requested_title = request.requested_title.unwrap_or("");
         let ffi = MzOpenViewRequest {
@@ -743,7 +752,13 @@ impl<'a> HostApi<'a> {
                 len: request.payload.len(),
             },
         };
-        let result = open(&ffi);
+        let result = if let Some(open) = self.raw.open_view_in_context {
+            open(self.raw.host_context, &ffi)
+        } else if let Some(open) = self.raw.open_view {
+            open(&ffi)
+        } else {
+            return Err(MzStatusCode::NotFound);
+        };
         if result.status.is_ok() {
             Ok(result.disposition)
         } else {
@@ -752,11 +767,8 @@ impl<'a> HostApi<'a> {
     }
 
     pub fn focus_view(&self, query: &ViewQuery<'_>) -> Result<(), MzStatusCode> {
-        let Some(focus) = self.raw.focus_view else {
-            return Err(MzStatusCode::NotFound);
-        };
         let instance_key = query.instance_key.unwrap_or("");
-        let status = focus(&MzViewQuery {
+        let query = MzViewQuery {
             plugin_id: MzStr {
                 ptr: query.plugin_id.as_ptr(),
                 len: query.plugin_id.len(),
@@ -769,7 +781,14 @@ impl<'a> HostApi<'a> {
                 ptr: instance_key.as_ptr(),
                 len: instance_key.len(),
             },
-        });
+        };
+        let status = if let Some(focus) = self.raw.focus_view_in_context {
+            focus(self.raw.host_context, &query)
+        } else if let Some(focus) = self.raw.focus_view {
+            focus(&query)
+        } else {
+            return Err(MzStatusCode::NotFound);
+        };
         if status.is_ok() {
             Ok(())
         } else {
@@ -778,11 +797,8 @@ impl<'a> HostApi<'a> {
     }
 
     pub fn is_view_open(&self, query: &ViewQuery<'_>) -> Result<bool, MzStatusCode> {
-        let Some(is_open) = self.raw.is_view_open else {
-            return Err(MzStatusCode::NotFound);
-        };
         let instance_key = query.instance_key.unwrap_or("");
-        let result = is_open(&MzViewQuery {
+        let query = MzViewQuery {
             plugin_id: MzStr {
                 ptr: query.plugin_id.as_ptr(),
                 len: query.plugin_id.len(),
@@ -795,7 +811,14 @@ impl<'a> HostApi<'a> {
                 ptr: instance_key.as_ptr(),
                 len: instance_key.len(),
             },
-        });
+        };
+        let result = if let Some(is_open) = self.raw.is_view_open_in_context {
+            is_open(self.raw.host_context, &query)
+        } else if let Some(is_open) = self.raw.is_view_open {
+            is_open(&query)
+        } else {
+            return Err(MzStatusCode::NotFound);
+        };
         if result.status.is_ok() {
             Ok(result.found)
         } else {
@@ -808,30 +831,32 @@ impl<'a> HostApi<'a> {
         query: &ViewQuery<'_>,
         title: &str,
     ) -> Result<(), MzStatusCode> {
-        let Some(update) = self.raw.update_view_title else {
+        let instance_key = query.instance_key.unwrap_or("");
+        let query = MzViewQuery {
+            plugin_id: MzStr {
+                ptr: query.plugin_id.as_ptr(),
+                len: query.plugin_id.len(),
+            },
+            view_id: MzStr {
+                ptr: query.view_id.as_ptr(),
+                len: query.view_id.len(),
+            },
+            instance_key: MzStr {
+                ptr: instance_key.as_ptr(),
+                len: instance_key.len(),
+            },
+        };
+        let title = MzStr {
+            ptr: title.as_ptr(),
+            len: title.len(),
+        };
+        let status = if let Some(update) = self.raw.update_view_title_in_context {
+            update(self.raw.host_context, &query, title)
+        } else if let Some(update) = self.raw.update_view_title {
+            update(&query, title)
+        } else {
             return Err(MzStatusCode::NotFound);
         };
-        let instance_key = query.instance_key.unwrap_or("");
-        let status = update(
-            &MzViewQuery {
-                plugin_id: MzStr {
-                    ptr: query.plugin_id.as_ptr(),
-                    len: query.plugin_id.len(),
-                },
-                view_id: MzStr {
-                    ptr: query.view_id.as_ptr(),
-                    len: query.view_id.len(),
-                },
-                instance_key: MzStr {
-                    ptr: instance_key.as_ptr(),
-                    len: instance_key.len(),
-                },
-            },
-            MzStr {
-                ptr: title.as_ptr(),
-                len: title.len(),
-            },
-        );
         if status.is_ok() {
             Ok(())
         } else {
@@ -1065,7 +1090,7 @@ pub fn plugin_descriptor<T: Plugin>() -> MzPluginDescriptorView {
 
 pub fn plugin_vtable<T: Plugin>() -> MzPluginVTable {
     MzPluginVTable {
-        abi_version: MZ_ABI_VERSION_V1,
+        abi_version: MZ_ABI_VERSION_V2,
         descriptor: descriptor_bridge::<T>,
         register: register_bridge::<T>,
         startup: startup_bridge::<T>,
@@ -1178,7 +1203,7 @@ mod tests {
         let descriptor = plugin_descriptor::<ExamplePlugin>();
         assert_eq!(descriptor.version, Version::new(1, 2, 3).into_ffi());
         assert_eq!(descriptor.dependencies_len, 1);
-        assert_eq!(descriptor.required_abi_version, MZ_ABI_VERSION_V1);
+        assert_eq!(descriptor.required_abi_version, MZ_ABI_VERSION_V2);
     }
 
     #[test]
@@ -1190,9 +1215,9 @@ mod tests {
     }
 
     #[test]
-    fn export_vtable_uses_v1_abi() {
+    fn export_vtable_uses_v2_abi() {
         let vtable = plugin_vtable::<ExamplePlugin>();
-        assert_eq!(vtable.abi_version, MZ_ABI_VERSION_V1);
+        assert_eq!(vtable.abi_version, MZ_ABI_VERSION_V2);
     }
 
     #[test]

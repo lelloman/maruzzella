@@ -49,6 +49,7 @@ pub struct CustomWorkbenchGroupHandle {
     drag_hover_handler: Rc<RefCell<Option<Rc<dyn Fn(String, f64, f64, i32)>>>>,
     drag_end_handler: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
     active_changed_handler: Rc<RefCell<Option<Rc<dyn Fn(String)>>>>,
+    tab_context_handler: Rc<RefCell<Option<Rc<dyn Fn(String, Widget)>>>>,
     drop_placeholder: GtkBox,
 }
 
@@ -279,6 +280,17 @@ impl CustomWorkbenchGroupHandle {
         *self.active_changed_handler.borrow_mut() = Some(Rc::new(handler));
     }
 
+    pub fn set_tab_context_handler<F>(&self, handler: F)
+    where
+        F: Fn(String, Widget) + 'static,
+    {
+        let handler: Rc<dyn Fn(String, Widget)> = Rc::new(handler);
+        *self.tab_context_handler.borrow_mut() = Some(handler.clone());
+        for (tab_id, header) in self.headers.borrow().iter() {
+            install_tab_context_controller(header, tab_id, handler.clone());
+        }
+    }
+
     pub fn show_drop_placeholder(&self, index: usize, width: i32) {
         self.drop_placeholder.set_size_request(width.max(48), 28);
         if self.drop_placeholder.parent().is_none() {
@@ -328,6 +340,9 @@ impl CustomWorkbenchGroupHandle {
             self.active_tab_id.clone(),
             self.active_changed_handler.clone(),
         );
+        if let Some(handler) = self.tab_context_handler.borrow().as_ref().cloned() {
+            install_tab_context_controller(header, tab_id, handler);
+        }
 
         let drag = GestureDrag::new();
         let handle = self.clone();
@@ -767,6 +782,7 @@ pub fn build_group(
         drag_hover_handler: Rc::new(RefCell::new(None)),
         drag_end_handler: Rc::new(RefCell::new(None)),
         active_changed_handler: Rc::new(RefCell::new(None)),
+        tab_context_handler: Rc::new(RefCell::new(None)),
         drop_placeholder,
     };
 
@@ -812,6 +828,22 @@ pub fn build_group(
         entries,
         labels,
     }
+}
+
+fn install_tab_context_controller(
+    header: &Widget,
+    tab_id: &str,
+    handler: Rc<dyn Fn(String, Widget)>,
+) {
+    let click = GestureClick::new();
+    click.set_button(3);
+    let tab_id = tab_id.to_string();
+    let context_header = header.clone();
+    click.connect_pressed(move |gesture, _, _, _| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        handler(tab_id.clone(), context_header.clone());
+    });
+    header.add_controller(click);
 }
 
 fn install_header_activation(

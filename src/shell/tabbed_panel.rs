@@ -237,7 +237,12 @@ fn build_plugin_widget(
         );
     };
 
-    match plugin_runtime.create_view(plugin_view_id, tab.instance_key.as_deref(), &tab.payload) {
+    match plugin_runtime.create_view(
+        &tab.panel_id,
+        plugin_view_id,
+        tab.instance_key.as_deref(),
+        &tab.payload,
+    ) {
         Ok(widget) => {
             widget.set_hexpand(true);
             widget.set_vexpand(true);

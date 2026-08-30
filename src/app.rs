@@ -1,15 +1,16 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use gtk::prelude::*;
 use gtk::{
-    Application, ApplicationWindow, Box as GtkBox, GestureClick, Orientation, Overlay, Paned,
+    Application, ApplicationWindow, Box as GtkBox, Button, GestureClick, Orientation, Overlay,
+    Paned, Popover,
 };
 use maruzzella_api::{
     MzContextActivationPolicy, MzSurfaceArea, MzSurfaceDescriptor, MzSurfaceFocusEvent,
-    MzSurfaceRole,
+    MzSurfaceRole, MzViewTeardownDecision, MzViewTeardownReason,
 };
 
 use crate::base_plugin;
@@ -29,6 +30,7 @@ use crate::spec::PanelResizePolicy;
 use crate::spec::{
     BottomPanelLayout, ShellSpec, SplitAxis, TabGroupSpec, TabSpec, WorkbenchNodeSpec,
 };
+use crate::surfaces::{self, DetachedWorkbenchSpec, MAIN_SURFACE_ID};
 use crate::theme;
 use crate::{MaruzzellaConfig, ProductSpec};
 
@@ -36,6 +38,10 @@ type ShellState = Rc<RefCell<PersistedShell>>;
 
 const EVENT_SURFACE_FOCUSED: &str = "maruzzella.surface.focused";
 const EVENT_CONTEXT_ACTIVE_CHANGED: &str = "maruzzella.context.active_changed";
+
+thread_local! {
+    static ACTIVE_APP_CONTROLLER: RefCell<Weak<AppController>> = RefCell::new(Weak::new());
+}
 
 #[derive(Default)]
 struct SurfaceObserverState {
@@ -323,6 +329,20 @@ struct AppController {
     mode: RefCell<ShellMode>,
     project_handle: RefCell<Option<Vec<u8>>>,
     installed_actions: RefCell<Vec<String>>,
+    self_weak: RefCell<Weak<AppController>>,
+    workspace_state: RefCell<Option<ShellState>>,
+    workspace_persistence_id: RefCell<Option<String>>,
+    main_group_handles: RefCell<Option<GroupHandles>>,
+    detached_surfaces: RefCell<HashMap<String, DetachedSurface>>,
+    suppress_surface_close: Cell<bool>,
+    suppress_app_close: Cell<bool>,
+}
+
+struct DetachedSurface {
+    window: ApplicationWindow,
+    state: ShellState,
+    group_handles: GroupHandles,
+    persistence_id: String,
 }
 
 impl AppController {
@@ -331,14 +351,34 @@ impl AppController {
         config: MaruzzellaConfig,
         plugin_host: Rc<PluginHost>,
     ) -> Rc<Self> {
-        Rc::new(Self {
+        let controller = Rc::new(Self {
             window,
             config,
             plugin_host,
             mode: RefCell::new(ShellMode::Workspace),
             project_handle: RefCell::new(None),
             installed_actions: RefCell::new(Vec::new()),
-        })
+            self_weak: RefCell::new(Weak::new()),
+            workspace_state: RefCell::new(None),
+            workspace_persistence_id: RefCell::new(None),
+            main_group_handles: RefCell::new(None),
+            detached_surfaces: RefCell::new(HashMap::new()),
+            suppress_surface_close: Cell::new(false),
+            suppress_app_close: Cell::new(false),
+        });
+        controller.self_weak.replace(Rc::downgrade(&controller));
+        ACTIVE_APP_CONTROLLER.with(|slot| slot.replace(Rc::downgrade(&controller)));
+        let weak = Rc::downgrade(&controller);
+        controller.window.connect_close_request(move |_| {
+            if let Some(controller) = weak.upgrade() {
+                if !controller.suppress_app_close.get() {
+                    controller.request_application_quit();
+                    return gtk::glib::Propagation::Stop;
+                }
+            }
+            gtk::glib::Propagation::Proceed
+        });
+        controller
     }
 
     fn show_startup_mode(&self) -> Result<(), ModeSwitchError> {
@@ -470,6 +510,7 @@ impl AppController {
         let group_handles = Rc::new(RefCell::new(HashMap::new()));
         if let Some(runtime) = self.plugin_host.runtime() {
             runtime.attach_shell_host(
+                crate::surfaces::MAIN_SURFACE_ID,
                 self.window.clone(),
                 layout_persistence_id.clone(),
                 self.config.persistence_id.clone(),
@@ -499,8 +540,8 @@ impl AppController {
             &spec,
             Some(self.plugin_host.clone()),
             &layout_persistence_id,
-            Some(state),
-            Some(group_handles),
+            Some(state.clone()),
+            Some(group_handles.clone()),
         );
 
         for action_name in self.installed_actions.borrow_mut().drain(..) {
@@ -543,6 +584,717 @@ impl AppController {
         self.window.set_child(Some(&app_overlay));
         self.window.present();
         self.mode.replace(mode);
+        if mode == ShellMode::Workspace {
+            self.window
+                .set_widget_name(&format!("maruzzella-surface-{MAIN_SURFACE_ID}"));
+            self.workspace_state.replace(Some(state.clone()));
+            self.workspace_persistence_id
+                .replace(Some(layout_persistence_id.clone()));
+            self.main_group_handles.replace(Some(group_handles));
+            let detached = state.borrow().detached_workbenches.clone();
+            for surface in detached {
+                if !self.detached_surfaces.borrow().contains_key(&surface.id) {
+                    self.create_detached_surface(surface, true);
+                }
+            }
+        }
+    }
+
+    fn create_detached_surface(&self, surface: DetachedWorkbenchSpec, restore: bool) {
+        let Some(application) = self.window.application() else {
+            return;
+        };
+        let Some(workspace_state) = self.workspace_state.borrow().clone() else {
+            return;
+        };
+        let Some(workspace_persistence_id) = self.workspace_persistence_id.borrow().clone() else {
+            return;
+        };
+        let mut spec = workspace_state.borrow().spec.clone();
+        spec.left_panel.tabs.clear();
+        spec.right_panel.tabs.clear();
+        spec.bottom_panel.tabs.clear();
+        spec.workbench = surface.workbench.clone();
+        let persistence_id = format!("{workspace_persistence_id}--{}", surface.id);
+        let state = if restore && layout::path(&persistence_id).exists() {
+            Rc::new(RefCell::new(layout::load(&persistence_id, &spec)))
+        } else {
+            Rc::new(RefCell::new(PersistedShell {
+                spec,
+                panes: Default::default(),
+                detached_workbenches: Vec::new(),
+                next_surface_id: 1,
+            }))
+        };
+        let window_title = active_workbench_tab_title(&surface.workbench)
+            .map(|title| format!("{title} — {}", self.config.product.branding.title))
+            .unwrap_or_else(|| format!("Workbench — {}", self.config.product.branding.title));
+        let window = ApplicationWindow::builder()
+            .application(&application)
+            .title(window_title)
+            .build();
+        window.add_css_class("app-window");
+        window.set_widget_name(&format!("maruzzella-surface-{}", surface.id));
+        let width = if surface.geometry.width > 0 {
+            surface.geometry.width
+        } else {
+            960
+        };
+        let height = if surface.geometry.height > 0 {
+            surface.geometry.height
+        } else {
+            720
+        };
+        window.set_default_size(width, height);
+        if surface.geometry.maximized {
+            window.maximize();
+        }
+        let group_handles = Rc::new(RefCell::new(HashMap::new()));
+        if let Some(runtime) = self.plugin_host.runtime() {
+            runtime.attach_shell_host(
+                surface.id.clone(),
+                window.clone(),
+                persistence_id.clone(),
+                self.config.persistence_id.clone(),
+                state.clone(),
+                group_handles.clone(),
+            );
+        }
+        let root = build_workbench_node(
+            &state.borrow().spec.workbench.clone(),
+            state.clone(),
+            persistence_id.clone(),
+            &format!("{}-root", surface.id),
+            self.plugin_host.runtime().cloned(),
+            &group_handles,
+        );
+        window.set_child(Some(&root));
+        let surface_id = surface.id.clone();
+        let weak = self.self_weak.borrow().clone();
+        window.connect_close_request(move |_| {
+            if let Some(controller) = weak.upgrade() {
+                if !controller.suppress_surface_close.get() {
+                    controller.request_close_detached_surface(&surface_id);
+                    return gtk::glib::Propagation::Stop;
+                }
+            }
+            gtk::glib::Propagation::Proceed
+        });
+        self.detached_surfaces.borrow_mut().insert(
+            surface.id,
+            DetachedSurface {
+                window: window.clone(),
+                state,
+                group_handles,
+                persistence_id,
+            },
+        );
+        window.present();
+    }
+
+    fn request_detach_tab(&self, surface_id: &str, group_id: &str, tab_id: &str) {
+        let Some(tab) = self.tab_on_surface(surface_id, group_id, tab_id) else {
+            return;
+        };
+        let parent = self.window_for_surface(surface_id);
+        let weak = self.self_weak.borrow().clone();
+        let surface_id = surface_id.to_string();
+        let group_id = group_id.to_string();
+        let tab_id = tab_id.to_string();
+        self.run_teardown_guard(
+            parent.as_ref(),
+            &[tab],
+            MzViewTeardownReason::Detach,
+            "Move Anyway",
+            move || {
+                if let Some(controller) = weak.upgrade() {
+                    controller.detach_tab_now(&surface_id, &group_id, &tab_id);
+                }
+            },
+        );
+    }
+
+    fn detach_tab_now(&self, surface_id: &str, group_id: &str, tab_id: &str) {
+        self.sync_detached_specs();
+        let Some(main_state) = self.workspace_state.borrow().clone() else {
+            return;
+        };
+        let new_surface_id = {
+            let mut session = main_state.borrow_mut();
+            let mut detached = std::mem::take(&mut session.detached_workbenches);
+            let mut next_id = session.next_surface_id;
+            let result = surfaces::detach_tab(
+                &mut session.spec.workbench,
+                &mut detached,
+                surface_id,
+                group_id,
+                tab_id,
+                &mut next_id,
+            );
+            session.detached_workbenches = detached;
+            session.next_surface_id = next_id;
+            result
+        };
+        let Some(new_surface_id) = new_surface_id else {
+            return;
+        };
+        self.save_workspace_session();
+        self.refresh_detached_state_from_session(surface_id);
+        if let Some(handles) = self.group_handles_for_surface(surface_id) {
+            if let Some(handle) = handles.borrow().get(group_id).cloned() {
+                handle.remove_tab(tab_id);
+                if handle.tab_ids().is_empty() {
+                    collapse_empty_group_widget(&handle.widget());
+                }
+            }
+        }
+        let surface = main_state
+            .borrow()
+            .detached_workbenches
+            .iter()
+            .find(|surface| surface.id == new_surface_id)
+            .cloned();
+        if let Some(surface) = surface {
+            self.create_detached_surface(surface, false);
+        }
+    }
+
+    fn request_move_tab_back(&self, surface_id: &str, group_id: &str, tab_id: &str) {
+        let Some(tab) = self.tab_on_surface(surface_id, group_id, tab_id) else {
+            return;
+        };
+        let parent = self.window_for_surface(surface_id);
+        let weak = self.self_weak.borrow().clone();
+        let surface_id = surface_id.to_string();
+        let group_id = group_id.to_string();
+        let tab_id = tab_id.to_string();
+        self.run_teardown_guard(
+            parent.as_ref(),
+            &[tab],
+            MzViewTeardownReason::Reattach,
+            "Move Anyway",
+            move || {
+                if let Some(controller) = weak.upgrade() {
+                    controller.move_tab_back_now(&surface_id, &group_id, &tab_id);
+                }
+            },
+        );
+    }
+
+    fn move_tab_back_now(&self, surface_id: &str, group_id: &str, tab_id: &str) {
+        self.sync_detached_specs();
+        let Some(main_state) = self.workspace_state.borrow().clone() else {
+            return;
+        };
+        let target = main_state
+            .borrow()
+            .detached_workbenches
+            .iter()
+            .find(|surface| surface.id == surface_id)
+            .map(|surface| surface.return_target.clone());
+        let Some(target) = target else {
+            return;
+        };
+        let moved = {
+            let mut session = main_state.borrow_mut();
+            let mut detached = std::mem::take(&mut session.detached_workbenches);
+            let moved = surfaces::move_tab_to_return_target(
+                &mut session.spec.workbench,
+                &mut detached,
+                surface_id,
+                group_id,
+                tab_id,
+            );
+            session.detached_workbenches = detached;
+            moved
+        };
+        if !moved {
+            return;
+        }
+        self.save_workspace_session();
+        self.refresh_detached_state_from_session(surface_id);
+        self.refresh_detached_state_from_session(&target.surface_id);
+        if let Some(handles) = self.group_handles_for_surface(surface_id) {
+            if let Some(handle) = handles.borrow().get(group_id).cloned() {
+                handle.remove_tab(tab_id);
+            }
+        }
+        if let Some(tab) = self.tab_on_surface(&target.surface_id, &target.group_id, tab_id) {
+            self.append_recreated_tab(&target.surface_id, &target.group_id, &tab);
+        }
+        if !self.surface_has_tabs(surface_id) {
+            self.destroy_detached_surface(surface_id);
+            main_state
+                .borrow_mut()
+                .detached_workbenches
+                .retain(|surface| surface.id != surface_id);
+            self.save_workspace_session();
+        }
+    }
+
+    fn request_close_detached_surface(&self, surface_id: &str) {
+        let tabs = self.tabs_on_surface(surface_id);
+        let parent = self.window_for_surface(surface_id);
+        let weak = self.self_weak.borrow().clone();
+        let surface_id = surface_id.to_string();
+        self.run_teardown_guard(
+            parent.as_ref(),
+            &tabs,
+            MzViewTeardownReason::SurfaceClose,
+            "Merge Anyway",
+            move || {
+                if let Some(controller) = weak.upgrade() {
+                    controller.close_detached_surface_now(&surface_id);
+                }
+            },
+        );
+    }
+
+    fn request_close_tab(&self, surface_id: &str, group_id: &str, tab_id: &str) {
+        let Some(tab) = self.tab_on_surface(surface_id, group_id, tab_id) else {
+            return;
+        };
+        let parent = self.window_for_surface(surface_id);
+        let weak = self.self_weak.borrow().clone();
+        let surface_id = surface_id.to_string();
+        let group_id = group_id.to_string();
+        let tab_id = tab_id.to_string();
+        self.run_teardown_guard(
+            parent.as_ref(),
+            &[tab],
+            MzViewTeardownReason::TabClose,
+            "Close Anyway",
+            move || {
+                if let Some(controller) = weak.upgrade() {
+                    controller.close_tab_now(&surface_id, &group_id, &tab_id);
+                }
+            },
+        );
+    }
+
+    fn close_tab_now(&self, surface_id: &str, group_id: &str, tab_id: &str) {
+        let Some(state) = self.state_for_surface(surface_id) else {
+            return;
+        };
+        let Some(handles) = self.group_handles_for_surface(surface_id) else {
+            return;
+        };
+        let Some(handle) = handles.borrow().get(group_id).cloned() else {
+            return;
+        };
+        let closed = plugin_tabs::close_plugin_view_tab(
+            &state,
+            &self.persistence_id_for_surface(surface_id),
+            Some(&handles),
+            &handle,
+            group_id,
+            tab_id,
+        );
+        if closed && handle.tab_ids().is_empty() && group_id.starts_with("workbench") {
+            collapse_empty_group_widget(&handle.widget());
+        }
+        self.sync_detached_specs();
+        self.save_workspace_session();
+    }
+
+    fn request_application_quit(&self) {
+        let mut tabs = self.tabs_on_surface(MAIN_SURFACE_ID);
+        let detached_ids = self
+            .detached_surfaces
+            .borrow()
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for surface_id in detached_ids {
+            tabs.extend(self.tabs_on_surface(&surface_id));
+        }
+        let weak = self.self_weak.borrow().clone();
+        self.run_teardown_guard_inner(
+            Some(&self.window),
+            &tabs,
+            MzViewTeardownReason::ApplicationQuit,
+            "Quit",
+            true,
+            move || {
+                let Some(controller) = weak.upgrade() else {
+                    return;
+                };
+                controller.sync_detached_specs();
+                controller.save_workspace_session();
+                controller.suppress_app_close.set(true);
+                if let Some(application) = controller.window.application() {
+                    application.quit();
+                }
+            },
+        );
+    }
+
+    fn close_detached_surface_now(&self, surface_id: &str) {
+        self.sync_detached_specs();
+        let Some(main_state) = self.workspace_state.borrow().clone() else {
+            return;
+        };
+        let Some(surface) = main_state
+            .borrow()
+            .detached_workbenches
+            .iter()
+            .find(|surface| surface.id == surface_id)
+            .cloned()
+        else {
+            return;
+        };
+        let target = surface.return_target.clone();
+        let merged = {
+            let mut session = main_state.borrow_mut();
+            let mut detached = std::mem::take(&mut session.detached_workbenches);
+            let merged = surfaces::merge_detached_surface(
+                &mut session.spec.workbench,
+                &mut detached,
+                surface_id,
+            );
+            session.detached_workbenches = detached;
+            merged
+        };
+        if !merged {
+            return;
+        }
+        self.refresh_detached_state_from_session(&target.surface_id);
+        self.save_workspace_session();
+        self.destroy_detached_surface(surface_id);
+
+        match &surface.workbench {
+            WorkbenchNodeSpec::Group(group) => {
+                for tab in &group.tabs {
+                    self.append_recreated_tab(&target.surface_id, &target.group_id, tab);
+                }
+            }
+            returned => {
+                let Some(target_state) = self.state_for_surface(&target.surface_id) else {
+                    return;
+                };
+                let Some(target_handles) = self.group_handles_for_surface(&target.surface_id)
+                else {
+                    return;
+                };
+                let Some(target_handle) = target_handles.borrow().get(&target.group_id).cloned()
+                else {
+                    return;
+                };
+                let persistence_id = self.persistence_id_for_surface(&target.surface_id);
+                let widget = build_workbench_node(
+                    returned,
+                    target_state,
+                    persistence_id,
+                    &format!("merged-{surface_id}"),
+                    self.plugin_host.runtime().cloned(),
+                    &target_handles,
+                );
+                replace_group_widget_with_split(
+                    &target_handle.widget(),
+                    &widget,
+                    SplitPreviewSide::Right,
+                );
+            }
+        }
+    }
+
+    fn run_teardown_guard(
+        &self,
+        parent: Option<&ApplicationWindow>,
+        tabs: &[TabSpec],
+        reason: MzViewTeardownReason,
+        confirm_label: &'static str,
+        action: impl FnOnce() + 'static,
+    ) {
+        self.run_teardown_guard_inner(parent, tabs, reason, confirm_label, false, action);
+    }
+
+    fn run_teardown_guard_inner(
+        &self,
+        parent: Option<&ApplicationWindow>,
+        tabs: &[TabSpec],
+        reason: MzViewTeardownReason,
+        confirm_label: &'static str,
+        always_confirm: bool,
+        action: impl FnOnce() + 'static,
+    ) {
+        let Some(runtime) = self.plugin_host.runtime() else {
+            if always_confirm {
+                self.show_teardown_confirmation(parent, &[], confirm_label, action);
+            } else {
+                action();
+            }
+            return;
+        };
+        let mut confirmations = Vec::new();
+        let mut blockers = Vec::new();
+        for tab in tabs {
+            let Some(view_id) = tab.plugin_view_id.as_deref() else {
+                continue;
+            };
+            let mut assessment =
+                runtime.prepare_view_teardown(view_id, tab.instance_key.as_deref(), reason);
+            if assessment.decision == MzViewTeardownDecision::Ready
+                && base_plugin::is_editor_tab_dirty(
+                    tab.plugin_view_id.as_deref(),
+                    tab.instance_key.as_deref(),
+                )
+            {
+                assessment.decision = MzViewTeardownDecision::Confirm;
+                assessment.message = format!("{} has unsaved changes.", tab.title);
+            }
+            match assessment.decision {
+                MzViewTeardownDecision::Ready => {}
+                MzViewTeardownDecision::Confirm => confirmations.push(assessment.message),
+                MzViewTeardownDecision::Blocked => blockers.push(assessment.message),
+            }
+        }
+        if !blockers.is_empty() {
+            let dialog = gtk::AlertDialog::builder()
+                .modal(true)
+                .message("The operation is blocked")
+                .detail(blockers.join("\n"))
+                .buttons(["OK"])
+                .build();
+            dialog.show(parent);
+            return;
+        }
+        if confirmations.is_empty() && !always_confirm {
+            action();
+            return;
+        }
+        self.show_teardown_confirmation(parent, &confirmations, confirm_label, action);
+    }
+
+    fn show_teardown_confirmation(
+        &self,
+        parent: Option<&ApplicationWindow>,
+        confirmations: &[String],
+        confirm_label: &'static str,
+        action: impl FnOnce() + 'static,
+    ) {
+        let (message, detail) = if confirmations.is_empty() {
+            (
+                "Quit Maruzzella?",
+                "All open windows will be closed.".to_string(),
+            )
+        } else {
+            (
+                "Some views have transient or unsaved state",
+                confirmations.join("\n"),
+            )
+        };
+        let dialog = gtk::AlertDialog::builder()
+            .modal(true)
+            .message(message)
+            .detail(detail)
+            .buttons(["Cancel", confirm_label])
+            .cancel_button(0)
+            .default_button(1)
+            .build();
+        let action = Cell::new(Some(action));
+        dialog.choose(parent, gtk::gio::Cancellable::NONE, move |result| {
+            if result == Ok(1) {
+                if let Some(action) = action.take() {
+                    action();
+                }
+            }
+        });
+    }
+
+    fn state_for_surface(&self, surface_id: &str) -> Option<ShellState> {
+        if surface_id == MAIN_SURFACE_ID {
+            self.workspace_state.borrow().clone()
+        } else {
+            self.detached_surfaces
+                .borrow()
+                .get(surface_id)
+                .map(|surface| surface.state.clone())
+        }
+    }
+
+    fn group_handles_for_surface(&self, surface_id: &str) -> Option<GroupHandles> {
+        if surface_id == MAIN_SURFACE_ID {
+            self.main_group_handles.borrow().clone()
+        } else {
+            self.detached_surfaces
+                .borrow()
+                .get(surface_id)
+                .map(|surface| surface.group_handles.clone())
+        }
+    }
+
+    fn window_for_surface(&self, surface_id: &str) -> Option<ApplicationWindow> {
+        if surface_id == MAIN_SURFACE_ID {
+            Some(self.window.clone())
+        } else {
+            self.detached_surfaces
+                .borrow()
+                .get(surface_id)
+                .map(|surface| surface.window.clone())
+        }
+    }
+
+    fn persistence_id_for_surface(&self, surface_id: &str) -> String {
+        if surface_id == MAIN_SURFACE_ID {
+            self.workspace_persistence_id
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| self.config.persistence_id.clone())
+        } else {
+            self.detached_surfaces
+                .borrow()
+                .get(surface_id)
+                .map(|surface| surface.persistence_id.clone())
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}--{}",
+                        self.workspace_persistence_id
+                            .borrow()
+                            .as_deref()
+                            .unwrap_or(&self.config.persistence_id),
+                        surface_id
+                    )
+                })
+        }
+    }
+
+    fn tab_on_surface(&self, surface_id: &str, group_id: &str, tab_id: &str) -> Option<TabSpec> {
+        let state = self.state_for_surface(surface_id)?;
+        let shell = state.borrow();
+        find_tab_in_workbench(&shell.spec.workbench, group_id, tab_id).cloned()
+    }
+
+    fn tabs_on_surface(&self, surface_id: &str) -> Vec<TabSpec> {
+        let Some(state) = self.state_for_surface(surface_id) else {
+            return Vec::new();
+        };
+        let mut tabs = Vec::new();
+        collect_workbench_tabs(&state.borrow().spec.workbench, &mut tabs);
+        tabs
+    }
+
+    fn surface_has_tabs(&self, surface_id: &str) -> bool {
+        !self.tabs_on_surface(surface_id).is_empty()
+    }
+
+    fn sync_detached_specs(&self) {
+        let Some(main_state) = self.workspace_state.borrow().clone() else {
+            return;
+        };
+        let snapshots = self
+            .detached_surfaces
+            .borrow()
+            .iter()
+            .map(|(id, surface)| {
+                layout::save(&surface.persistence_id, &surface.state.borrow().clone());
+                (
+                    id.clone(),
+                    surface.state.borrow().spec.workbench.clone(),
+                    surface.window.width(),
+                    surface.window.height(),
+                    surface.window.is_maximized(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut session = main_state.borrow_mut();
+        for (id, workbench, width, height, maximized) in snapshots {
+            if let Some(surface) = session
+                .detached_workbenches
+                .iter_mut()
+                .find(|surface| surface.id == id)
+            {
+                surface.workbench = workbench;
+                surface.geometry.width = width;
+                surface.geometry.height = height;
+                surface.geometry.maximized = maximized;
+            }
+        }
+    }
+
+    fn refresh_detached_state_from_session(&self, surface_id: &str) {
+        if surface_id == MAIN_SURFACE_ID {
+            return;
+        }
+        let Some(main_state) = self.workspace_state.borrow().clone() else {
+            return;
+        };
+        let workbench = main_state
+            .borrow()
+            .detached_workbenches
+            .iter()
+            .find(|surface| surface.id == surface_id)
+            .map(|surface| surface.workbench.clone());
+        let Some(workbench) = workbench else {
+            return;
+        };
+        if let Some(surface) = self.detached_surfaces.borrow().get(surface_id) {
+            surface.state.borrow_mut().spec.workbench = workbench;
+            layout::save(&surface.persistence_id, &surface.state.borrow().clone());
+        }
+    }
+
+    fn save_workspace_session(&self) {
+        let Some(state) = self.workspace_state.borrow().clone() else {
+            return;
+        };
+        let Some(persistence_id) = self.workspace_persistence_id.borrow().clone() else {
+            return;
+        };
+        layout::save(&persistence_id, &state.borrow().clone());
+    }
+
+    fn append_recreated_tab(&self, surface_id: &str, group_id: &str, tab: &TabSpec) {
+        let Some(handles) = self.group_handles_for_surface(surface_id) else {
+            return;
+        };
+        let handle = handles
+            .borrow()
+            .get(group_id)
+            .cloned()
+            .or_else(|| handles.borrow().values().next().cloned());
+        let Some(handle) = handle else {
+            return;
+        };
+        let mut tab = tab.clone();
+        tab.panel_id = handle.group_id().to_string();
+        let page = crate::shell::tabbed_panel::build_tab_page(
+            "workbench",
+            &tab,
+            self.plugin_host.runtime(),
+        );
+        if let Some(button) = page.close_button.clone() {
+            base_plugin::bind_editor_close_button(
+                tab.plugin_view_id.as_deref(),
+                tab.instance_key.as_deref(),
+                &button,
+            );
+            let group_id = handle.group_id().to_string();
+            let tab_id = tab.id.clone();
+            let surface_id = surface_id.to_string();
+            button.connect_clicked(move |button| {
+                request_plugin_tab_close(button, Some(&surface_id), &group_id, &tab_id);
+            });
+        }
+        handle.append_page(page, true);
+    }
+
+    fn destroy_detached_surface(&self, surface_id: &str) {
+        let Some(surface) = self.detached_surfaces.borrow_mut().remove(surface_id) else {
+            return;
+        };
+        if let Some(runtime) = self.plugin_host.runtime() {
+            runtime.detach_shell_host(surface_id);
+        }
+        let weak = self.self_weak.borrow().clone();
+        gtk::glib::idle_add_local_once(move || {
+            let Some(controller) = weak.upgrade() else {
+                return;
+            };
+            controller.suppress_surface_close.set(true);
+            surface.window.close();
+            controller.suppress_surface_close.set(false);
+        });
     }
 }
 
@@ -552,6 +1304,32 @@ fn clear_empty_product_bottom_panel(spec: &mut ShellSpec, default_spec: &ShellSp
     }
     spec.bottom_panel.tabs.clear();
     spec.bottom_panel.active_tab_id = None;
+}
+
+fn find_tab_in_workbench<'a>(
+    node: &'a WorkbenchNodeSpec,
+    group_id: &str,
+    tab_id: &str,
+) -> Option<&'a TabSpec> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => (group.id == group_id)
+            .then(|| group.tabs.iter().find(|tab| tab.id == tab_id))
+            .flatten(),
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter()
+            .find_map(|child| find_tab_in_workbench(child, group_id, tab_id)),
+    }
+}
+
+fn collect_workbench_tabs(node: &WorkbenchNodeSpec, tabs: &mut Vec<TabSpec>) {
+    match node {
+        WorkbenchNodeSpec::Group(group) => tabs.extend(group.tabs.iter().cloned()),
+        WorkbenchNodeSpec::Split { children, .. } => {
+            for child in children {
+                collect_workbench_tabs(child, tabs);
+            }
+        }
+    }
 }
 
 pub fn build(application: &Application, config: &MaruzzellaConfig, handle: &MaruzzellaHandle) {
@@ -655,6 +1433,7 @@ fn build_shell(
             persistence_id.clone(),
             plugin_runtime.clone(),
             group_handles.clone(),
+            false,
         );
         group_handles
             .borrow_mut()
@@ -669,6 +1448,7 @@ fn build_shell(
             persistence_id.clone(),
             plugin_runtime.clone(),
             group_handles.clone(),
+            false,
         );
         group_handles
             .borrow_mut()
@@ -685,6 +1465,7 @@ fn build_shell(
             persistence_id.clone(),
             plugin_runtime.clone(),
             group_handles.clone(),
+            false,
         );
         group_handles
             .borrow_mut()
@@ -916,6 +1697,7 @@ fn build_launcher_shell(
         persistence_id,
         plugin_runtime,
         group_handles.clone(),
+        false,
     );
     group_handles
         .borrow_mut()
@@ -939,12 +1721,27 @@ fn first_workbench_group(node: &WorkbenchNodeSpec) -> Option<&TabGroupSpec> {
     }
 }
 
+fn active_workbench_tab_title(node: &WorkbenchNodeSpec) -> Option<&str> {
+    match node {
+        WorkbenchNodeSpec::Group(group) => group
+            .active_tab_id
+            .as_deref()
+            .and_then(|id| group.tabs.iter().find(|tab| tab.id == id))
+            .or_else(|| group.tabs.first())
+            .map(|tab| tab.title.as_str()),
+        WorkbenchNodeSpec::Split { children, .. } => {
+            children.iter().find_map(active_workbench_tab_title)
+        }
+    }
+}
+
 fn build_group(
     group: &TabGroupSpec,
     state: ShellState,
     persistence_id: String,
     plugin_runtime: Option<Rc<PluginRuntime>>,
-    group_handles: GroupHandles,
+    _group_handles: GroupHandles,
+    is_workbench: bool,
 ) -> BuiltCustomWorkbenchGroup {
     let extra_classes: Vec<&str> =
         if group.id.starts_with("workbench") || group.id.starts_with("panel-bottom") {
@@ -975,28 +1772,100 @@ fn build_group(
         }
     }
     for (tab_id, button) in &built.close_buttons {
-        let shell_state = state.clone();
-        let group_handles = group_handles.clone();
-        let handle = built.handle.clone();
         let group_id = group.id.clone();
-        let persistence_id = persistence_id.clone();
         let tab_id = tab_id.clone();
-        button.connect_clicked(move |_| {
-            let closed = plugin_tabs::close_plugin_view_tab(
-                &shell_state,
-                &persistence_id,
-                Some(&group_handles),
-                &handle,
-                &group_id,
-                &tab_id,
-            );
-            if closed && handle.tab_ids().is_empty() && group_id.starts_with("workbench") {
-                collapse_empty_group_widget(&handle.widget());
-            }
+        button.connect_clicked(move |button| {
+            request_plugin_tab_close(button, None, &group_id, &tab_id);
         });
     }
     install_group_persistence(&built.handle, state, persistence_id, runtime_for_events);
+    if is_workbench {
+        let group_id = group.id.clone();
+        built.handle.set_tab_context_handler(move |tab_id, header| {
+            show_workbench_tab_context_menu(&header, &group_id, &tab_id);
+        });
+    }
     built
+}
+
+pub(crate) fn request_plugin_tab_close(
+    button: &Button,
+    known_surface_id: Option<&str>,
+    group_id: &str,
+    tab_id: &str,
+) {
+    let surface_id = known_surface_id.map(str::to_string).or_else(|| {
+        button
+            .root()
+            .and_then(|root| root.downcast::<ApplicationWindow>().ok())
+            .map(|window| window.widget_name().to_string())
+            .and_then(|name| name.strip_prefix("maruzzella-surface-").map(str::to_string))
+    });
+    let Some(surface_id) = surface_id else {
+        return;
+    };
+    ACTIVE_APP_CONTROLLER.with(|slot| {
+        if let Some(controller) = slot.borrow().upgrade() {
+            controller.request_close_tab(&surface_id, group_id, tab_id);
+        }
+    });
+}
+
+fn show_workbench_tab_context_menu(header: &gtk::Widget, group_id: &str, tab_id: &str) {
+    let Some(window) = header
+        .root()
+        .and_then(|root| root.downcast::<ApplicationWindow>().ok())
+    else {
+        return;
+    };
+    let surface_id = window
+        .widget_name()
+        .strip_prefix("maruzzella-surface-")
+        .unwrap_or(MAIN_SURFACE_ID)
+        .to_string();
+    let popover = Popover::new();
+    let actions = GtkBox::new(Orientation::Vertical, 4);
+    let move_new = Button::with_label("Move to New Window");
+    let source_group = group_id.to_string();
+    let source_tab = tab_id.to_string();
+    let source_surface = surface_id.clone();
+    move_new.connect_clicked({
+        let popover = popover.clone();
+        move |_| {
+            popover.popdown();
+            ACTIVE_APP_CONTROLLER.with(|slot| {
+                if let Some(controller) = slot.borrow().upgrade() {
+                    controller.request_detach_tab(&source_surface, &source_group, &source_tab);
+                }
+            });
+        }
+    });
+    actions.append(&move_new);
+    if surface_id != MAIN_SURFACE_ID {
+        let move_back = Button::with_label("Move Back to Main Window");
+        let source_group = group_id.to_string();
+        let source_tab = tab_id.to_string();
+        let source_surface = surface_id;
+        move_back.connect_clicked({
+            let popover = popover.clone();
+            move |_| {
+                popover.popdown();
+                ACTIVE_APP_CONTROLLER.with(|slot| {
+                    if let Some(controller) = slot.borrow().upgrade() {
+                        controller.request_move_tab_back(
+                            &source_surface,
+                            &source_group,
+                            &source_tab,
+                        );
+                    }
+                });
+            }
+        });
+        actions.append(&move_back);
+    }
+    popover.set_child(Some(&actions));
+    popover.set_parent(header);
+    popover.popup();
 }
 
 fn build_workbench_node(
@@ -1015,6 +1884,7 @@ fn build_workbench_node(
                 persistence_id.clone(),
                 plugin_runtime.clone(),
                 group_handles.clone(),
+                true,
             );
             group_handles
                 .borrow_mut()
@@ -1350,6 +2220,7 @@ fn install_workbench_group_interactions(
             persistence_id_for_split.clone(),
             plugin_runtime_for_split.clone(),
             group_handles_for_split.clone(),
+            true,
         );
         install_workbench_group_interactions(
             &built.handle,
@@ -1422,21 +2293,10 @@ fn install_workbench_group_interactions(
                 moved_tab.instance_key.as_deref(),
                 &close_button,
             );
-            let shell_state = state_for_drop.clone();
-            let persistence_id = persistence_id_for_drop.clone();
-            let group_handles = group_handles_for_drop.clone();
-            let handle = target_handle.clone();
             let group_id = target_group_id.clone();
             let tab_id = moved_tab.id.clone();
-            close_button.connect_clicked(move |_| {
-                plugin_tabs::close_plugin_view_tab(
-                    &shell_state,
-                    &persistence_id,
-                    Some(&group_handles),
-                    &handle,
-                    &group_id,
-                    &tab_id,
-                );
+            close_button.connect_clicked(move |button| {
+                request_plugin_tab_close(button, None, &group_id, &tab_id);
             });
         }
         target_handle.append_page(page, true);
@@ -1752,13 +2612,17 @@ fn replace_group_widget_with_split<W: IsA<gtk::Widget>, N: IsA<gtk::Widget>>(
     let Some(parent) = current_widget.parent() else {
         return;
     };
-    let Ok(parent_paned) = parent.downcast::<Paned>() else {
+    let parent_paned = parent.clone().downcast::<Paned>().ok();
+    let parent_box = parent.downcast::<GtkBox>().ok();
+    if parent_paned.is_none() && parent_box.is_none() {
         return;
-    };
-    let is_start_child = parent_paned
-        .start_child()
-        .map(|child| child.as_ptr() == current_widget.as_ptr())
-        .unwrap_or(false);
+    }
+    let is_start_child = parent_paned.as_ref().is_some_and(|paned| {
+        paned
+            .start_child()
+            .map(|child| child.as_ptr() == current_widget.as_ptr())
+            .unwrap_or(false)
+    });
 
     let axis = match side {
         SplitPreviewSide::Left | SplitPreviewSide::Right => Orientation::Horizontal,
@@ -1776,10 +2640,14 @@ fn replace_group_widget_with_split<W: IsA<gtk::Widget>, N: IsA<gtk::Widget>>(
         Orientation::Vertical => (current_widget.height() / 2).max(180),
         _ => 220,
     };
-    if is_start_child {
-        parent_paned.set_start_child(None::<&gtk::Widget>);
-    } else {
-        parent_paned.set_end_child(None::<&gtk::Widget>);
+    if let Some(parent_paned) = parent_paned.as_ref() {
+        if is_start_child {
+            parent_paned.set_start_child(None::<&gtk::Widget>);
+        } else {
+            parent_paned.set_end_child(None::<&gtk::Widget>);
+        }
+    } else if let Some(parent_box) = parent_box.as_ref() {
+        parent_box.remove(&current_widget);
     }
 
     match side {
@@ -1795,10 +2663,14 @@ fn replace_group_widget_with_split<W: IsA<gtk::Widget>, N: IsA<gtk::Widget>>(
 
     split.set_position(default_position);
 
-    if is_start_child {
-        parent_paned.set_start_child(Some(&split));
-    } else {
-        parent_paned.set_end_child(Some(&split));
+    if let Some(parent_paned) = parent_paned {
+        if is_start_child {
+            parent_paned.set_start_child(Some(&split));
+        } else {
+            parent_paned.set_end_child(Some(&split));
+        }
+    } else if let Some(parent_box) = parent_box {
+        parent_box.append(&split);
     }
 }
 

@@ -13,6 +13,7 @@ pub mod plugins;
 pub mod product;
 pub mod shell;
 pub mod spec;
+pub mod surfaces;
 pub mod theme;
 
 use gtk::prelude::*;
@@ -32,6 +33,7 @@ pub use plugins::{
     PluginDiagnosticLevel, PluginHost, PluginLoadError, PluginLogEntry, PluginResolveError,
     PluginRuntime, PluginRuntimeError, RegisteredCommand, RegisteredMenuItem, RegisteredService,
     RegisteredSurfaceContribution, RegisteredViewFactory, Version as PluginVersion,
+    ViewTeardownAssessment,
 };
 pub use product::{default_product_spec, BrandingSpec, LayoutContribution, ProductSpec};
 pub use spec::{

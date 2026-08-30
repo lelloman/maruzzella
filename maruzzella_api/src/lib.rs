@@ -9,6 +9,7 @@ use core::ffi::c_void;
 use serde::{Deserialize, Serialize};
 
 pub const MZ_ABI_VERSION_V1: u32 = 1;
+pub const MZ_ABI_VERSION_V2: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Tone {
@@ -991,6 +992,40 @@ pub struct MzViewQueryResult {
     pub found: bool,
 }
 
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MzViewTeardownReason {
+    #[default]
+    TabClose = 0,
+    Detach = 1,
+    Reattach = 2,
+    SurfaceClose = 3,
+    ApplicationQuit = 4,
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MzViewTeardownDecision {
+    #[default]
+    Ready = 0,
+    Confirm = 1,
+    Blocked = 2,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MzViewTeardownRequest {
+    pub view: MzViewQuery,
+    pub reason: MzViewTeardownReason,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MzViewTeardownResult {
+    pub decision: MzViewTeardownDecision,
+    pub message: MzStr,
+}
+
 impl MzViewPlacement {
     pub const fn label(self) -> &'static str {
         match self {
@@ -1010,6 +1045,8 @@ impl Default for MzViewPlacement {
 
 pub type MzCreateViewFn =
     extern "C" fn(host: *const MzHostApi, request: *const MzViewRequest) -> *mut c_void;
+pub type MzPrepareViewTeardownFn =
+    extern "C" fn(request: *const MzViewTeardownRequest) -> MzViewTeardownResult;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -1019,6 +1056,7 @@ pub struct MzViewFactorySpec {
     pub title: MzStr,
     pub placement: MzViewPlacement,
     pub create: MzCreateViewFn,
+    pub prepare_teardown: Option<MzPrepareViewTeardownFn>,
 }
 
 #[repr(C)]
@@ -1050,6 +1088,14 @@ pub type MzOpenViewFn = extern "C" fn(request: *const MzOpenViewRequest) -> MzOp
 pub type MzFocusViewFn = extern "C" fn(query: *const MzViewQuery) -> MzStatus;
 pub type MzIsViewOpenFn = extern "C" fn(query: *const MzViewQuery) -> MzViewQueryResult;
 pub type MzUpdateViewTitleFn = extern "C" fn(query: *const MzViewQuery, title: MzStr) -> MzStatus;
+pub type MzOpenViewInContextFn =
+    extern "C" fn(context: *mut c_void, request: *const MzOpenViewRequest) -> MzOpenViewResult;
+pub type MzFocusViewInContextFn =
+    extern "C" fn(context: *mut c_void, query: *const MzViewQuery) -> MzStatus;
+pub type MzIsViewOpenInContextFn =
+    extern "C" fn(context: *mut c_void, query: *const MzViewQuery) -> MzViewQueryResult;
+pub type MzUpdateViewTitleInContextFn =
+    extern "C" fn(context: *mut c_void, query: *const MzViewQuery, title: MzStr) -> MzStatus;
 pub type MzReadCommandCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadViewCatalogFn = extern "C" fn() -> MzBytes;
 pub type MzReadPluginStateFn = extern "C" fn() -> MzBytes;
@@ -1093,12 +1139,16 @@ pub struct MzHostApi {
     pub write_config: Option<MzWriteConfigFn>,
     pub read_config_record: Option<MzReadConfigRecordFn>,
     pub write_config_record: Option<MzWriteConfigRecordFn>,
+    pub open_view_in_context: Option<MzOpenViewInContextFn>,
+    pub focus_view_in_context: Option<MzFocusViewInContextFn>,
+    pub is_view_open_in_context: Option<MzIsViewOpenInContextFn>,
+    pub update_view_title_in_context: Option<MzUpdateViewTitleInContextFn>,
 }
 
 impl MzHostApi {
     pub const fn empty() -> Self {
         Self {
-            abi_version: MZ_ABI_VERSION_V1,
+            abi_version: MZ_ABI_VERSION_V2,
             host_context: core::ptr::null_mut(),
             log: None,
             register_command: None,
@@ -1125,6 +1175,10 @@ impl MzHostApi {
             write_config: None,
             read_config_record: None,
             write_config_record: None,
+            open_view_in_context: None,
+            focus_view_in_context: None,
+            is_view_open_in_context: None,
+            update_view_title_in_context: None,
         }
     }
 }

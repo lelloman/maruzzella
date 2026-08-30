@@ -9,6 +9,8 @@ use glib::translate::{FromGlibPtrFull, IntoGlibPtr};
 use gtk::prelude::*;
 use gtk::{ApplicationWindow, Widget};
 use libloading::{Library, Symbol};
+#[cfg(test)]
+use maruzzella_api::MZ_ABI_VERSION_V1;
 use maruzzella_api::{
     MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzCommandSummary,
     MzConfigRecord, MzConfigState, MzConfigStateSummary, MzContributionSurface,
@@ -19,7 +21,8 @@ use maruzzella_api::{
     MzServiceSummary, MzSettingsCatalog, MzSettingsPage, MzSettingsPageSummary, MzStatus,
     MzStatusCode, MzStr, MzSurfaceContribution, MzToolbarDisplayMode, MzToolbarWidgetSpec,
     MzViewCatalog, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement, MzViewQuery,
-    MzViewQueryResult, MzViewSummary, MZ_ABI_VERSION_V1,
+    MzViewQueryResult, MzViewSummary, MzViewTeardownDecision, MzViewTeardownReason,
+    MzViewTeardownRequest, MZ_ABI_VERSION_V2,
 };
 
 use crate::layout;
@@ -29,7 +32,7 @@ use crate::plugin_tabs::{
     ShellState,
 };
 use crate::shell::topbar;
-use crate::spec::ToolbarItemSpec;
+use crate::spec::{ToolbarItemSpec, WorkbenchNodeSpec};
 use crate::{MaruzzellaHandle, WorkspaceSession};
 
 const ENTRY_SYMBOL: &[u8] = b"maruzzella_plugin_entry\0";
@@ -152,6 +155,13 @@ pub struct RegisteredViewFactory {
     pub title: String,
     pub placement: MzViewPlacement,
     pub create: maruzzella_api::MzCreateViewFn,
+    pub prepare_teardown: Option<maruzzella_api::MzPrepareViewTeardownFn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ViewTeardownAssessment {
+    pub decision: MzViewTeardownDecision,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -224,10 +234,11 @@ pub struct PluginRuntime {
     pub(crate) host_event_subscribers: Vec<RegisteredHostEventSubscriber>,
     pub(crate) logs: Vec<PluginLogEntry>,
     pub(crate) diagnostics: RefCell<Vec<PluginDiagnostic>>,
-    view_host: RefCell<Option<Rc<PluginShellHost>>>,
+    view_hosts: RefCell<HashMap<String, Rc<PluginShellHost>>>,
 }
 
 struct PluginShellHost {
+    surface_id: String,
     window: ApplicationWindow,
     layout_persistence_id: String,
     config_persistence_id: String,
@@ -307,7 +318,7 @@ impl PluginRuntime {
             host_event_subscribers: host_state.host_event_subscribers,
             logs: host_state.logs,
             diagnostics: RefCell::new(Vec::new()),
-            view_host: RefCell::new(None),
+            view_hosts: RefCell::new(HashMap::new()),
         })
     }
 
@@ -324,19 +335,22 @@ impl PluginRuntime {
             host_event_subscribers: Vec::new(),
             logs: Vec::new(),
             diagnostics: RefCell::new(Vec::new()),
-            view_host: RefCell::new(None),
+            view_hosts: RefCell::new(HashMap::new()),
         }
     }
 
     pub fn attach_shell_host(
         self: &Rc<Self>,
+        surface_id: impl Into<String>,
         window: ApplicationWindow,
         layout_persistence_id: String,
         persistence_id: String,
         shell_state: ShellState,
         group_handles: GroupHandles,
     ) {
+        let surface_id = surface_id.into();
         let shell_host = Rc::new_cyclic(|weak| PluginShellHost {
+            surface_id: surface_id.clone(),
             window,
             layout_persistence_id,
             config_persistence_id: persistence_id,
@@ -344,7 +358,7 @@ impl PluginRuntime {
             group_handles,
             runtime: Rc::downgrade(self),
             view_api: Box::new(MzHostApi {
-                abi_version: MZ_ABI_VERSION_V1,
+                abi_version: MZ_ABI_VERSION_V2,
                 host_context: weak.as_ptr() as *mut _,
                 log: None,
                 register_command: None,
@@ -371,6 +385,10 @@ impl PluginRuntime {
                 write_config: None,
                 read_config_record: None,
                 write_config_record: None,
+                open_view_in_context: Some(host_open_view_in_context),
+                focus_view_in_context: Some(host_focus_view_in_context),
+                is_view_open_in_context: Some(host_is_view_open_in_context),
+                update_view_title_in_context: Some(host_update_view_title_in_context),
             }),
             command_snapshot_buffer: RefCell::new(Vec::new()),
             view_snapshot_buffer: RefCell::new(Vec::new()),
@@ -381,8 +399,14 @@ impl PluginRuntime {
             diagnostic_snapshot_buffer: RefCell::new(Vec::new()),
             about_snapshot_buffer: RefCell::new(Vec::new()),
         });
-        ACTIVE_SHELL_HOST.with(|cell| cell.set(Rc::as_ptr(&shell_host)));
-        self.view_host.replace(Some(shell_host));
+        if surface_id == crate::surfaces::MAIN_SURFACE_ID {
+            ACTIVE_SHELL_HOST.with(|cell| cell.set(Rc::as_ptr(&shell_host)));
+        }
+        self.view_hosts.borrow_mut().insert(surface_id, shell_host);
+    }
+
+    pub fn detach_shell_host(&self, surface_id: &str) {
+        self.view_hosts.borrow_mut().remove(surface_id);
     }
 
     pub fn plugins(&self) -> &[LoadedPlugin] {
@@ -489,6 +513,55 @@ impl PluginRuntime {
         &self.view_factories
     }
 
+    pub fn prepare_view_teardown(
+        &self,
+        view_id: &str,
+        instance_key: Option<&str>,
+        reason: MzViewTeardownReason,
+    ) -> ViewTeardownAssessment {
+        let Some(factory) = self
+            .view_factories
+            .iter()
+            .find(|factory| factory.view_id == view_id)
+        else {
+            return ViewTeardownAssessment {
+                decision: MzViewTeardownDecision::Ready,
+                message: String::new(),
+            };
+        };
+        let Some(callback) = factory.prepare_teardown else {
+            return ViewTeardownAssessment {
+                decision: MzViewTeardownDecision::Ready,
+                message: String::new(),
+            };
+        };
+        let instance_key = instance_key.unwrap_or("");
+        let request = MzViewTeardownRequest {
+            view: MzViewQuery {
+                plugin_id: MzStr {
+                    ptr: factory.plugin_id.as_ptr(),
+                    len: factory.plugin_id.len(),
+                },
+                view_id: MzStr {
+                    ptr: factory.view_id.as_ptr(),
+                    len: factory.view_id.len(),
+                },
+                instance_key: MzStr {
+                    ptr: instance_key.as_ptr(),
+                    len: instance_key.len(),
+                },
+            },
+            reason,
+        };
+        let result = callback(&request);
+        let message = decode_runtime_str("view.teardown.message", result.message)
+            .unwrap_or_else(|_| "View teardown check returned an invalid message.".to_string());
+        ViewTeardownAssessment {
+            decision: result.decision,
+            message,
+        }
+    }
+
     pub fn services(&self) -> &[RegisteredService] {
         &self.services
     }
@@ -564,6 +637,7 @@ impl PluginRuntime {
 
     pub fn create_view(
         &self,
+        group_id: &str,
         view_id: &str,
         instance_key: Option<&str>,
         payload: &[u8],
@@ -579,7 +653,15 @@ impl PluginRuntime {
         };
 
         let _scope = ActiveRuntimeScope::enter(self);
-        let view_host = self.view_host.borrow().clone();
+        let hosts = self.view_hosts.borrow();
+        let view_host = hosts
+            .values()
+            .find(|host| {
+                host.group_handles.borrow().contains_key(group_id)
+                    || workbench_contains_group(&host.shell_state.borrow().spec.workbench, group_id)
+            })
+            .cloned()
+            .or_else(|| hosts.get(crate::surfaces::MAIN_SURFACE_ID).cloned());
         let host_api = view_host.as_ref().map(|host| host.view_api.as_ref());
         let plugin_id = MzStr {
             ptr: factory.plugin_id.as_ptr(),
@@ -616,6 +698,15 @@ impl PluginRuntime {
 
         let widget = unsafe { Widget::from_glib_full(widget_ptr as *mut gtk::ffi::GtkWidget) };
         Ok(widget)
+    }
+}
+
+fn workbench_contains_group(node: &WorkbenchNodeSpec, group_id: &str) -> bool {
+    match node {
+        WorkbenchNodeSpec::Group(group) => group.id == group_id,
+        WorkbenchNodeSpec::Split { children, .. } => children
+            .iter()
+            .any(|child| workbench_contains_group(child, group_id)),
     }
 }
 
@@ -718,7 +809,7 @@ pub fn load_plugin(path: impl AsRef<Path>) -> Result<LoadedPlugin, PluginLoadErr
         return Err(PluginLoadError::NullVTable { path });
     };
 
-    if vtable.abi_version != MZ_ABI_VERSION_V1 {
+    if vtable.abi_version != MZ_ABI_VERSION_V2 {
         return Err(PluginLoadError::AbiMismatch {
             path,
             plugin_abi_version: vtable.abi_version,
@@ -727,7 +818,7 @@ pub fn load_plugin(path: impl AsRef<Path>) -> Result<LoadedPlugin, PluginLoadErr
 
     let descriptor_view = (vtable.descriptor)();
     let descriptor = descriptor_from_view(&path, descriptor_view)?;
-    if descriptor.required_abi_version != MZ_ABI_VERSION_V1 {
+    if descriptor.required_abi_version != MZ_ABI_VERSION_V2 {
         return Err(PluginLoadError::DescriptorAbiMismatch {
             path,
             plugin_id: descriptor.id,
@@ -753,7 +844,7 @@ pub fn load_static_plugin(
         return Err(PluginLoadError::NullVTable { path });
     };
 
-    if vtable.abi_version != MZ_ABI_VERSION_V1 {
+    if vtable.abi_version != MZ_ABI_VERSION_V2 {
         return Err(PluginLoadError::AbiMismatch {
             path,
             plugin_abi_version: vtable.abi_version,
@@ -762,7 +853,7 @@ pub fn load_static_plugin(
 
     let descriptor_view = (vtable.descriptor)();
     let descriptor = descriptor_from_view(&path, descriptor_view)?;
-    if descriptor.required_abi_version != MZ_ABI_VERSION_V1 {
+    if descriptor.required_abi_version != MZ_ABI_VERSION_V2 {
         return Err(PluginLoadError::DescriptorAbiMismatch {
             path,
             plugin_id: descriptor.id,
@@ -965,7 +1056,7 @@ struct HostState {
 impl HostState {
     fn host_api(&mut self) -> MzHostApi {
         MzHostApi {
-            abi_version: MZ_ABI_VERSION_V1,
+            abi_version: MZ_ABI_VERSION_V2,
             host_context: self as *mut Self as *mut _,
             log: Some(host_log),
             register_command: Some(host_register_command),
@@ -992,6 +1083,10 @@ impl HostState {
             write_config: Some(host_write_config),
             read_config_record: Some(host_read_config_record),
             write_config_record: Some(host_write_config_record),
+            open_view_in_context: None,
+            focus_view_in_context: None,
+            is_view_open_in_context: None,
+            update_view_title_in_context: None,
         }
     }
 
@@ -1196,6 +1291,7 @@ extern "C" fn host_register_view_factory(factory: *const MzViewFactorySpec) -> M
         title,
         placement: factory.placement,
         create: factory.create,
+        prepare_teardown: factory.prepare_teardown,
     });
     MzStatus::OK
 }
@@ -1514,6 +1610,46 @@ extern "C" fn host_open_view(request: *const MzOpenViewRequest) -> MzOpenViewRes
     }
 }
 
+extern "C" fn host_open_view_in_context(
+    context: *mut std::ffi::c_void,
+    request: *const MzOpenViewRequest,
+) -> MzOpenViewResult {
+    let Some(caller) = (unsafe { (context as *const PluginShellHost).as_ref() }) else {
+        return invalid_open_view_result();
+    };
+    let Some(request_ref) = (unsafe { request.as_ref() }) else {
+        return invalid_open_view_result();
+    };
+    let Ok(view_id) = decode_runtime_str("open_view.view_id", request_ref.view_id) else {
+        return invalid_open_view_result();
+    };
+    let Ok(instance_key) = decode_runtime_str("open_view.instance_key", request_ref.instance_key)
+    else {
+        return invalid_open_view_result();
+    };
+    let Some(runtime) = caller.runtime.upgrade() else {
+        return invalid_open_view_result();
+    };
+    let target =
+        find_surface_host_for_view(&runtime, &view_id, empty_to_none(instance_key).as_deref())
+            .or_else(|| {
+                (request_ref.placement != MzViewPlacement::Workbench)
+                    .then(|| {
+                        runtime
+                            .view_hosts
+                            .borrow()
+                            .get(crate::surfaces::MAIN_SURFACE_ID)
+                            .cloned()
+                    })
+                    .flatten()
+            })
+            .or_else(|| runtime.view_hosts.borrow().get(&caller.surface_id).cloned());
+    match target {
+        Some(target) => with_shell_host(&target, || host_open_view(request)),
+        None => invalid_open_view_result(),
+    }
+}
+
 extern "C" fn host_focus_view(query: *const MzViewQuery) -> MzStatus {
     let Some(shell_host) = current_shell_host() else {
         return MzStatus::new(MzStatusCode::NotFound);
@@ -1557,6 +1693,35 @@ extern "C" fn host_focus_view(query: *const MzViewQuery) -> MzStatus {
     }
 }
 
+extern "C" fn host_focus_view_in_context(
+    context: *mut std::ffi::c_void,
+    query: *const MzViewQuery,
+) -> MzStatus {
+    let Some(caller) = (unsafe { (context as *const PluginShellHost).as_ref() }) else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    let Some(query_ref) = (unsafe { query.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(view_id) = decode_runtime_str("focus_view.view_id", query_ref.view_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(instance_key) = decode_runtime_str("focus_view.instance_key", query_ref.instance_key)
+    else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(runtime) = caller.runtime.upgrade() else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    let Some(target) =
+        find_surface_host_for_view(&runtime, &view_id, empty_to_none(instance_key).as_deref())
+    else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    target.window.present();
+    with_shell_host(&target, || host_focus_view(query))
+}
+
 extern "C" fn host_is_view_open(query: *const MzViewQuery) -> MzViewQueryResult {
     let Some(shell_host) = current_shell_host() else {
         return MzViewQueryResult {
@@ -1588,6 +1753,37 @@ extern "C" fn host_is_view_open(query: *const MzViewQuery) -> MzViewQueryResult 
             &resolve_plugin_view_id(&plugin_id, &view_id),
             empty_to_none(instance_key).as_deref(),
         ),
+    }
+}
+
+extern "C" fn host_is_view_open_in_context(
+    context: *mut std::ffi::c_void,
+    query: *const MzViewQuery,
+) -> MzViewQueryResult {
+    let Some(caller) = (unsafe { (context as *const PluginShellHost).as_ref() }) else {
+        return invalid_query_result();
+    };
+    let Some(query_ref) = (unsafe { query.as_ref() }) else {
+        return invalid_query_result();
+    };
+    let Ok(view_id) = decode_runtime_str("is_view_open.view_id", query_ref.view_id) else {
+        return invalid_query_result();
+    };
+    let Ok(instance_key) = decode_runtime_str("is_view_open.instance_key", query_ref.instance_key)
+    else {
+        return invalid_query_result();
+    };
+    let Some(runtime) = caller.runtime.upgrade() else {
+        return invalid_query_result();
+    };
+    MzViewQueryResult {
+        status: MzStatus::OK,
+        found: find_surface_host_for_view(
+            &runtime,
+            &view_id,
+            empty_to_none(instance_key).as_deref(),
+        )
+        .is_some(),
     }
 }
 
@@ -1638,6 +1834,36 @@ extern "C" fn host_update_view_title(query: *const MzViewQuery, title: MzStr) ->
         }
         MzStatus::new(MzStatusCode::NotFound)
     }
+}
+
+extern "C" fn host_update_view_title_in_context(
+    context: *mut std::ffi::c_void,
+    query: *const MzViewQuery,
+    title: MzStr,
+) -> MzStatus {
+    let Some(caller) = (unsafe { (context as *const PluginShellHost).as_ref() }) else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    let Some(query_ref) = (unsafe { query.as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(view_id) = decode_runtime_str("update_view_title.view_id", query_ref.view_id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(instance_key) =
+        decode_runtime_str("update_view_title.instance_key", query_ref.instance_key)
+    else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(runtime) = caller.runtime.upgrade() else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    let Some(target) =
+        find_surface_host_for_view(&runtime, &view_id, empty_to_none(instance_key).as_deref())
+    else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    with_shell_host(&target, || host_update_view_title(query, title))
 }
 
 extern "C" fn host_read_command_catalog() -> MzBytes {
@@ -1999,6 +2225,25 @@ thread_local! {
     static ACTIVE_SHELL_HOST: std::cell::Cell<*const PluginShellHost> = const { std::cell::Cell::new(std::ptr::null()) };
 }
 
+fn with_shell_host<T>(host: &PluginShellHost, action: impl FnOnce() -> T) -> T {
+    ACTIVE_SHELL_HOST.with(|cell| {
+        let previous = cell.replace(host as *const _);
+        let result = action();
+        cell.set(previous);
+        result
+    })
+}
+
+fn find_surface_host_for_view(
+    runtime: &PluginRuntime,
+    view_id: &str,
+    instance_key: Option<&str>,
+) -> Option<Rc<PluginShellHost>> {
+    runtime.view_hosts.borrow().values().find_map(|host| {
+        is_plugin_view_open(&host.shell_state, view_id, instance_key).then(|| host.clone())
+    })
+}
+
 fn current_host_state() -> Option<&'static mut HostState> {
     ACTIVE_HOST_STATE.with(|cell| {
         let ptr = cell.get();
@@ -2208,6 +2453,22 @@ mod tests {
     }
 
     extern "C" fn test_shutdown(_: *const maruzzella_api::MzHostApi) {}
+
+    extern "C" fn test_create_view(
+        _: *const maruzzella_api::MzHostApi,
+        _: *const maruzzella_api::MzViewRequest,
+    ) -> *mut std::ffi::c_void {
+        std::ptr::null_mut()
+    }
+
+    extern "C" fn confirm_teardown(
+        _: *const MzViewTeardownRequest,
+    ) -> maruzzella_api::MzViewTeardownResult {
+        maruzzella_api::MzViewTeardownResult {
+            decision: MzViewTeardownDecision::Confirm,
+            message: MzStr::from_static("Unsaved test state"),
+        }
+    }
 
     extern "C" fn plugin_a_register(
         host: *const maruzzella_api::MzHostApi,
@@ -2535,5 +2796,37 @@ mod tests {
             .expect("plugin command should dispatch");
         assert_eq!(INVOKED_PLUGIN_A.load(Ordering::SeqCst), 1);
         assert_eq!(OBSERVED_HOST_EVENTS.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn teardown_defaults_to_ready_when_factory_has_no_callback() {
+        let runtime = PluginRuntime::empty_for_tests();
+        let result = runtime.prepare_view_teardown(
+            "missing.view",
+            Some("one"),
+            MzViewTeardownReason::Detach,
+        );
+        assert_eq!(result.decision, MzViewTeardownDecision::Ready);
+        assert!(result.message.is_empty());
+    }
+
+    #[test]
+    fn teardown_callback_receives_control_and_returns_message() {
+        let mut runtime = PluginRuntime::empty_for_tests();
+        runtime.view_factories.push(RegisteredViewFactory {
+            plugin_id: "test.plugin".into(),
+            view_id: "test.view".into(),
+            title: "Test".into(),
+            placement: MzViewPlacement::Workbench,
+            create: test_create_view,
+            prepare_teardown: Some(confirm_teardown),
+        });
+        let result = runtime.prepare_view_teardown(
+            "test.view",
+            Some("one"),
+            MzViewTeardownReason::SurfaceClose,
+        );
+        assert_eq!(result.decision, MzViewTeardownDecision::Confirm);
+        assert_eq!(result.message, "Unsaved test state");
     }
 }

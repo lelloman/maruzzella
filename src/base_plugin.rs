@@ -16,7 +16,8 @@ use maruzzella_api::{
     MzMenuSurface, MzOpenViewRequest, MzPluginDescriptorView, MzPluginSnapshot, MzPluginVTable,
     MzServiceCatalog, MzSettingsCatalog, MzSettingsCategory, MzSettingsPage, MzStartupTab,
     MzStatus, MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog,
-    MzViewFactorySpec, MzViewPlacement, MzViewRequest, MZ_ABI_VERSION_V1,
+    MzViewFactorySpec, MzViewPlacement, MzViewRequest, MzViewTeardownDecision,
+    MzViewTeardownRequest, MzViewTeardownResult, MZ_ABI_VERSION_V2,
 };
 use maruzzella_sdk::mark_clickable;
 use serde::{Deserialize, Serialize};
@@ -104,7 +105,7 @@ pub fn load() -> LoadedPlugin {
                 minor: 0,
                 patch: 0,
             },
-            required_abi_version: MZ_ABI_VERSION_V1,
+            required_abi_version: MZ_ABI_VERSION_V2,
             description: "Built-in plugin providing core shell commands and menu surfaces"
                 .to_string(),
             dependencies: Vec::new(),
@@ -114,7 +115,7 @@ pub fn load() -> LoadedPlugin {
 }
 
 static BASE_PLUGIN_VTABLE: MzPluginVTable = MzPluginVTable {
-    abi_version: MZ_ABI_VERSION_V1,
+    abi_version: MZ_ABI_VERSION_V2,
     descriptor: base_descriptor,
     register: base_register,
     startup: base_startup,
@@ -126,7 +127,7 @@ extern "C" fn base_descriptor() -> MzPluginDescriptorView {
         id: MzStr::from_static(BASE_PLUGIN_ID),
         name: MzStr::from_static("Maruzzella Base"),
         version: MzVersion::new(1, 0, 0),
-        required_abi_version: MZ_ABI_VERSION_V1,
+        required_abi_version: MZ_ABI_VERSION_V2,
         description: MzStr::from_static(
             "Built-in plugin providing core shell commands and menu surfaces",
         ),
@@ -618,6 +619,30 @@ fn view_factory(view_id: &'static str) -> MzViewFactorySpec {
         title: MzStr::from_static(title),
         placement,
         create: create_base_view,
+        prepare_teardown: (view_id == VIEW_WORKSPACE_EDITOR).then_some(prepare_editor_teardown),
+    }
+}
+
+extern "C" fn prepare_editor_teardown(
+    request: *const MzViewTeardownRequest,
+) -> MzViewTeardownResult {
+    let Some(request) = (unsafe { request.as_ref() }) else {
+        return MzViewTeardownResult {
+            decision: MzViewTeardownDecision::Blocked,
+            message: MzStr::from_static("The editor teardown request was invalid."),
+        };
+    };
+    let instance_key = decode_optional_str(request.view.instance_key);
+    if is_editor_tab_dirty(Some(VIEW_WORKSPACE_EDITOR), instance_key.as_deref()) {
+        MzViewTeardownResult {
+            decision: MzViewTeardownDecision::Confirm,
+            message: MzStr::from_static("This editor has unsaved changes."),
+        }
+    } else {
+        MzViewTeardownResult {
+            decision: MzViewTeardownDecision::Ready,
+            message: MzStr::empty(),
+        }
     }
 }
 

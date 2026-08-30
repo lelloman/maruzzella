@@ -140,6 +140,14 @@ fn preference_score(entry: &PaneExtentPreference, current_clock: u64) -> i64 {
 pub struct PersistedShell {
     pub spec: ShellSpec,
     pub panes: PanePositions,
+    #[serde(default)]
+    pub detached_workbenches: Vec<crate::surfaces::DetachedWorkbenchSpec>,
+    #[serde(default = "default_next_surface_id")]
+    pub next_surface_id: u64,
+}
+
+fn default_next_surface_id() -> u64 {
+    1
 }
 
 #[derive(Clone, Debug, Default)]
@@ -166,6 +174,8 @@ impl Default for PersistedShell {
         Self {
             spec: default_product_spec().shell_spec(),
             panes: PanePositions::default(),
+            detached_workbenches: Vec::new(),
+            next_surface_id: default_next_surface_id(),
         }
     }
 }
@@ -176,12 +186,16 @@ pub fn load(persistence_id: &str, default_spec: &ShellSpec) -> PersistedShell {
         return PersistedShell {
             spec: default_spec.clone(),
             panes: PanePositions::default(),
+            detached_workbenches: Vec::new(),
+            next_surface_id: default_next_surface_id(),
         };
     };
     let Ok(mut value) = serde_json::from_str::<Value>(&raw) else {
         return PersistedShell {
             spec: default_spec.clone(),
             panes: PanePositions::default(),
+            detached_workbenches: Vec::new(),
+            next_surface_id: default_next_surface_id(),
         };
     };
     inject_missing_tab_strip_flags(&mut value, default_spec);
@@ -189,6 +203,8 @@ pub fn load(persistence_id: &str, default_spec: &ShellSpec) -> PersistedShell {
         serde_json::from_value::<PersistedShell>(value).unwrap_or_else(|_| PersistedShell {
             spec: default_spec.clone(),
             panes: PanePositions::default(),
+            detached_workbenches: Vec::new(),
+            next_surface_id: default_next_surface_id(),
         });
     restore_app_owned_shell_fields(&mut shell.spec, default_spec);
     shell
@@ -206,6 +222,8 @@ pub fn load_for_slot(persistence_id: &str, slot: &str, default_spec: &ShellSpec)
     PersistedShell {
         spec: default_spec.clone(),
         panes: PanePositions::default(),
+        detached_workbenches: Vec::new(),
+        next_surface_id: default_next_surface_id(),
     }
 }
 

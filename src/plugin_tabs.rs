@@ -313,21 +313,10 @@ pub fn open_or_focus_plugin_view(
             tab.instance_key.as_deref(),
             &close_button,
         );
-        let shell_state = shell_state.clone();
-        let persistence_id = persistence_id.to_string();
-        let group_handles = group_handles.clone();
-        let handle = handle.clone();
         let group_id = group_id.clone();
         let tab_id = tab.id.clone();
-        close_button.connect_clicked(move |_| {
-            close_plugin_view_tab(
-                &shell_state,
-                &persistence_id,
-                Some(&group_handles),
-                &handle,
-                &group_id,
-                &tab_id,
-            );
+        close_button.connect_clicked(move |button| {
+            crate::app::request_plugin_tab_close(button, None, &group_id, &tab_id);
         });
     }
     handle.append_page(page, true);

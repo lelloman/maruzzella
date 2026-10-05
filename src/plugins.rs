@@ -363,6 +363,7 @@ impl PluginRuntime {
             if let Some(error) = failure {
                 (plugin.vtable.shutdown)(&host_api);
                 if !resilient {
+                    shutdown_activated(&plugins, &activation_order, &mut host_state);
                     return Err(error);
                 }
                 diagnostics.push(diagnostic_for_runtime_error(&error));
@@ -814,6 +815,31 @@ impl PluginRuntime {
             let _ = &config_context;
         });
         Ok(widget)
+    }
+}
+
+fn shutdown_activated(plugins: &[LoadedPlugin], order: &[String], state: &mut HostState) {
+    for id in order.iter().rev() {
+        if let Some(plugin) = plugins.iter().find(|plugin| &plugin.descriptor.id == id) {
+            state.current_plugin_id = Some(id.clone());
+            let _scope = ActiveHostScope::enter(state);
+            let api = state.host_api();
+            (plugin.vtable.shutdown)(&api);
+        }
+    }
+    state.current_plugin_id = None;
+}
+
+impl Drop for PluginRuntime {
+    fn drop(&mut self) {
+        let mut state = HostState {
+            persistence_id: self.persistence_id.clone(),
+            plugin_configs: layout::load_plugin_configs(&self.persistence_id),
+            commands: self.commands.clone(),
+            services: self.services.clone(),
+            ..HostState::default()
+        };
+        shutdown_activated(&self.plugins, &self.activation_order, &mut state);
     }
 }
 
@@ -2875,6 +2901,43 @@ mod tests {
                 }
             },
         }
+    }
+
+    #[test]
+    fn shutdown_runs_in_reverse_order_and_on_activation_failure() {
+        thread_local! { static STOPPED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) }; }
+        extern "C" fn shutdown(_: *const MzHostApi) {
+            let id = current_host_state().unwrap().plugin_id().to_string();
+            STOPPED.with(|items| items.borrow_mut().push(id));
+        }
+        extern "C" fn fail(_: *const MzHostApi) -> MzStatus {
+            MzStatus::new(MzStatusCode::InternalError)
+        }
+        let make = |id: &str, failing: bool| {
+            let mut p = plugin(
+                id,
+                Version {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
+                vec![],
+            );
+            let mut table = *p.vtable;
+            table.shutdown = shutdown;
+            if failing {
+                table.startup = fail;
+            }
+            p.vtable = Box::leak(Box::new(table));
+            p
+        };
+        drop(PluginRuntime::activate(vec![make("a", false), make("b", false)]).unwrap());
+        STOPPED.with(|items| {
+            assert_eq!(*items.borrow(), ["b", "a"]);
+            items.borrow_mut().clear();
+        });
+        assert!(PluginRuntime::activate(vec![make("a", false), make("b", true)]).is_err());
+        STOPPED.with(|items| assert_eq!(*items.borrow(), ["b", "a"]));
     }
 
     #[test]

@@ -543,6 +543,7 @@ impl AppController {
             &default_spec,
         )));
         let mut spec = state.borrow().spec.clone();
+        crate::spec::repair_empty_splits(&mut spec.workbench, "main");
         if mode == ShellMode::Workspace && !include_base_startup_tabs {
             clear_empty_product_bottom_panel(&mut spec, &default_spec);
         }
@@ -559,6 +560,7 @@ impl AppController {
             state.borrow_mut().spec = spec.clone();
         }
 
+        state.borrow_mut().spec = spec.clone();
         let group_handles = Rc::new(RefCell::new(HashMap::new()));
         if let Some(runtime) = self.plugin_host.runtime() {
             runtime.attach_shell_host(
@@ -1968,6 +1970,9 @@ fn build_workbench_node(
                     )
                 })
                 .collect::<Vec<_>>();
+            if child_widgets.is_empty() {
+                return GtkBox::new(Orientation::Vertical, 0).upcast();
+            }
             let first = child_widgets.remove(0);
             let mut current = first;
             for (index, child) in child_widgets.into_iter().enumerate() {

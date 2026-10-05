@@ -206,6 +206,10 @@ pub fn load(persistence_id: &str, default_spec: &ShellSpec) -> PersistedShell {
             detached_workbenches: Vec::new(),
             next_surface_id: default_next_surface_id(),
         });
+    crate::spec::repair_empty_splits(&mut shell.spec.workbench, "main");
+    for surface in &mut shell.detached_workbenches {
+        crate::spec::repair_empty_splits(&mut surface.workbench, &surface.id);
+    }
     restore_app_owned_shell_fields(&mut shell.spec, default_spec);
     shell
 }

@@ -186,6 +186,40 @@ pub enum WorkbenchNodeSpec {
     },
 }
 
+/// Repair empty splits from caller-provided or persisted layouts into usable groups.
+pub(crate) fn repair_empty_splits(node: &mut WorkbenchNodeSpec, path: &str) {
+    if let WorkbenchNodeSpec::Split { children, .. } = node {
+        if children.is_empty() {
+            *node = WorkbenchNodeSpec::Group(TabGroupSpec::new(
+                &format!("workbench-empty-{path}"),
+                None,
+                vec![],
+            ));
+        } else {
+            for (index, child) in children.iter_mut().enumerate() {
+                repair_empty_splits(child, &format!("{path}-{index}"));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+    #[test]
+    fn empty_split_becomes_a_usable_group() {
+        let mut node = WorkbenchNodeSpec::Split {
+            axis: SplitAxis::Horizontal,
+            children: vec![],
+        };
+        repair_empty_splits(&mut node, "main");
+        match node {
+            WorkbenchNodeSpec::Group(group) => assert_eq!(group.id, "workbench-empty-main"),
+            _ => panic!("not repaired"),
+        }
+    }
+}
+
 pub fn make_workbench_tabs_closeable(node: &mut WorkbenchNodeSpec) {
     match node {
         WorkbenchNodeSpec::Group(group) => {

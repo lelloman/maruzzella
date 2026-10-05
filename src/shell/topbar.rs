@@ -152,7 +152,12 @@ fn unified_topbar_row(
         let menu = gtk::MenuButton::new();
         menu.set_icon_name("open-menu-symbolic");
         menu.set_tooltip_text(Some("Main menu"));
-        menu.set_menu_model(Some(&build_menu_model(spec)));
+        let popover = gtk::PopoverMenu::from_model(Some(&build_menu_model(spec)));
+        // Hiding the arrow with CSS still reserves its popup surface area.
+        // Disable it in GTK so non-composited desktops have no black gap.
+        popover.set_has_arrow(false);
+        popover.set_halign(gtk::Align::Start);
+        menu.set_popover(Some(&popover));
         row.append(&menu);
     }
     let title = Label::new(Some(&spec.title));

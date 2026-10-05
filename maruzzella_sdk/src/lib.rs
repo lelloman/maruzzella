@@ -24,7 +24,7 @@ use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,
     MzPluginDescriptorView, MzPluginVTable, MzServiceQuery, MzServiceSpec, MzStatus, MzStr,
     MzSurfaceContribution, MzToolbarWidgetSpec, MzVersion, MzViewFactorySpec, MzViewQuery,
-    MZ_ABI_VERSION_V2,
+    MZ_ABI_VERSION_V3,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -168,7 +168,7 @@ impl PluginDescriptor {
             version,
             description: "",
             dependencies: &[],
-            required_abi_version: MZ_ABI_VERSION_V2,
+            required_abi_version: MZ_ABI_VERSION_V3,
         }
     }
 
@@ -979,6 +979,9 @@ impl<'a> HostApi<'a> {
     }
 
     pub fn read_config(&self) -> Result<Vec<u8>, MzStatusCode> {
+        if self.raw.read_config_in_context.is_some() {
+            return Ok(self.read_config_record()?.payload);
+        }
         let Some(read) = self.raw.read_config else {
             return Err(MzStatusCode::NotFound);
         };
@@ -990,6 +993,9 @@ impl<'a> HostApi<'a> {
     }
 
     pub fn write_config(&self, payload: &[u8]) -> Result<(), MzStatusCode> {
+        if self.raw.write_config_in_context.is_some() {
+            return self.write_config_record(&MzConfigRecord::new(payload.to_vec()));
+        }
         let Some(write) = self.raw.write_config else {
             return Err(MzStatusCode::NotFound);
         };
@@ -1005,6 +1011,16 @@ impl<'a> HostApi<'a> {
     }
 
     pub fn read_config_record(&self) -> Result<MzConfigRecord, MzStatusCode> {
+        if let Some(read) = self.raw.read_config_in_context {
+            let bytes = read(self.raw.config_context);
+            if bytes.ptr.is_null() || bytes.len == 0 {
+                return Ok(MzConfigRecord::default());
+            }
+            return MzConfigRecord::from_bytes(unsafe {
+                std::slice::from_raw_parts(bytes.ptr, bytes.len)
+            })
+            .map_err(|_| MzStatusCode::InternalError);
+        }
         let Some(read) = self.raw.read_config_record else {
             let payload = self.read_config()?;
             return Ok(MzConfigRecord::new(payload));
@@ -1018,6 +1034,21 @@ impl<'a> HostApi<'a> {
     }
 
     pub fn write_config_record(&self, record: &MzConfigRecord) -> Result<(), MzStatusCode> {
+        if let Some(write) = self.raw.write_config_in_context {
+            let payload = record.to_bytes().map_err(|_| MzStatusCode::InternalError)?;
+            let status = write(
+                self.raw.config_context,
+                MzBytes {
+                    ptr: payload.as_ptr(),
+                    len: payload.len(),
+                },
+            );
+            return if status.is_ok() {
+                Ok(())
+            } else {
+                Err(status.code)
+            };
+        }
         let Some(write) = self.raw.write_config_record else {
             return self.write_config(&record.payload);
         };
@@ -1090,7 +1121,7 @@ pub fn plugin_descriptor<T: Plugin>() -> MzPluginDescriptorView {
 
 pub fn plugin_vtable<T: Plugin>() -> MzPluginVTable {
     MzPluginVTable {
-        abi_version: MZ_ABI_VERSION_V2,
+        abi_version: MZ_ABI_VERSION_V3,
         descriptor: descriptor_bridge::<T>,
         register: register_bridge::<T>,
         startup: startup_bridge::<T>,
@@ -1203,7 +1234,7 @@ mod tests {
         let descriptor = plugin_descriptor::<ExamplePlugin>();
         assert_eq!(descriptor.version, Version::new(1, 2, 3).into_ffi());
         assert_eq!(descriptor.dependencies_len, 1);
-        assert_eq!(descriptor.required_abi_version, MZ_ABI_VERSION_V2);
+        assert_eq!(descriptor.required_abi_version, MZ_ABI_VERSION_V3);
     }
 
     #[test]
@@ -1217,7 +1248,7 @@ mod tests {
     #[test]
     fn export_vtable_uses_v2_abi() {
         let vtable = plugin_vtable::<ExamplePlugin>();
-        assert_eq!(vtable.abi_version, MZ_ABI_VERSION_V2);
+        assert_eq!(vtable.abi_version, MZ_ABI_VERSION_V3);
     }
 
     #[test]

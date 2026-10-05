@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 pub const MZ_ABI_VERSION_V1: u32 = 1;
 pub const MZ_ABI_VERSION_V2: u32 = 2;
+pub const MZ_ABI_VERSION_V3: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Tone {
@@ -1113,6 +1114,9 @@ pub type MzWriteConfigRecordFn = extern "C" fn(payload: MzBytes) -> MzStatus;
 #[derive(Clone, Copy, Debug)]
 pub struct MzHostApi {
     pub abi_version: u32,
+    pub config_context: *mut c_void,
+    pub read_config_in_context: Option<extern "C" fn(*mut c_void) -> MzBytes>,
+    pub write_config_in_context: Option<extern "C" fn(*mut c_void, MzBytes) -> MzStatus>,
     pub host_context: *mut c_void,
     pub log: Option<MzLogFn>,
     pub register_command: Option<MzRegisterCommandFn>,
@@ -1148,7 +1152,10 @@ pub struct MzHostApi {
 impl MzHostApi {
     pub const fn empty() -> Self {
         Self {
-            abi_version: MZ_ABI_VERSION_V2,
+            abi_version: MZ_ABI_VERSION_V3,
+            config_context: core::ptr::null_mut(),
+            read_config_in_context: None,
+            write_config_in_context: None,
             host_context: core::ptr::null_mut(),
             log: None,
             register_command: None,

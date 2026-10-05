@@ -22,7 +22,7 @@ use maruzzella_api::{
     MzStatusCode, MzStr, MzSurfaceContribution, MzToolbarDisplayMode, MzToolbarWidgetSpec,
     MzViewCatalog, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement, MzViewQuery,
     MzViewQueryResult, MzViewSummary, MzViewTeardownDecision, MzViewTeardownReason,
-    MzViewTeardownRequest, MZ_ABI_VERSION_V2,
+    MzViewTeardownRequest, MZ_ABI_VERSION_V3,
 };
 
 use crate::layout;
@@ -358,7 +358,10 @@ impl PluginRuntime {
             group_handles,
             runtime: Rc::downgrade(self),
             view_api: Box::new(MzHostApi {
-                abi_version: MZ_ABI_VERSION_V2,
+                abi_version: MZ_ABI_VERSION_V3,
+                config_context: std::ptr::null_mut(),
+                read_config_in_context: None,
+                write_config_in_context: None,
                 host_context: weak.as_ptr() as *mut _,
                 log: None,
                 register_command: None,
@@ -662,7 +665,20 @@ impl PluginRuntime {
             })
             .cloned()
             .or_else(|| hosts.get(crate::surfaces::MAIN_SURFACE_ID).cloned());
-        let host_api = view_host.as_ref().map(|host| host.view_api.as_ref());
+        let config_context = view_host.as_ref().map(|host| {
+            Rc::new(ViewConfigContext {
+                persistence_id: host.config_persistence_id.clone(),
+                plugin_id: factory.plugin_id.clone(),
+                buffer: RefCell::new(Vec::new()),
+            })
+        });
+        let host_api = view_host.as_ref().map(|host| {
+            let mut api = *host.view_api;
+            api.config_context = Rc::as_ptr(config_context.as_ref().unwrap()) as *mut _;
+            api.read_config_in_context = Some(read_view_config);
+            api.write_config_in_context = Some(write_view_config);
+            api
+        });
         let plugin_id = MzStr {
             ptr: factory.plugin_id.as_ptr(),
             len: factory.plugin_id.len(),
@@ -682,7 +698,9 @@ impl PluginRuntime {
         };
 
         let widget_ptr = (factory.create)(
-            host_api.map_or(std::ptr::null(), |host| host as *const _),
+            host_api
+                .as_ref()
+                .map_or(std::ptr::null(), |host| host as *const _),
             &request,
         );
         if widget_ptr.is_null() {
@@ -697,8 +715,53 @@ impl PluginRuntime {
         }
 
         let widget = unsafe { Widget::from_glib_full(widget_ptr as *mut gtk::ffi::GtkWidget) };
+        // A copied API remains valid for callbacks throughout the widget lifetime.
+        widget.connect_destroy(move |_| {
+            let _ = &config_context;
+        });
         Ok(widget)
     }
+}
+
+struct ViewConfigContext {
+    persistence_id: String,
+    plugin_id: String,
+    buffer: RefCell<Vec<u8>>,
+}
+
+extern "C" fn read_view_config(context: *mut std::ffi::c_void) -> MzBytes {
+    let Some(context) = (unsafe { (context as *const ViewConfigContext).as_ref() }) else {
+        return MzBytes::empty();
+    };
+    let configs = layout::load_plugin_configs(&context.persistence_id);
+    let record = configs
+        .entries
+        .get(&context.plugin_id)
+        .map(|entry| MzConfigRecord {
+            schema_version: entry.schema_version,
+            payload: entry.payload.clone(),
+        })
+        .unwrap_or_default();
+    snapshot_bytes(&context.buffer, &record)
+}
+
+extern "C" fn write_view_config(context: *mut std::ffi::c_void, bytes: MzBytes) -> MzStatus {
+    let Some(context) = (unsafe { (context as *const ViewConfigContext).as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Ok(record) = MzConfigRecord::from_bytes(bytes_to_slice(bytes)) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let mut configs = layout::load_plugin_configs(&context.persistence_id);
+    configs.entries.insert(
+        context.plugin_id.clone(),
+        layout::PluginConfigEntry {
+            schema_version: record.schema_version,
+            payload: record.payload,
+        },
+    );
+    layout::save_plugin_configs(&context.persistence_id, &configs);
+    MzStatus::OK
 }
 
 fn workbench_contains_group(node: &WorkbenchNodeSpec, group_id: &str) -> bool {
@@ -809,7 +872,7 @@ pub fn load_plugin(path: impl AsRef<Path>) -> Result<LoadedPlugin, PluginLoadErr
         return Err(PluginLoadError::NullVTable { path });
     };
 
-    if vtable.abi_version != MZ_ABI_VERSION_V2 {
+    if vtable.abi_version != MZ_ABI_VERSION_V3 {
         return Err(PluginLoadError::AbiMismatch {
             path,
             plugin_abi_version: vtable.abi_version,
@@ -818,7 +881,7 @@ pub fn load_plugin(path: impl AsRef<Path>) -> Result<LoadedPlugin, PluginLoadErr
 
     let descriptor_view = (vtable.descriptor)();
     let descriptor = descriptor_from_view(&path, descriptor_view)?;
-    if descriptor.required_abi_version != MZ_ABI_VERSION_V2 {
+    if descriptor.required_abi_version != MZ_ABI_VERSION_V3 {
         return Err(PluginLoadError::DescriptorAbiMismatch {
             path,
             plugin_id: descriptor.id,
@@ -844,7 +907,7 @@ pub fn load_static_plugin(
         return Err(PluginLoadError::NullVTable { path });
     };
 
-    if vtable.abi_version != MZ_ABI_VERSION_V2 {
+    if vtable.abi_version != MZ_ABI_VERSION_V3 {
         return Err(PluginLoadError::AbiMismatch {
             path,
             plugin_abi_version: vtable.abi_version,
@@ -853,7 +916,7 @@ pub fn load_static_plugin(
 
     let descriptor_view = (vtable.descriptor)();
     let descriptor = descriptor_from_view(&path, descriptor_view)?;
-    if descriptor.required_abi_version != MZ_ABI_VERSION_V2 {
+    if descriptor.required_abi_version != MZ_ABI_VERSION_V3 {
         return Err(PluginLoadError::DescriptorAbiMismatch {
             path,
             plugin_id: descriptor.id,
@@ -1056,7 +1119,10 @@ struct HostState {
 impl HostState {
     fn host_api(&mut self) -> MzHostApi {
         MzHostApi {
-            abi_version: MZ_ABI_VERSION_V2,
+            abi_version: MZ_ABI_VERSION_V3,
+            config_context: std::ptr::null_mut(),
+            read_config_in_context: None,
+            write_config_in_context: None,
             host_context: self as *mut Self as *mut _,
             log: Some(host_log),
             register_command: Some(host_register_command),
@@ -2433,6 +2499,32 @@ fn runtime_error_plugin_id(error: &PluginRuntimeError) -> Option<String> {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn view_config_callbacks_persist_and_isolate_plugins_without_active_scope() {
+        let dir = std::env::temp_dir().join(format!("maruzzella-config-{}", std::process::id()));
+        let make_context = |id: &str| ViewConfigContext {
+            persistence_id: dir.to_string_lossy().into_owned(),
+            plugin_id: id.to_string(),
+            buffer: RefCell::new(Vec::new()),
+        };
+        let mut a = make_context("a");
+        let mut b = make_context("b");
+        for (context, payload) in [(&mut a, b"first".to_vec()), (&mut b, b"second".to_vec())] {
+            let mut api = MzHostApi::empty();
+            api.config_context = context as *mut _ as *mut _;
+            api.read_config_in_context = Some(read_view_config);
+            api.write_config_in_context = Some(write_view_config);
+            let sdk = maruzzella_sdk::HostApi::from_raw(&api);
+            let record = MzConfigRecord::new(payload.clone()).with_schema_version(7);
+            sdk.write_config_record(&record).unwrap();
+            assert_eq!(sdk.read_config_record().unwrap().payload, payload);
+        }
+        let configs = layout::load_plugin_configs(&a.persistence_id);
+        assert_eq!(configs.entries["a"].payload, b"first");
+        assert_eq!(configs.entries["b"].payload, b"second");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     static REGISTERED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);
     static STARTED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);

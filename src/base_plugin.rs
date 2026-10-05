@@ -11,13 +11,13 @@ use gtk::{
     TextView,
 };
 use maruzzella_api::{
-    MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec, MzConfigRecord,
+    MzAboutCatalog, MzAboutSection, MzBytes, MzCommandCatalog, MzCommandSpec,
     MzContributionSurface, MzDiagnosticCatalog, MzHostApi, MzLogLevel, MzMenuItemSpec,
     MzMenuSurface, MzOpenViewRequest, MzPluginDescriptorView, MzPluginSnapshot, MzPluginVTable,
     MzServiceCatalog, MzSettingsCatalog, MzSettingsCategory, MzSettingsPage, MzStartupTab,
     MzStatus, MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog,
     MzViewFactorySpec, MzViewPlacement, MzViewRequest, MzViewTeardownDecision,
-    MzViewTeardownRequest, MzViewTeardownResult, MZ_ABI_VERSION_V2,
+    MzViewTeardownRequest, MzViewTeardownResult, MZ_ABI_VERSION_V3,
 };
 use maruzzella_sdk::mark_clickable;
 use serde::{Deserialize, Serialize};
@@ -105,7 +105,7 @@ pub fn load() -> LoadedPlugin {
                 minor: 0,
                 patch: 0,
             },
-            required_abi_version: MZ_ABI_VERSION_V2,
+            required_abi_version: MZ_ABI_VERSION_V3,
             description: "Built-in plugin providing core shell commands and menu surfaces"
                 .to_string(),
             dependencies: Vec::new(),
@@ -115,7 +115,7 @@ pub fn load() -> LoadedPlugin {
 }
 
 static BASE_PLUGIN_VTABLE: MzPluginVTable = MzPluginVTable {
-    abi_version: MZ_ABI_VERSION_V2,
+    abi_version: MZ_ABI_VERSION_V3,
     descriptor: base_descriptor,
     register: base_register,
     startup: base_startup,
@@ -127,7 +127,7 @@ extern "C" fn base_descriptor() -> MzPluginDescriptorView {
         id: MzStr::from_static(BASE_PLUGIN_ID),
         name: MzStr::from_static("Maruzzella Base"),
         version: MzVersion::new(1, 0, 0),
-        required_abi_version: MZ_ABI_VERSION_V2,
+        required_abi_version: MZ_ABI_VERSION_V3,
         description: MzStr::from_static(
             "Built-in plugin providing core shell commands and menu surfaces",
         ),
@@ -1796,36 +1796,15 @@ fn refresh_editor_session_inner(session: &mut EditorSession, _message: Option<&s
 }
 
 fn read_base_plugin_config(host: &MzHostApi) -> BasePluginConfig {
-    let Some(read) = host.read_config_record else {
-        return BasePluginConfig::default();
-    };
-    let bytes = read();
-    if bytes.ptr.is_null() || bytes.len == 0 {
-        return BasePluginConfig::default();
-    }
-    let record =
-        MzConfigRecord::from_bytes(unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) })
-            .unwrap_or_default();
-    serde_json::from_slice(&record.payload).unwrap_or_default()
+    maruzzella_sdk::HostApi::from_raw(host)
+        .read_json_config()
+        .unwrap_or_default()
 }
 
 fn write_base_plugin_config(host: &MzHostApi, config: &BasePluginConfig) -> Result<(), String> {
-    let Some(write) = host.write_config_record else {
-        return Err("config write API is unavailable".to_string());
-    };
-    let payload = serde_json::to_vec(config).map_err(|error| error.to_string())?;
-    let record =
-        MzConfigRecord::new(payload).with_schema_version(BASE_PLUGIN_CONFIG_SCHEMA_VERSION);
-    let record = record.to_bytes().map_err(|error| error.to_string())?;
-    let status = write(MzBytes {
-        ptr: record.as_ptr(),
-        len: record.len(),
-    });
-    if status.is_ok() {
-        Ok(())
-    } else {
-        Err(format!("config write failed: {:?}", status.code))
-    }
+    maruzzella_sdk::HostApi::from_raw(host)
+        .write_json_config(config, Some(BASE_PLUGIN_CONFIG_SCHEMA_VERSION))
+        .map_err(|status| format!("config write failed: {status:?}"))
 }
 
 fn read_editor_draft(host: &MzHostApi, document_id: &str) -> Option<EditorDraft> {

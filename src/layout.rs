@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::product::default_product_spec;
-use crate::spec::{make_workbench_tabs_closeable, ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
+use crate::spec::{ShellSpec, TabGroupSpec, WorkbenchNodeSpec};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PanePositions {
@@ -252,7 +252,6 @@ fn restore_app_owned_shell_fields(spec: &mut ShellSpec, default_spec: &ShellSpec
     restore_group_app_owned_fields(&mut spec.right_panel, &default_spec.right_panel);
     restore_group_app_owned_fields(&mut spec.bottom_panel, &default_spec.bottom_panel);
     restore_workbench_app_owned_fields(&mut spec.workbench, &default_spec.workbench);
-    make_workbench_tabs_closeable(&mut spec.workbench);
 }
 
 fn restore_group_app_owned_fields(group: &mut TabGroupSpec, default_group: &TabGroupSpec) {
@@ -269,6 +268,8 @@ fn restore_group_app_owned_fields(group: &mut TabGroupSpec, default_group: &TabG
             .find(|candidate| candidate.id == tab.id)
         {
             tab.text_appearance_id = default_tab.text_appearance_id.clone();
+            tab.closable = default_tab.closable;
+            tab.close_prompt = default_tab.close_prompt.clone();
         }
     }
 }
@@ -277,23 +278,46 @@ fn restore_workbench_app_owned_fields(
     node: &mut WorkbenchNodeSpec,
     default_node: &WorkbenchNodeSpec,
 ) {
-    match (node, default_node) {
-        (WorkbenchNodeSpec::Group(group), WorkbenchNodeSpec::Group(default_group)) => {
-            restore_group_app_owned_fields(group, default_group);
-        }
-        (
-            WorkbenchNodeSpec::Split { children, .. },
-            WorkbenchNodeSpec::Split {
-                children: default_children,
-                ..
-            },
-        ) => {
-            for (child, default_child) in children.iter_mut().zip(default_children.iter()) {
-                restore_workbench_app_owned_fields(child, default_child);
+    fn collect<'a>(node: &'a WorkbenchNodeSpec, groups: &mut HashMap<&'a str, &'a TabGroupSpec>) {
+        match node {
+            WorkbenchNodeSpec::Group(group) => {
+                groups.insert(&group.id, group);
+            }
+            WorkbenchNodeSpec::Split { children, .. } => {
+                for child in children {
+                    collect(child, groups);
+                }
             }
         }
-        _ => {}
     }
+    fn restore(node: &mut WorkbenchNodeSpec, groups: &HashMap<&str, &TabGroupSpec>) {
+        match node {
+            WorkbenchNodeSpec::Group(group) => {
+                if let Some(default) = groups.get(group.id.as_str()) {
+                    restore_group_app_owned_fields(group, default);
+                }
+                for tab in &mut group.tabs {
+                    if let Some(default) = groups
+                        .values()
+                        .flat_map(|group| group.tabs.iter())
+                        .find(|candidate| candidate.id == tab.id)
+                    {
+                        tab.closable = default.closable;
+                        tab.close_prompt = default.close_prompt.clone();
+                        tab.text_appearance_id = default.text_appearance_id.clone();
+                    }
+                }
+            }
+            WorkbenchNodeSpec::Split { children, .. } => {
+                for child in children {
+                    restore(child, groups);
+                }
+            }
+        }
+    }
+    let mut groups = HashMap::new();
+    collect(default_node, &mut groups);
+    restore(node, &groups);
 }
 
 pub fn save(persistence_id: &str, shell: &PersistedShell) {
@@ -516,6 +540,42 @@ mod tests {
     };
 
     #[test]
+    fn restored_groups_follow_identity_after_reordering() {
+        let mut defaults = default_product_spec().shell_spec();
+        let a = TabGroupSpec::new(
+            "a",
+            Some("locked"),
+            vec![text_tab("locked", "a", "Locked", "", false)],
+        )
+        .with_panel_appearance("primary");
+        let b = TabGroupSpec::new("b", None, vec![]).with_panel_appearance("secondary");
+        defaults.workbench = WorkbenchNodeSpec::Split {
+            axis: crate::spec::SplitAxis::Horizontal,
+            children: vec![
+                WorkbenchNodeSpec::Group(a.clone()),
+                WorkbenchNodeSpec::Group(b.clone()),
+            ],
+        };
+        let mut current = defaults.clone();
+        let mut moved = a;
+        moved.tabs[0].closable = true;
+        moved.panel_appearance_id = "stale".into();
+        current.workbench = WorkbenchNodeSpec::Split {
+            axis: crate::spec::SplitAxis::Vertical,
+            children: vec![WorkbenchNodeSpec::Group(b), WorkbenchNodeSpec::Group(moved)],
+        };
+        restore_app_owned_shell_fields(&mut current, &defaults);
+        if let WorkbenchNodeSpec::Split { children, .. } = current.workbench {
+            if let WorkbenchNodeSpec::Group(group) = &children[1] {
+                assert_eq!(group.panel_appearance_id, "primary");
+                assert!(!group.tabs[0].closable);
+            } else {
+                panic!("missing group");
+            }
+        }
+    }
+
+    #[test]
     fn atomic_persistence_preserves_previous_file_on_failure() {
         let dir = std::env::temp_dir().join(format!("mz-atomic-{}", std::process::id()));
         let path = dir.join("state.json");
@@ -671,7 +731,7 @@ mod tests {
                     group.tab_strip_appearance_id,
                     current_group.tab_strip_appearance_id
                 );
-                assert!(group.tabs[0].closable);
+                assert_eq!(group.tabs[0].closable, current_group.tabs[0].closable);
             }
             _ => panic!("test workbench should be a group"),
         }

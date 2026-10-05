@@ -4,9 +4,9 @@ use maruzzella_api::{MzContributionSurface, MzStartupTab, MzToolbarItem};
 
 use crate::plugins::PluginRuntime;
 use crate::spec::{
-    make_workbench_tabs_closeable, plugin_tab_with_instance, BottomPanelLayout, CommandSpec,
-    MenuItemSpec, MenuRootSpec, PanelResizePolicy, ShellSpec, SplitAxis, TabGroupSpec,
-    ToolbarItemSpec, ToolbarOptionSpec, WorkbenchNodeSpec,
+    plugin_tab_with_instance, BottomPanelLayout, CommandSpec, MenuItemSpec, MenuRootSpec,
+    PanelResizePolicy, ShellSpec, SplitAxis, TabGroupSpec, ToolbarItemSpec, ToolbarOptionSpec,
+    WorkbenchNodeSpec,
 };
 
 #[derive(Clone, Debug)]
@@ -44,8 +44,7 @@ pub struct ProductSpec {
 
 impl ProductSpec {
     pub fn shell_spec(&self) -> ShellSpec {
-        let mut workbench = self.layout.workbench.clone();
-        make_workbench_tabs_closeable(&mut workbench);
+        let workbench = self.layout.workbench.clone();
 
         ShellSpec {
             title: self.branding.title.clone(),
@@ -111,7 +110,7 @@ pub fn merge_runtime_startup_tabs(
             );
             continue;
         };
-        let closable = tab.closable || find_group_in_workbench(&spec.workbench, &tab.group_id);
+        let closable = tab.closable;
         let Some(group) = find_group_mut(spec, &tab.group_id) else {
             continue;
         };
@@ -372,15 +371,6 @@ fn find_group_mut_in_workbench<'a>(
         WorkbenchNodeSpec::Split { children, .. } => children
             .iter_mut()
             .find_map(|child| find_group_mut_in_workbench(child, group_id)),
-    }
-}
-
-fn find_group_in_workbench(node: &WorkbenchNodeSpec, group_id: &str) -> bool {
-    match node {
-        WorkbenchNodeSpec::Group(group) => group.id == group_id,
-        WorkbenchNodeSpec::Split { children, .. } => children
-            .iter()
-            .any(|child| find_group_in_workbench(child, group_id)),
     }
 }
 

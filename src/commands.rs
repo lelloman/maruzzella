@@ -313,10 +313,20 @@ pub fn shell_registry(
                     document.file_path.as_deref().map(str::to_string),
                 );
             }
-            Some(_) => {
-                if let Err(error) = base_plugin::save_editor_by_instance_key(instance_key) {
-                    eprintln!("shell.save_buffer failed: {error}");
-                }
+            Some(document) => {
+                let Some(path) = document.file_path else {
+                    return;
+                };
+                let key = instance_key.to_string();
+                let window = window_for_save_buffer.downgrade();
+                base_plugin::write_editor_async(
+                    key.clone(),
+                    path.into(),
+                    move |result| match result {
+                        Ok((_, revision)) => base_plugin::complete_editor_save(&key, revision),
+                        Err(error) => show_editor_error(window.upgrade().as_ref(), &error),
+                    },
+                );
             }
             None => {}
         }
@@ -498,45 +508,53 @@ fn save_editor_as_picker(
         ));
     }
     let dialog = builder.build();
+    let parent = window.downgrade();
     dialog.save(Some(window), gio::Cancellable::NONE, move |result| {
         if let Ok(file) = result {
             if let Some(path) = file.path() {
-                if let Err(error) = save_editor_as_path(
-                    &shell_state,
-                    &group_handles,
-                    &persistence_id,
-                    &instance_key,
-                    &path,
-                ) {
-                    eprintln!("shell.save_buffer_as failed: {error}");
-                }
+                let key = instance_key.clone();
+                base_plugin::write_editor_async(instance_key.clone(), path, move |result| {
+                    let result = result.and_then(|(document, saved_revision)| {
+                        let new_key = base_plugin::editor_instance_key(&document.document_id);
+                        let changed = base_plugin::editor_revision(&key) != Some(saved_revision);
+                        update_editor_tab_document(
+                            &shell_state,
+                            &group_handles,
+                            &persistence_id,
+                            &key,
+                            &new_key,
+                            &document,
+                        )?;
+                        base_plugin::replace_editor_document(&key, &new_key, document)?;
+                        if changed {
+                            base_plugin::mark_editor_changed(&new_key);
+                        }
+                        if let Some((group, tab)) = find_tab_by_instance_key(&shell_state, &new_key)
+                        {
+                            crate::plugin_tabs::remember_active_plugin_tab(
+                                &shell_state,
+                                &group,
+                                &tab,
+                            );
+                        }
+                        Ok(())
+                    });
+                    if let Err(error) = result {
+                        show_editor_error(parent.upgrade().as_ref(), &error);
+                    }
+                });
             }
         }
     });
 }
 
-fn save_editor_as_path(
-    shell_state: &ShellState,
-    group_handles: &GroupHandles,
-    persistence_id: &str,
-    instance_key: &str,
-    path: &Path,
-) -> Result<(), String> {
-    let new_document = base_plugin::write_editor_contents_to_path(instance_key, path)?;
-    let new_instance_key = base_plugin::editor_instance_key(&new_document.document_id);
-    update_editor_tab_document(
-        shell_state,
-        group_handles,
-        persistence_id,
-        instance_key,
-        &new_instance_key,
-        &new_document,
-    )?;
-    let _ = base_plugin::replace_editor_document(instance_key, &new_instance_key, new_document)?;
-    if let Some((group_id, tab_id)) = find_tab_by_instance_key(shell_state, &new_instance_key) {
-        crate::plugin_tabs::remember_active_plugin_tab(shell_state, &group_id, &tab_id);
-    }
-    Ok(())
+fn show_editor_error(window: Option<&ApplicationWindow>, error: &str) {
+    gtk::AlertDialog::builder()
+        .message("Unable to save document")
+        .detail(error)
+        .buttons(["OK"])
+        .build()
+        .show(window);
 }
 
 fn next_untitled_document_id(shell_state: &ShellState) -> String {

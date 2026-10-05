@@ -447,6 +447,7 @@ impl AppController {
     }
 
     fn clear_current_mode(&self) {
+        base_plugin::flush_editor_io();
         self.sync_detached_specs();
         self.save_workspace_session();
         self.suppress_surface_close.set(true);
@@ -3212,6 +3213,45 @@ fn install_pane_focus_tracking(panes: &[gtk::Widget]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_shell_mode_roundtrip_releases_previous_root() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let directory =
+                std::env::temp_dir().join(format!("mz-roundtrip-{}", std::process::id()));
+            let config = MaruzzellaConfig::default()
+                .without_default_plugin_discovery()
+                .with_persistence_id(directory.join("app").to_str().unwrap())
+                .with_launcher(LauncherSpec::new(
+                    "Launcher",
+                    TabGroupSpec::new("launcher", None, vec![]),
+                ));
+            let host = Rc::new(build_plugin_host(&config));
+            let controller =
+                AppController::new(ApplicationWindow::builder().build(), config.clone(), host);
+            controller.show_workspace(WorkspaceSession::from_product(&config.product));
+            let previous = controller.window.child().unwrap().downgrade();
+            controller.switch_to_launcher().unwrap();
+            assert_eq!(controller.current_mode(), ShellMode::Launcher);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+            while previous.upgrade().is_some() && std::time::Instant::now() < deadline {
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            assert!(
+                previous.upgrade().is_none(),
+                "old shell root retained after switching"
+            );
+            controller.switch_to_workspace(WorkspaceSession::from_product(&config.product));
+            assert_eq!(controller.current_mode(), ShellMode::Workspace);
+            controller.clear_current_mode();
+            controller.window.destroy();
+            std::fs::remove_dir_all(directory).unwrap();
+        });
+    }
 
     #[test]
     fn workbench_callbacks_do_not_retain_their_group() {

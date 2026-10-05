@@ -458,6 +458,17 @@ pub fn load_plugin_configs(persistence_id: &str) -> PluginConfigs {
     configs
 }
 
+pub(crate) fn edit_plugin_configs(
+    id: &str,
+    edit: impl FnOnce(&mut PluginConfigs),
+) -> std::io::Result<()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut configs = load_plugin_configs(id);
+    edit(&mut configs);
+    save_plugin_configs(id, &configs)
+}
+
 pub fn save_plugin_configs(persistence_id: &str, configs: &PluginConfigs) -> std::io::Result<()> {
     let path = plugin_configs_path(persistence_id);
     let serializable = configs
@@ -613,19 +624,24 @@ mod tests {
 
     #[test]
     fn explicit_save_flushes_and_cancels_debounced_layout() {
-        let dir = std::env::temp_dir().join(format!("mz-debounce-{}", std::process::id()));
-        let id = dir.to_str().unwrap();
-        let state = std::rc::Rc::new(std::cell::RefCell::new(super::PersistedShell::default()));
-        super::schedule_save(id, &state);
-        state.borrow_mut().spec.title = "latest".into();
-        super::schedule_save(id, &state);
-        assert!(!super::path(id).exists());
-        super::save(id, &state.borrow());
-        let saved: super::PersistedShell =
-            serde_json::from_slice(&std::fs::read(super::path(id)).unwrap()).unwrap();
-        assert_eq!(saved.spec.title, "latest");
-        assert!(super::PENDING_LAYOUT_SAVES.with(|pending| !pending.borrow().contains_key(id)));
-        std::fs::remove_dir_all(dir).unwrap();
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let dir = std::env::temp_dir().join(format!("mz-debounce-{}", std::process::id()));
+            let id = dir.to_str().unwrap();
+            let state = std::rc::Rc::new(std::cell::RefCell::new(super::PersistedShell::default()));
+            super::schedule_save(id, &state);
+            state.borrow_mut().spec.title = "latest".into();
+            super::schedule_save(id, &state);
+            assert!(!super::path(id).exists());
+            super::save(id, &state.borrow());
+            let saved: super::PersistedShell =
+                serde_json::from_slice(&std::fs::read(super::path(id)).unwrap()).unwrap();
+            assert_eq!(saved.spec.title, "latest");
+            assert!(super::PENDING_LAYOUT_SAVES.with(|pending| !pending.borrow().contains_key(id)));
+            std::fs::remove_dir_all(dir).unwrap();
+        });
     }
 
     #[test]

@@ -858,6 +858,20 @@ struct ViewConfigContext {
     buffer: RefCell<Vec<u8>>,
 }
 
+pub(crate) fn view_config_persistence_id(host: &MzHostApi) -> Option<String> {
+    if host.read_config_in_context.map(|read| {
+        std::ptr::fn_addr_eq(
+            read,
+            read_view_config as extern "C" fn(*mut std::ffi::c_void) -> MzBytes,
+        )
+    }) != Some(true)
+    {
+        return None;
+    }
+    unsafe { (host.config_context as *const ViewConfigContext).as_ref() }
+        .map(|context| context.persistence_id.clone())
+}
+
 extern "C" fn read_view_config(context: *mut std::ffi::c_void) -> MzBytes {
     let Some(context) = (unsafe { (context as *const ViewConfigContext).as_ref() }) else {
         return MzBytes::empty();
@@ -881,15 +895,15 @@ extern "C" fn write_view_config(context: *mut std::ffi::c_void, bytes: MzBytes) 
     let Ok(record) = MzConfigRecord::from_bytes(bytes_to_slice(bytes)) else {
         return MzStatus::new(MzStatusCode::InvalidArgument);
     };
-    let mut configs = layout::load_plugin_configs(&context.persistence_id);
-    configs.entries.insert(
-        context.plugin_id.clone(),
-        layout::PluginConfigEntry {
-            schema_version: record.schema_version,
-            payload: record.payload,
-        },
-    );
-    match layout::save_plugin_configs(&context.persistence_id, &configs) {
+    match layout::edit_plugin_configs(&context.persistence_id, |configs| {
+        configs.entries.insert(
+            context.plugin_id.clone(),
+            layout::PluginConfigEntry {
+                schema_version: record.schema_version,
+                payload: record.payload,
+            },
+        );
+    }) {
         Ok(()) => MzStatus::OK,
         Err(_) => MzStatus::new(MzStatusCode::InternalError),
     }
@@ -1676,7 +1690,11 @@ extern "C" fn host_write_config(payload: MzBytes) -> MzStatus {
         },
     );
     state.plugin_configs.invalid_entries.remove(&plugin_id);
-    match layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs) {
+    let entry = state.plugin_configs.entries[&plugin_id].clone();
+    match layout::edit_plugin_configs(&state.persistence_id, |configs| {
+        configs.entries.insert(plugin_id.clone(), entry);
+        configs.invalid_entries.remove(&plugin_id);
+    }) {
         Ok(()) => MzStatus::OK,
         Err(_) => MzStatus::new(MzStatusCode::InternalError),
     }
@@ -1719,7 +1737,11 @@ extern "C" fn host_write_config_record(payload: MzBytes) -> MzStatus {
         },
     );
     state.plugin_configs.invalid_entries.remove(&plugin_id);
-    match layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs) {
+    let entry = state.plugin_configs.entries[&plugin_id].clone();
+    match layout::edit_plugin_configs(&state.persistence_id, |configs| {
+        configs.entries.insert(plugin_id.clone(), entry);
+        configs.invalid_entries.remove(&plugin_id);
+    }) {
         Ok(()) => MzStatus::OK,
         Err(_) => MzStatus::new(MzStatusCode::InternalError),
     }
@@ -2431,7 +2453,7 @@ fn with_shell_host<T>(host: &PluginShellHost, action: impl FnOnce() -> T) -> T {
     ACTIVE_SHELL_HOST.with(|cell| {
         let previous = cell.replace(host as *const _);
         let result = action();
-        if cell.get() == host as *const _ {
+        if std::ptr::eq(cell.get(), host) {
             cell.set(previous);
         }
         result

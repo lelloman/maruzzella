@@ -89,6 +89,8 @@ struct EditorSession {
     callback_key: Rc<RefCell<String>>,
     buffer: TextBuffer,
     dirty: bool,
+    revision: u64,
+    draft_timer: Option<glib::SourceId>,
     close_buttons: Vec<Button>,
 }
 
@@ -635,6 +637,15 @@ extern "C" fn prepare_editor_teardown(
         };
     };
     let instance_key = decode_optional_str(request.view.instance_key);
+    if instance_key
+        .as_ref()
+        .is_some_and(|key| EDITOR_IO_PENDING.with(|pending| pending.borrow().contains(key)))
+    {
+        return MzViewTeardownResult {
+            decision: MzViewTeardownDecision::Blocked,
+            message: MzStr::from_static("Wait for the document operation to finish."),
+        };
+    }
     if is_editor_tab_dirty(Some(VIEW_WORKSPACE_EDITOR), instance_key.as_deref()) {
         MzViewTeardownResult {
             decision: MzViewTeardownDecision::Confirm,
@@ -1200,18 +1211,111 @@ fn about_view(host: &MzHostApi) -> gtk::Widget {
     root.upcast()
 }
 
+thread_local! {
+    static EDITOR_IO_PENDING: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
+}
+
+type EditorJob = Box<dyn FnOnce() + Send>;
+fn editor_io_queue() -> &'static std::sync::mpsc::Sender<EditorJob> {
+    static QUEUE: std::sync::OnceLock<std::sync::mpsc::Sender<EditorJob>> =
+        std::sync::OnceLock::new();
+    QUEUE.get_or_init(|| {
+        let (send, receive) = std::sync::mpsc::channel::<EditorJob>();
+        std::thread::Builder::new()
+            .name("maruzzella-editor-io".into())
+            .spawn(move || {
+                for job in receive {
+                    job();
+                }
+            })
+            .expect("start editor I/O worker");
+        send
+    })
+}
+
+fn editor_io<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+    done: impl FnOnce(T) + 'static,
+) {
+    let (send, receive) = std::sync::mpsc::channel();
+    editor_io_queue()
+        .send(Box::new(move || {
+            let _ = send.send(work());
+        }))
+        .expect("editor worker running");
+    let mut done = Some(done);
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(10),
+        move || match receive.try_recv() {
+            Ok(result) => {
+                done.take().unwrap()(result);
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(_) => glib::ControlFlow::Break,
+        },
+    );
+}
+
+pub(crate) fn flush_editor_io() {
+    let keys =
+        EDITOR_SESSIONS.with(|sessions| sessions.borrow().keys().cloned().collect::<Vec<_>>());
+    for key in keys {
+        flush_scheduled_draft(&key);
+    }
+    let (send, receive) = std::sync::mpsc::channel();
+    let _ = editor_io_queue().send(Box::new(move || {
+        let _ = send.send(());
+    }));
+    let _ = receive.recv();
+}
+
 fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
-    let instance_key = match decode_optional_str(request.instance_key) {
-        Some(instance_key) => instance_key,
-        None => return fallback_view("Editor view requires a document instance key."),
+    let Some(instance_key) = decode_optional_str(request.instance_key) else {
+        return fallback_view("Editor requires a document identity.");
     };
     let document = match decode_editor_payload(request.payload) {
-        Ok(document) => document,
-        Err(error) => {
-            return fallback_view(&format!("Editor payload is invalid: {error}"));
-        }
+        Ok(doc) => doc,
+        Err(error) => return fallback_view(&error),
     };
+    if !EDITOR_IO_PENDING.with(|pending| pending.borrow_mut().insert(instance_key.clone())) {
+        return fallback_view("This document already has an operation in progress.");
+    }
+    let root = GtkBox::new(Orientation::Vertical, 0);
+    root.set_hexpand(true);
+    root.set_vexpand(true);
+    root.append(&Label::new(Some("Loading document…")));
+    let weak = root.downgrade();
+    let config_id = crate::plugins::view_config_persistence_id(host);
+    let host = *host;
+    let loading_document = document.clone();
+    editor_io(
+        move || load_editor_text_from_disk(config_id.as_deref(), &loading_document),
+        move |result| {
+            EDITOR_IO_PENDING.with(|pending| pending.borrow_mut().remove(&instance_key));
+            let Some(root) = weak.upgrade() else {
+                return;
+            };
+            while let Some(child) = root.first_child() {
+                root.remove(&child);
+            }
+            let child = match result {
+                Ok((text, dirty)) => editor_view_loaded(&host, document, instance_key, text, dirty),
+                Err(error) => fallback_view(&error),
+            };
+            root.append(&child);
+        },
+    );
+    root.upcast()
+}
 
+fn editor_view_loaded(
+    host: &MzHostApi,
+    document: EditorDocumentPayload,
+    instance_key: String,
+    initial_text: String,
+    initial_dirty: bool,
+) -> gtk::Widget {
     let buffer = TextBuffer::new(None);
     let text_view = TextView::builder()
         .buffer(&buffer)
@@ -1225,10 +1329,6 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
         .child(&text_view)
         .build();
 
-    let (initial_text, initial_dirty) = match load_editor_text(host, &document) {
-        Ok(loaded) => loaded,
-        Err(error) => return fallback_view(&error),
-    };
     buffer.set_text(&initial_text);
 
     let callback_key = Rc::new(RefCell::new(instance_key.clone()));
@@ -1241,6 +1341,8 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
             callback_key: callback_key.clone(),
             buffer: buffer.clone(),
             dirty: initial_dirty,
+            revision: 0,
+            draft_timer: None,
             close_buttons: Vec::new(),
         },
     );
@@ -1267,11 +1369,15 @@ fn fallback_view(message: &str) -> gtk::Widget {
     root.upcast()
 }
 
-fn load_editor_text(
-    host: &MzHostApi,
+fn load_editor_text_from_disk(
+    persistence_id: Option<&str>,
     document: &EditorDocumentPayload,
 ) -> Result<(String, bool), String> {
-    if let Some(draft) = read_editor_draft(host, &document.document_id) {
+    if let Some(draft) = persistence_id.and_then(|id| {
+        disk_base_config(id)
+            .editor_drafts
+            .remove(&document.document_id)
+    }) {
         return Ok((draft.text, draft.dirty));
     }
     match document.kind {
@@ -1549,7 +1655,10 @@ pub(crate) fn allocate_untitled_document_id(minimum: usize) -> String {
             index = index
                 .checked_add(1)
                 .expect("untitled document IDs exhausted");
-            if editor_document_for_instance_key(&editor_instance_key(&id)).is_none() {
+            let key = editor_instance_key(&id);
+            if editor_document_for_instance_key(&key).is_none()
+                && !EDITOR_IO_PENDING.with(|pending| pending.borrow().contains(&key))
+            {
                 next.set(index);
                 return id;
             }
@@ -1716,6 +1825,9 @@ pub fn replace_editor_document(
             return Ok(false);
         };
         clear_editor_draft(&session.host, &session.document.document_id);
+        if let Some(timer) = session.draft_timer.take() {
+            timer.remove();
+        }
         session.document = new_document;
         session.instance_key = new_instance_key.to_string();
         *session.callback_key.borrow_mut() = new_instance_key.to_string();
@@ -1762,7 +1874,21 @@ fn register_editor_session(instance_key: &str, session: EditorSession) {
     });
 }
 
+fn flush_scheduled_draft(instance_key: &str) {
+    let pending = EDITOR_SESSIONS.with(|sessions| {
+        sessions
+            .borrow_mut()
+            .get_mut(instance_key)
+            .and_then(|session| session.draft_timer.take())
+    });
+    if let Some(timer) = pending {
+        timer.remove();
+        let _ = persist_editor_draft(instance_key);
+    }
+}
+
 fn unregister_editor_session(instance_key: &str) {
+    flush_scheduled_draft(instance_key);
     EDITOR_SESSIONS.with(|sessions| {
         sessions.borrow_mut().remove(instance_key);
     });
@@ -1776,23 +1902,26 @@ fn set_editor_dirty(instance_key: &str, dirty: bool) {
         };
         let changed = session.dirty != dirty;
         session.dirty = dirty;
+        session.revision = session.revision.wrapping_add(1);
         if dirty {
-            let _ = write_editor_draft(
-                &session.host,
-                &session.document.document_id,
-                EditorDraft {
-                    document: session.document.clone(),
-                    text: session
-                        .buffer
-                        .text(
-                            &session.buffer.start_iter(),
-                            &session.buffer.end_iter(),
-                            true,
-                        )
-                        .to_string(),
-                    dirty: true,
+            if let Some(timer) = session.draft_timer.take() {
+                timer.remove();
+            }
+            let key = session.callback_key.clone();
+            session.draft_timer = Some(glib::timeout_add_local_once(
+                std::time::Duration::from_millis(300),
+                move || {
+                    let key = key.borrow().clone();
+                    EDITOR_SESSIONS.with(|sessions| {
+                        if let Some(session) = sessions.borrow_mut().get_mut(&key) {
+                            session.draft_timer = None;
+                        }
+                    });
+                    if let Err(error) = persist_editor_draft(&key) {
+                        eprintln!("Draft save failed: {error}");
+                    }
                 },
-            );
+            ));
         }
         if changed {
             refresh_editor_session_inner(session, None);
@@ -1841,10 +1970,31 @@ fn write_base_plugin_config(host: &MzHostApi, config: &BasePluginConfig) -> Resu
         .map_err(|status| format!("config write failed: {status:?}"))
 }
 
-fn read_editor_draft(host: &MzHostApi, document_id: &str) -> Option<EditorDraft> {
-    read_base_plugin_config(host)
-        .editor_drafts
-        .remove(document_id)
+fn disk_base_config(id: &str) -> BasePluginConfig {
+    crate::layout::load_plugin_configs(id)
+        .entries
+        .get(BASE_PLUGIN_ID)
+        .and_then(|entry| serde_json::from_slice(&entry.payload).ok())
+        .unwrap_or_default()
+}
+
+fn edit_disk_drafts(id: &str, edit: impl FnOnce(&mut BasePluginConfig)) -> Result<(), String> {
+    crate::layout::edit_plugin_configs(id, |configs| {
+        let mut config: BasePluginConfig = configs
+            .entries
+            .get(BASE_PLUGIN_ID)
+            .and_then(|entry| serde_json::from_slice(&entry.payload).ok())
+            .unwrap_or_default();
+        edit(&mut config);
+        configs.entries.insert(
+            BASE_PLUGIN_ID.into(),
+            crate::layout::PluginConfigEntry {
+                schema_version: Some(BASE_PLUGIN_CONFIG_SCHEMA_VERSION),
+                payload: serde_json::to_vec(&config).expect("serialize drafts"),
+            },
+        );
+    })
+    .map_err(|error| error.to_string())
 }
 
 fn write_editor_draft(
@@ -1852,12 +2002,36 @@ fn write_editor_draft(
     document_id: &str,
     draft: EditorDraft,
 ) -> Result<(), String> {
+    if let Some(id) = crate::plugins::view_config_persistence_id(host) {
+        let document_id = document_id.to_string();
+        editor_io_queue()
+            .send(Box::new(move || {
+                if let Err(error) = edit_disk_drafts(&id, |config| {
+                    config.editor_drafts.insert(document_id, draft);
+                }) {
+                    eprintln!("Draft save failed: {error}");
+                }
+            }))
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
     let mut config = read_base_plugin_config(host);
     config.editor_drafts.insert(document_id.to_string(), draft);
     write_base_plugin_config(host, &config)
 }
 
 fn clear_editor_draft(host: &MzHostApi, document_id: &str) {
+    if let Some(id) = crate::plugins::view_config_persistence_id(host) {
+        let document_id = document_id.to_string();
+        let _ = editor_io_queue().send(Box::new(move || {
+            if let Err(error) = edit_disk_drafts(&id, |config| {
+                config.editor_drafts.remove(&document_id);
+            }) {
+                eprintln!("Draft cleanup failed: {error}");
+            }
+        }));
+        return;
+    }
     let mut config = read_base_plugin_config(host);
     if config.editor_drafts.remove(document_id).is_some() {
         let _ = write_base_plugin_config(host, &config);
@@ -1893,10 +2067,7 @@ pub fn editor_payload_to_bytes(payload: &EditorDocumentPayload) -> Result<Vec<u8
     payload.to_bytes().map_err(|error| error.to_string())
 }
 
-pub fn write_editor_contents_to_path(
-    instance_key: &str,
-    path: &Path,
-) -> Result<EditorDocumentPayload, String> {
+fn editor_payload_for_save_path(path: &Path) -> Result<EditorDocumentPayload, String> {
     let payload = match file_editor_payload_for_path(path) {
         Ok(payload) => payload,
         Err(_) => {
@@ -1920,6 +2091,112 @@ pub fn write_editor_contents_to_path(
             }
         }
     };
+    Ok(payload)
+}
+
+pub(crate) fn write_editor_async(
+    instance_key: String,
+    path: PathBuf,
+    done: impl FnOnce(Result<(EditorDocumentPayload, u64), String>) + 'static,
+) {
+    if !EDITOR_IO_PENDING.with(|pending| pending.borrow_mut().insert(instance_key.clone())) {
+        done(Err("A document operation is already in progress.".into()));
+        return;
+    }
+    editor_io(
+        move || editor_payload_for_save_path(&path),
+        move |result| {
+            let document = match result {
+                Ok(document) => document,
+                Err(error) => {
+                    EDITOR_IO_PENDING.with(|pending| pending.borrow_mut().remove(&instance_key));
+                    done(Err(error));
+                    return;
+                }
+            };
+            let new_key = editor_instance_key(&document.document_id);
+            let snapshot =
+                ensure_editor_identity_available(&instance_key, &new_key).and_then(|_| {
+                    EDITOR_SESSIONS.with(|sessions| {
+                        let sessions = sessions.borrow();
+                        let session = sessions
+                            .get(&instance_key)
+                            .ok_or_else(|| "Editor closed before save".to_string())?;
+                        Ok((
+                            session
+                                .buffer
+                                .text(
+                                    &session.buffer.start_iter(),
+                                    &session.buffer.end_iter(),
+                                    true,
+                                )
+                                .to_string(),
+                            session.revision,
+                        ))
+                    })
+                });
+            let (text, revision) = match snapshot {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    EDITOR_IO_PENDING.with(|pending| pending.borrow_mut().remove(&instance_key));
+                    done(Err(error));
+                    return;
+                }
+            };
+            if new_key != instance_key
+                && !EDITOR_IO_PENDING.with(|pending| pending.borrow_mut().insert(new_key.clone()))
+            {
+                EDITOR_IO_PENDING.with(|pending| pending.borrow_mut().remove(&instance_key));
+                done(Err("The destination has an operation in progress.".into()));
+                return;
+            }
+            let file = document.file_path.clone().unwrap();
+            editor_io(
+                move || {
+                    crate::layout::atomic_write(Path::new(&file), text.as_bytes())
+                        .map_err(|error| format!("Failed to save {file}: {error}"))
+                },
+                move |result| {
+                    EDITOR_IO_PENDING.with(|pending| {
+                        let mut pending = pending.borrow_mut();
+                        pending.remove(&instance_key);
+                        pending.remove(&new_key);
+                    });
+                    done(result.map(|_| (document, revision)));
+                },
+            );
+        },
+    );
+}
+
+pub(crate) fn complete_editor_save(key: &str, saved_revision: u64) {
+    EDITOR_SESSIONS.with(|sessions| {
+        if let Some(session) = sessions.borrow_mut().get_mut(key) {
+            if session.revision == saved_revision {
+                if let Some(timer) = session.draft_timer.take() {
+                    timer.remove();
+                }
+                clear_editor_draft(&session.host, &session.document.document_id);
+                session.dirty = false;
+                refresh_editor_session_inner(session, None);
+            }
+        }
+    });
+}
+
+pub(crate) fn editor_revision(key: &str) -> Option<u64> {
+    EDITOR_SESSIONS.with(|sessions| sessions.borrow().get(key).map(|session| session.revision))
+}
+
+pub(crate) fn mark_editor_changed(key: &str) {
+    set_editor_dirty(key, true);
+}
+
+pub fn write_editor_contents_to_path(
+    instance_key: &str,
+    path: &Path,
+) -> Result<EditorDocumentPayload, String> {
+    let payload = editor_payload_for_save_path(path)?;
     ensure_editor_identity_available(instance_key, &editor_instance_key(&payload.document_id))?;
     let text = editor_text_for_instance_key(instance_key)
         .ok_or_else(|| "editor session is unavailable".to_string())?;
@@ -2063,6 +2340,76 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    fn wait_until(condition: impl Fn() -> bool) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while !condition() && std::time::Instant::now() < deadline {
+            glib::MainContext::default().iteration(false);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(condition(), "asynchronous editor operation did not finish");
+    }
+
+    #[test]
+    fn drafts_are_debounced_and_async_save_preserves_later_edits() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            static WRITES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            extern "C" fn write(_: MzBytes) -> MzStatus {
+                WRITES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                MzStatus::OK
+            }
+            WRITES.store(0, std::sync::atomic::Ordering::SeqCst);
+            let mut host = MzHostApi::empty();
+            host.write_config_record = Some(write);
+            let key = editor_instance_key("untitled:async-test");
+            let widget = editor_view_loaded(
+                &host,
+                untitled_editor_payload("untitled:async-test"),
+                key.clone(),
+                String::new(),
+                false,
+            );
+            let buffer = EDITOR_SESSIONS.with(|sessions| sessions.borrow()[&key].buffer.clone());
+            for _ in 0..100 {
+                buffer.insert(&mut buffer.end_iter(), "x");
+            }
+            assert_eq!(WRITES.load(std::sync::atomic::Ordering::SeqCst), 0);
+            wait_until(|| WRITES.load(std::sync::atomic::Ordering::SeqCst) == 1);
+            buffer.set_text("saved snapshot");
+            let path = std::env::temp_dir().join(format!("mz-async-save-{}", std::process::id()));
+            fs::write(&path, "old").unwrap();
+            let destination =
+                editor_instance_key(&file_editor_payload_for_path(&path).unwrap().document_id);
+            let finished = Rc::new(std::cell::Cell::new(false));
+            let finished_callback = finished.clone();
+            let save_key = key.clone();
+            write_editor_async(key.clone(), path.clone(), move |result| {
+                let (_, revision) = result.unwrap();
+                complete_editor_save(&save_key, revision);
+                finished_callback.set(true);
+            });
+            let (release, blocked) = std::sync::mpsc::channel();
+            editor_io_queue()
+                .send(Box::new(move || {
+                    blocked.recv().unwrap();
+                }))
+                .unwrap();
+            wait_until(|| {
+                EDITOR_IO_PENDING.with(|pending| pending.borrow().contains(&destination))
+            });
+            buffer.set_text("newer unsaved changes");
+            release.send(()).unwrap();
+            wait_until(|| finished.get());
+            assert_eq!(fs::read_to_string(&path).unwrap(), "saved snapshot");
+            assert!(is_editor_tab_dirty(Some(VIEW_WORKSPACE_EDITOR), Some(&key)));
+            drop(widget);
+            flush_editor_io();
+            fs::remove_file(path).unwrap();
+        });
+    }
+
     #[test]
     fn base_plugin_registers_views_and_surfaces() {
         let runtime = PluginRuntime::activate(vec![load()]).expect("base plugin should activate");
@@ -2183,6 +2530,7 @@ mod tests {
                 },
             };
             let _widget = editor_view(&MzHostApi::empty(), &request);
+            wait_until(|| !EDITOR_IO_PENDING.with(|pending| pending.borrow().contains(&key)));
             assert!(editor_document_for_instance_key(&key).is_none());
             assert!(!save_editor_by_instance_key(&key).unwrap());
             assert_eq!(fs::read(&path).unwrap(), [0xff, 0xfe]);
@@ -2210,6 +2558,8 @@ mod tests {
                     callback_key: Rc::new(RefCell::new(key.clone())),
                     buffer: TextBuffer::new(None),
                     dirty: false,
+                    revision: 0,
+                    draft_timer: None,
                     close_buttons: Vec::new(),
                 },
             );
@@ -2240,6 +2590,7 @@ mod tests {
                 },
             };
             let widget = editor_view(&MzHostApi::empty(), &request);
+            wait_until(|| !EDITOR_IO_PENDING.with(|pending| pending.borrow().contains(&old)));
             let buffer = EDITOR_SESSIONS.with(|sessions| sessions.borrow()[&old].buffer.clone());
             let new = editor_instance_key("file:rename-test");
             replace_editor_document(&old, &new, untitled_editor_payload("file:rename-test"))
@@ -2267,6 +2618,8 @@ mod tests {
                     callback_key: Rc::new(RefCell::new(instance_key.clone())),
                     buffer: TextBuffer::new(None),
                     dirty: false,
+                    revision: 0,
+                    draft_timer: None,
                     close_buttons: Vec::new(),
                 },
             );

@@ -110,8 +110,9 @@ Both events carry an `MzSurfaceFocusEvent` payload. The right inspector panel sh
 
 ## 6. Versioning Expectations
 
-- `MZ_ABI_VERSION_V1` means host and plugin agree on the current ABI layout
-- additive host/plugin API growth can stay within v1
+- `MZ_ABI_VERSION_V4` is the current ABI layout; rebuild dynamic plugins after upgrading the host and SDK
+- changes that preserve the C layout and semantics can keep the current version
+- use SDK config and dispatch helpers in widget callbacks: they carry the plugin/surface context beyond startup
 - breaking ABI changes require a new ABI constant and a coordinated upgrade
 
 ## 7. Reference Implementation

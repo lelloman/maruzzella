@@ -42,6 +42,8 @@ The built-in `maruzzella.base` plugin now includes an editor workbench view.
 - `Save Buffer` saves file-backed documents in place and falls back to `Save As` for untitled buffers
 - `Save Buffer As` uses the native save dialog and converts the current tab into a file-backed document
 - dirty editor drafts are stored through the host-backed plugin config record and restored on restart
+- document loading and saving run on a background worker; edits made during a save remain dirty
+- draft snapshots are debounced while typing and flushed when views close or the application shuts down
 
 This is still a text editor slice, not a full document system: there is no syntax highlighting, multi-document search, or conflict resolution yet.
 
@@ -349,7 +351,9 @@ The current recommended packaging convention is to install plugin libraries into
 
 `maruzzella_api` now follows a simple policy:
 
-- additive changes that preserve `MZ_ABI_VERSION_V1` keep the ABI version stable
+- the current host and SDK require `MZ_ABI_VERSION_V4`; rebuild dynamic plugins with the matching API/SDK
+- V3 introduced plugin-scoped runtime config callbacks; V4 adds contextual command dispatch
+- API changes that preserve the C layout and semantics keep the ABI version stable
 - any breaking C-ABI layout or semantic incompatibility requires a new ABI constant and corresponding host/plugin upgrade
 - `maruzzella_sdk` is expected to track the API crate closely and should be upgraded together in downstream plugin work
 

@@ -409,6 +409,9 @@ impl PluginRuntime {
     }
 
     pub fn detach_shell_host(&self, surface_id: &str) {
+        if surface_id == crate::surfaces::MAIN_SURFACE_ID {
+            ACTIVE_SHELL_HOST.with(|cell| cell.set(std::ptr::null()));
+        }
         self.view_hosts.borrow_mut().remove(surface_id);
     }
 

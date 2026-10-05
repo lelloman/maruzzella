@@ -392,15 +392,67 @@ impl AppController {
     }
 
     fn switch_to_workspace(&self, session: WorkspaceSession) {
-        eprintln!(
-            "maruzzella: AppController::switch_to_workspace project_handle_present={}",
-            session.project_handle.is_some()
-        );
-        self.show_workspace(session);
+        let weak = self.self_weak.borrow().clone();
+        self.guard_mode_switch(move || {
+            if let Some(controller) = weak.upgrade() {
+                controller.clear_current_mode();
+                controller.show_workspace(session);
+            }
+        });
     }
 
     fn switch_to_launcher(&self) -> Result<(), ModeSwitchError> {
-        self.show_launcher(self.config.launcher.clone())
+        let launcher = self
+            .config
+            .launcher
+            .clone()
+            .ok_or(ModeSwitchError::MissingLauncherSpec)?;
+        let weak = self.self_weak.borrow().clone();
+        self.guard_mode_switch(move || {
+            if let Some(controller) = weak.upgrade() {
+                controller.clear_current_mode();
+                let _ = controller.show_launcher(Some(launcher));
+            }
+        });
+        Ok(())
+    }
+
+    fn guard_mode_switch(&self, action: impl FnOnce() + 'static) {
+        let mut tabs = self.tabs_on_surface(MAIN_SURFACE_ID);
+        for id in self.detached_surfaces.borrow().keys() {
+            tabs.extend(self.tabs_on_surface(id));
+        }
+        self.run_teardown_guard(
+            Some(&self.window),
+            &tabs,
+            MzViewTeardownReason::SurfaceClose,
+            "Switch",
+            action,
+        );
+    }
+
+    fn clear_current_mode(&self) {
+        self.sync_detached_specs();
+        self.save_workspace_session();
+        self.suppress_surface_close.set(true);
+        let surfaces = std::mem::take(&mut *self.detached_surfaces.borrow_mut());
+        for (id, surface) in surfaces {
+            surface.window.close();
+            if let Some(runtime) = self.plugin_host.runtime() {
+                runtime.detach_shell_host(&id);
+            }
+        }
+        self.suppress_surface_close.set(false);
+        for name in self.installed_actions.borrow_mut().drain(..) {
+            self.window.remove_action(&name);
+        }
+        self.window.set_child(gtk::Widget::NONE);
+        self.main_group_handles.replace(None);
+        self.workspace_state.replace(None);
+        self.workspace_persistence_id.replace(None);
+        if let Some(runtime) = self.plugin_host.runtime() {
+            runtime.detach_shell_host(MAIN_SURFACE_ID);
+        }
     }
 
     fn current_mode(&self) -> ShellMode {
@@ -584,13 +636,13 @@ impl AppController {
         self.window.set_child(Some(&app_overlay));
         self.window.present();
         self.mode.replace(mode);
+        self.window
+            .set_widget_name(&format!("maruzzella-surface-{MAIN_SURFACE_ID}"));
+        self.workspace_state.replace(Some(state.clone()));
+        self.workspace_persistence_id
+            .replace(Some(layout_persistence_id.clone()));
+        self.main_group_handles.replace(Some(group_handles.clone()));
         if mode == ShellMode::Workspace {
-            self.window
-                .set_widget_name(&format!("maruzzella-surface-{MAIN_SURFACE_ID}"));
-            self.workspace_state.replace(Some(state.clone()));
-            self.workspace_persistence_id
-                .replace(Some(layout_persistence_id.clone()));
-            self.main_group_handles.replace(Some(group_handles));
             let detached = state.borrow().detached_workbenches.clone();
             for surface in detached {
                 if !self.detached_surfaces.borrow().contains_key(&surface.id) {
@@ -3062,6 +3114,43 @@ fn install_pane_focus_tracking(panes: &[gtk::Widget]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mode_cleanup_saves_state_and_releases_detached_surfaces() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let dir = std::env::temp_dir().join(format!("mz-mode-{}", std::process::id()));
+            let id = dir.to_string_lossy().into_owned();
+            let controller = AppController::new(
+                ApplicationWindow::builder().build(),
+                MaruzzellaConfig::default(),
+                Rc::new(PluginHost::new(None, vec![])),
+            );
+            controller
+                .workspace_state
+                .replace(Some(Rc::new(RefCell::new(PersistedShell::default()))));
+            controller
+                .workspace_persistence_id
+                .replace(Some(id.clone()));
+            controller.detached_surfaces.borrow_mut().insert(
+                "test".into(),
+                DetachedSurface {
+                    window: ApplicationWindow::builder().build(),
+                    state: Rc::new(RefCell::new(PersistedShell::default())),
+                    group_handles: Rc::new(RefCell::new(HashMap::new())),
+                    persistence_id: dir.join("detached").to_string_lossy().into_owned(),
+                },
+            );
+            controller.clear_current_mode();
+            assert!(controller.detached_surfaces.borrow().is_empty());
+            assert!(controller.workspace_state.borrow().is_none());
+            assert!(controller.main_group_handles.borrow().is_none());
+            assert!(layout::path(&id).exists());
+            std::fs::remove_dir_all(dir).unwrap();
+        });
+    }
 
     #[test]
     fn default_surface_roles_follow_shell_areas() {

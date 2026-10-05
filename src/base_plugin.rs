@@ -1225,9 +1225,9 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
         .child(&text_view)
         .build();
 
-    let (initial_text, initial_dirty, _initial_error) = match load_editor_text(host, &document) {
-        Ok((text, dirty)) => (text, dirty, None),
-        Err(error) => (String::new(), false, Some(error)),
+    let (initial_text, initial_dirty) = match load_editor_text(host, &document) {
+        Ok(loaded) => loaded,
+        Err(error) => return fallback_view(&error),
     };
     buffer.set_text(&initial_text);
 
@@ -2124,6 +2124,34 @@ mod tests {
         );
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn unreadable_editor_never_registers_a_saveable_empty_buffer() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let path = std::env::temp_dir().join(format!("mz-invalid-text-{}", std::process::id()));
+            fs::write(&path, [0xff, 0xfe]).unwrap();
+            let document = file_editor_payload_for_path(&path).unwrap();
+            let key = editor_instance_key(&document.document_id);
+            let payload = editor_payload_to_bytes(&document).unwrap();
+            let request = MzViewRequest {
+                plugin_id: MzStr::empty(),
+                view_id: MzStr::empty(),
+                instance_key: str_to_mzstr(&key),
+                payload: MzBytes {
+                    ptr: payload.as_ptr(),
+                    len: payload.len(),
+                },
+            };
+            let _widget = editor_view(&MzHostApi::empty(), &request);
+            assert!(editor_document_for_instance_key(&key).is_none());
+            assert!(!save_editor_by_instance_key(&key).unwrap());
+            assert_eq!(fs::read(&path).unwrap(), [0xff, 0xfe]);
+            fs::remove_file(path).unwrap();
+        });
     }
 
     #[test]

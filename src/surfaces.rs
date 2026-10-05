@@ -81,6 +81,40 @@ pub fn detach_tab(
     Some(id)
 }
 
+pub fn resolve_return_target(
+    main: &WorkbenchNodeSpec,
+    detached: &[DetachedWorkbenchSpec],
+    target: &SurfaceReturnTarget,
+) -> Option<SurfaceReturnTarget> {
+    fn groups<'a>(node: &'a WorkbenchNodeSpec, out: &mut Vec<&'a TabGroupSpec>) {
+        match node {
+            WorkbenchNodeSpec::Group(group) => out.push(group),
+            WorkbenchNodeSpec::Split { children, .. } => {
+                for child in children {
+                    groups(child, out);
+                }
+            }
+        }
+    }
+    let surface = detached
+        .iter()
+        .find(|surface| surface.id == target.surface_id);
+    let node = surface.map(|s| &s.workbench).unwrap_or(main);
+    let mut candidates = Vec::new();
+    groups(node, &mut candidates);
+    let group = candidates
+        .iter()
+        .find(|group| group.id == target.group_id)
+        .or_else(|| candidates.first())?;
+    Some(SurfaceReturnTarget {
+        surface_id: surface
+            .map(|s| s.id.clone())
+            .unwrap_or_else(|| MAIN_SURFACE_ID.into()),
+        group_id: group.id.clone(),
+        tab_index: target.tab_index,
+    })
+}
+
 pub fn move_tab_to_return_target(
     main: &mut WorkbenchNodeSpec,
     detached: &mut Vec<DetachedWorkbenchSpec>,
@@ -94,7 +128,11 @@ pub fn move_tab_to_return_target(
     else {
         return false;
     };
-    let target = detached[surface_index].return_target.clone();
+    let Some(target) =
+        resolve_return_target(main, detached, &detached[surface_index].return_target)
+    else {
+        return false;
+    };
     let mut tab = {
         let Some(group) = find_group_mut(&mut detached[surface_index].workbench, source_group_id)
         else {
@@ -321,6 +359,41 @@ mod tests {
             .iter()
             .map(|tab| tab.id.clone())
             .collect()
+    }
+
+    #[test]
+    fn returning_last_detached_tab_resolves_removed_source_group() {
+        let mut main = WorkbenchNodeSpec::Split {
+            axis: SplitAxis::Horizontal,
+            children: vec![group("a", &["one"]), group("b", &["two"])],
+        };
+        let mut detached = vec![];
+        let id = detach_tab(
+            &mut main,
+            &mut detached,
+            MAIN_SURFACE_ID,
+            "a",
+            "one",
+            &mut 1,
+        )
+        .unwrap();
+        let target = resolve_return_target(&main, &detached, &detached[0].return_target).unwrap();
+        assert_eq!(target.group_id, "b");
+        let source = match &detached[0].workbench {
+            WorkbenchNodeSpec::Group(g) => g.id.clone(),
+            _ => unreachable!(),
+        };
+        assert!(move_tab_to_return_target(
+            &mut main,
+            &mut detached,
+            &id,
+            &source,
+            "one"
+        ));
+        assert_eq!(
+            find_group_mut(&mut main, &target.group_id).unwrap().tabs[0].panel_id,
+            "b"
+        );
     }
 
     #[test]

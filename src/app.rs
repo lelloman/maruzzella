@@ -838,12 +838,20 @@ impl AppController {
         let Some(main_state) = self.workspace_state.borrow().clone() else {
             return;
         };
-        let target = main_state
-            .borrow()
-            .detached_workbenches
-            .iter()
-            .find(|surface| surface.id == surface_id)
-            .map(|surface| surface.return_target.clone());
+        let target = {
+            let session = main_state.borrow();
+            session
+                .detached_workbenches
+                .iter()
+                .find(|surface| surface.id == surface_id)
+                .and_then(|surface| {
+                    surfaces::resolve_return_target(
+                        &session.spec.workbench,
+                        &session.detached_workbenches,
+                        &surface.return_target,
+                    )
+                })
+        };
         let Some(target) = target else {
             return;
         };
@@ -995,7 +1003,17 @@ impl AppController {
         else {
             return;
         };
-        let target = surface.return_target.clone();
+        let target = {
+            let session = main_state.borrow();
+            surfaces::resolve_return_target(
+                &session.spec.workbench,
+                &session.detached_workbenches,
+                &surface.return_target,
+            )
+        };
+        let Some(target) = target else {
+            return;
+        };
         let merged = {
             let mut session = main_state.borrow_mut();
             let mut detached = std::mem::take(&mut session.detached_workbenches);

@@ -1539,6 +1539,24 @@ fn str_to_mzstr(value: &str) -> MzStr {
     }
 }
 
+/// Allocate across all windows, including restored editor sessions.
+pub(crate) fn allocate_untitled_document_id(minimum: usize) -> String {
+    thread_local! { static NEXT: std::cell::Cell<usize> = const { std::cell::Cell::new(1) }; }
+    NEXT.with(|next| {
+        let mut index = next.get().max(minimum);
+        loop {
+            let id = format!("untitled:{index}");
+            index = index
+                .checked_add(1)
+                .expect("untitled document IDs exhausted");
+            if editor_document_for_instance_key(&editor_instance_key(&id)).is_none() {
+                next.set(index);
+                return id;
+            }
+        }
+    })
+}
+
 pub fn new_untitled_editor_payload(document_id: &str) -> Vec<u8> {
     EditorDocumentPayload {
         kind: EditorDocumentKind::Untitled,
@@ -2086,6 +2104,21 @@ mod tests {
             .commands()
             .iter()
             .any(|command| command.command_id == CMD_NEW_BUFFER));
+    }
+
+    #[test]
+    fn untitled_ids_are_unique_across_window_allocations() {
+        let first = allocate_untitled_document_id(500);
+        let second = allocate_untitled_document_id(1);
+        assert_ne!(first, second);
+        assert!(
+            second
+                .strip_prefix("untitled:")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap()
+                > 500
+        );
     }
 
     #[test]

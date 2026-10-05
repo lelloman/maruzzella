@@ -541,7 +541,7 @@ fn next_untitled_document_id(shell_state: &ShellState) -> String {
             next_index = next_index.max(index + 1);
         }
     }
-    format!("untitled:{next_index}")
+    base_plugin::allocate_untitled_document_id(next_index)
 }
 
 fn untitled_title(document_id: &str) -> String {

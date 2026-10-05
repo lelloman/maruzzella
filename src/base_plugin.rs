@@ -1678,11 +1678,20 @@ pub fn save_editor_by_instance_key(instance_key: &str) -> Result<bool, String> {
     })
 }
 
+fn ensure_editor_identity_available(old: &str, new: &str) -> Result<(), String> {
+    EDITOR_SESSIONS.with(|sessions| {
+        if old != new && sessions.borrow().contains_key(new) {
+            Err("This file is already open in another editor. Close that editor before saving here.".to_string())
+        } else { Ok(()) }
+    })
+}
+
 pub fn replace_editor_document(
     old_instance_key: &str,
     new_instance_key: &str,
     new_document: EditorDocumentPayload,
 ) -> Result<bool, String> {
+    ensure_editor_identity_available(old_instance_key, new_instance_key)?;
     EDITOR_SESSIONS.with(|sessions| {
         let mut sessions = sessions.borrow_mut();
         let Some(mut session) = sessions.remove(old_instance_key) else {
@@ -1890,6 +1899,7 @@ pub fn write_editor_contents_to_path(
             }
         }
     };
+    ensure_editor_identity_available(instance_key, &editor_instance_key(&payload.document_id))?;
     let text = editor_text_for_instance_key(instance_key)
         .ok_or_else(|| "editor session is unavailable".to_string())?;
     let path = payload
@@ -2114,6 +2124,38 @@ mod tests {
         );
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn save_as_rejects_an_open_destination_before_writing() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let path =
+                std::env::temp_dir().join(format!("mz-save-collision-{}", std::process::id()));
+            fs::write(&path, "original").unwrap();
+            let document = file_editor_payload_for_path(&path).unwrap();
+            let key = editor_instance_key(&document.document_id);
+            register_editor_session(
+                &key,
+                EditorSession {
+                    document: document.clone(),
+                    host: MzHostApi::empty(),
+                    instance_key: key.clone(),
+                    callback_key: Rc::new(RefCell::new(key.clone())),
+                    buffer: TextBuffer::new(None),
+                    dirty: false,
+                    close_buttons: Vec::new(),
+                },
+            );
+            assert!(write_editor_contents_to_path("another-editor", &path).is_err());
+            assert!(replace_editor_document("another-editor", &key, document).is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+            assert!(editor_document_for_instance_key(&key).is_some());
+            unregister_editor_session(&key);
+            fs::remove_file(path).unwrap();
+        });
     }
 
     #[test]

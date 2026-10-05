@@ -266,38 +266,110 @@ impl PluginRuntime {
         plugins: Vec<LoadedPlugin>,
         persistence_id: &str,
     ) -> Result<Self, PluginRuntimeError> {
-        let ordered = resolve_load_order(&plugins).map_err(PluginRuntimeError::Resolve)?;
-        let activation_order = ordered
-            .iter()
-            .map(|plugin| plugin.descriptor.id.clone())
-            .collect::<Vec<_>>();
+        Self::activate_impl(plugins, persistence_id, false)
+    }
 
+    pub fn activate_available(plugins: Vec<LoadedPlugin>, persistence_id: &str) -> Self {
+        Self::activate_impl(plugins, persistence_id, true)
+            .expect("resilient activation cannot fail")
+    }
+
+    fn activate_impl(
+        mut plugins: Vec<LoadedPlugin>,
+        persistence_id: &str,
+        resilient: bool,
+    ) -> Result<Self, PluginRuntimeError> {
+        let mut diagnostics = Vec::new();
+        let ordered = loop {
+            match resolve_load_order(&plugins) {
+                Ok(ordered) => break ordered,
+                Err(error) if !resilient => return Err(PluginRuntimeError::Resolve(error)),
+                Err(error) => {
+                    let rejected = match &error {
+                        PluginResolveError::DuplicatePluginId { plugin_id } => {
+                            vec![plugin_id.clone()]
+                        }
+                        PluginResolveError::MissingRequiredDependency { plugin_id, .. }
+                        | PluginResolveError::IncompatibleDependencyVersion { plugin_id, .. } => {
+                            vec![plugin_id.clone()]
+                        }
+                        PluginResolveError::DependencyCycle { plugin_ids } => plugin_ids.clone(),
+                    };
+                    diagnostics.push(PluginDiagnostic {
+                        level: PluginDiagnosticLevel::Error,
+                        plugin_id: None,
+                        path: None,
+                        message: format!("Skipped unavailable plugins: {error:?}"),
+                    });
+                    // Keep the first copy of a duplicate (the built-in base is loaded first).
+                    if let PluginResolveError::DuplicatePluginId { plugin_id } = &error {
+                        let mut found = false;
+                        plugins.retain(|p| {
+                            if p.descriptor.id != *plugin_id {
+                                return true;
+                            }
+                            if found {
+                                false
+                            } else {
+                                found = true;
+                                true
+                            }
+                        });
+                    } else {
+                        plugins.retain(|p| !rejected.contains(&p.descriptor.id));
+                    }
+                }
+            }
+        };
+        let mut activation_order = Vec::new();
         let mut host_state = HostState {
             persistence_id: persistence_id.to_string(),
             plugin_configs: layout::load_plugin_configs(persistence_id),
             ..HostState::default()
         };
         for plugin in ordered {
+            if resilient
+                && plugin
+                    .descriptor
+                    .dependencies
+                    .iter()
+                    .any(|dep| dep.required && !activation_order.contains(&dep.plugin_id))
+            {
+                diagnostics.push(PluginDiagnostic {
+                    level: PluginDiagnosticLevel::Error,
+                    plugin_id: Some(plugin.descriptor.id.clone()),
+                    path: None,
+                    message: "Required dependency failed to activate".into(),
+                });
+                continue;
+            }
+            let checkpoint = host_state.clone();
             host_state.current_plugin_id = Some(plugin.descriptor.id.clone());
             let _scope = ActiveHostScope::enter(&mut host_state);
             let host_api = host_state.host_api();
-
             let register_status = (plugin.vtable.register)(&host_api);
-            if !register_status.is_ok() {
-                return Err(PluginRuntimeError::RegisterFailed {
+            let failure = if !register_status.is_ok() {
+                Some(PluginRuntimeError::RegisterFailed {
                     plugin_id: plugin.descriptor.id.clone(),
                     status: register_status.code,
-                });
-            }
-
-            let startup_status = (plugin.vtable.startup)(&host_api);
-            if !startup_status.is_ok() {
-                return Err(PluginRuntimeError::StartupFailed {
+                })
+            } else {
+                let status = (plugin.vtable.startup)(&host_api);
+                (!status.is_ok()).then(|| PluginRuntimeError::StartupFailed {
                     plugin_id: plugin.descriptor.id.clone(),
-                    status: startup_status.code,
-                });
+                    status: status.code,
+                })
+            };
+            if let Some(error) = failure {
+                (plugin.vtable.shutdown)(&host_api);
+                if !resilient {
+                    return Err(error);
+                }
+                diagnostics.push(diagnostic_for_runtime_error(&error));
+                host_state = checkpoint;
+                continue;
             }
-
+            activation_order.push(plugin.descriptor.id.clone());
             host_state.emit_host_event(
                 "maruzzella.plugin.started",
                 Some(plugin.descriptor.id.as_str()),
@@ -308,6 +380,7 @@ impl PluginRuntime {
         host_state.current_plugin_id = None;
         host_state.emit_host_event("maruzzella.runtime.ready", None, None, &[]);
 
+        plugins.retain(|plugin| activation_order.contains(&plugin.descriptor.id));
         Ok(Self {
             persistence_id: persistence_id.to_string(),
             plugins,
@@ -319,7 +392,7 @@ impl PluginRuntime {
             services: host_state.services,
             host_event_subscribers: host_state.host_event_subscribers,
             logs: host_state.logs,
-            diagnostics: RefCell::new(Vec::new()),
+            diagnostics: RefCell::new(diagnostics),
             view_hosts: RefCell::new(HashMap::new()),
         })
     }
@@ -1115,7 +1188,7 @@ fn bytes_to_slice<'a>(bytes: MzBytes) -> &'a [u8] {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct HostState {
     persistence_id: String,
     current_plugin_id: Option<String>,
@@ -2802,6 +2875,46 @@ mod tests {
                 }
             },
         }
+    }
+
+    #[test]
+    fn resilient_activation_keeps_base_when_an_extension_fails() {
+        extern "C" fn fail(_: *const MzHostApi) -> MzStatus {
+            MzStatus::new(MzStatusCode::InternalError)
+        }
+        let version = Version {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        };
+        let mut bad = plugin("bad", version, vec![]);
+        let mut table = *bad.vtable;
+        table.startup = fail;
+        bad.vtable = Box::leak(Box::new(table));
+        let dependent = plugin(
+            "dependent",
+            version,
+            vec![PluginDependencySpec {
+                plugin_id: "bad".into(),
+                min_version: version,
+                max_version_exclusive: Version {
+                    major: 2,
+                    minor: 0,
+                    patch: 0,
+                },
+                required: true,
+            }],
+        );
+        let runtime = PluginRuntime::activate_available(
+            vec![crate::base_plugin::load(), bad, dependent],
+            "mz-resilient-test",
+        );
+        assert_eq!(runtime.activation_order(), &["maruzzella.base"]);
+        assert!(runtime
+            .commands()
+            .iter()
+            .any(|c| c.command_id == "shell.about"));
+        assert_eq!(runtime.diagnostics.borrow().len(), 2);
     }
 
     #[test]

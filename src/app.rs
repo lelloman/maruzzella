@@ -18,8 +18,8 @@ use crate::commands;
 use crate::layout::{self, PersistedShell};
 use crate::plugin_tabs::{self, GroupHandles};
 use crate::plugins::{
-    diagnostic_for_load_error, diagnostic_for_runtime_error, load_plugin, PluginDiagnostic,
-    PluginDiagnosticLevel, PluginHost, PluginRuntime,
+    diagnostic_for_load_error, load_plugin, PluginDiagnostic, PluginDiagnosticLevel, PluginHost,
+    PluginRuntime,
 };
 use crate::product;
 use crate::shell::topbar;
@@ -1440,19 +1440,11 @@ fn build_plugin_host(config: &MaruzzellaConfig) -> PluginHost {
         }
     }
 
-    match crate::plugins::PluginRuntime::activate_with_persistence_id(
-        plugins,
-        &config.persistence_id,
-    ) {
-        Ok(runtime) => {
-            runtime.diagnostics.replace(diagnostics.clone());
-            PluginHost::new(Some(Rc::new(runtime)), diagnostics)
-        }
-        Err(error) => {
-            diagnostics.push(diagnostic_for_runtime_error(&error));
-            PluginHost::new(None, diagnostics)
-        }
-    }
+    let runtime =
+        crate::plugins::PluginRuntime::activate_available(plugins, &config.persistence_id);
+    diagnostics.extend(runtime.diagnostics.borrow().iter().cloned());
+    runtime.diagnostics.replace(diagnostics.clone());
+    PluginHost::new(Some(Rc::new(runtime)), diagnostics)
 }
 
 fn discovered_plugin_paths(config: &MaruzzellaConfig) -> Vec<std::path::PathBuf> {

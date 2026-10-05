@@ -1313,3 +1313,94 @@ popover.background separator {
   background: {{dense_row_selected_bg}};
   color: {{dense_row_selected_text}};
 }
+
+/* New UI shell: compact unified toolbar, tool-window stripes, quiet dividers. */
+.app-window .unified-toolbar {
+  min-height: {{toolbar_height}};
+  padding: 0 8px;
+  background: {{color_topbar}};
+}
+.app-window .unified-toolbar > *,
+.app-window .unified-toolbar box,
+.app-window .unified-toolbar label {
+  background: transparent;
+}
+.app-window .unified-toolbar button {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: {{radius_medium}};
+  box-shadow: none;
+  font-weight: 400;
+}
+.app-window .unified-toolbar button:hover {
+  background: alpha({{color_text_0}}, 0.10);
+}
+.app-window .workspace-title {
+  color: {{color_text_0}};
+  font-size: {{font_size_base}};
+  font-weight: 500;
+  padding: 0 8px;
+}
+.app-window .unified-search {
+  min-width: 160px;
+  min-height: 26px;
+  margin: 4px 0;
+}
+.app-window .tool-window-rail {
+  min-width: 40px;
+  padding: 4px 0;
+  background: {{color_topbar}};
+  border-right: 1px solid {{color_border}};
+}
+.app-window .tool-window-rail-right {
+  border-right: 0;
+  border-left: 1px solid {{color_border}};
+}
+.app-window .tool-window-rail button.tool-window-button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  margin: 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: {{color_text_1}};
+  box-shadow: none;
+}
+.app-window .tool-window-rail button.tool-window-button:hover {
+  background: alpha({{color_text_0}}, 0.08);
+}
+.app-window .tool-window-rail button.tool-window-button:checked {
+  background: alpha({{color_text_0}}, 0.16);
+  color: {{color_text_0}};
+}
+.app-window .tool-window-button image {
+  -gtk-icon-size: 20px;
+}
+.app-window .panel-title {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.app-window .status-bar {
+  padding: 0 12px;
+}
+.app-window .source-editor,
+.app-window .source-editor text {
+  font-family: {{font_family_mono}};
+  font-size: 14px;
+  color: {{color_text_0}};
+  background: {{color_workbench}};
+}
+.app-window .editor-gutter {
+  color: {{color_text_2}};
+  background: {{color_workbench}};
+  border-right: 1px solid {{color_border}};
+}
+.app-window .tool-window textview,
+.app-window .tool-window textview text,
+.app-window .inspector-pane textview,
+.app-window .inspector-pane textview text {
+  background: {{color_panel_left}};
+}

@@ -70,6 +70,8 @@ impl ShellMode {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolbarPlacement {
+    /// Single toolbar with a compact main menu and window title.
+    Unified,
     BelowMenu,
     InlineWithMenu,
     Adaptive,
@@ -104,7 +106,7 @@ impl ShellChrome {
             show_menu_bar: true,
             show_toolbar: true,
             show_search: true,
-            toolbar_placement: ToolbarPlacement::BelowMenu,
+            toolbar_placement: ToolbarPlacement::Unified,
         }
     }
 
@@ -642,6 +644,18 @@ impl AppController {
 
         install_pane_focus_tracking(&pane_roots);
         root.append(&shell);
+        if mode == ShellMode::Workspace && !spec.status_text.is_empty() {
+            let status = GtkBox::new(Orientation::Horizontal, 8);
+            status.add_css_class("status-bar");
+            status.add_css_class(&theme::surface_css_class(&spec.status_appearance_id));
+            let label = gtk::Label::new(Some(&spec.status_text));
+            label.add_css_class("status-item");
+            label.set_xalign(0.0);
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            label.set_hexpand(true);
+            status.append(&label);
+            root.append(&status);
+        }
 
         self.window.set_title(Some(&spec.title));
         self.window
@@ -1613,6 +1627,36 @@ fn build_shell(
         workbench.clone()
     };
 
+    let left_rail = GtkBox::new(Orientation::Vertical, 4);
+    left_rail.add_css_class("tool-window-rail");
+    if let Some(panel) = &left {
+        left_rail.append(&panel_toggle(
+            &panel.root,
+            "folder-symbolic",
+            "Left tool window",
+        ));
+    }
+    let spacer = GtkBox::new(Orientation::Vertical, 0);
+    spacer.set_vexpand(true);
+    left_rail.append(&spacer);
+    if let Some(panel) = &bottom {
+        left_rail.append(&panel_toggle(
+            &panel.root,
+            "utilities-terminal-symbolic",
+            "Bottom tool window",
+        ));
+    }
+    let right_rail = GtkBox::new(Orientation::Vertical, 4);
+    right_rail.add_css_class("tool-window-rail");
+    right_rail.add_css_class("tool-window-rail-right");
+    if let Some(panel) = &right {
+        right_rail.append(&panel_toggle(
+            &panel.root,
+            "view-list-symbolic",
+            "Right tool window",
+        ));
+    }
+
     let bottom_resize = spec.bottom_panel_resize;
     let right_resize = spec.right_panel_resize;
     let min_side = density.min_side_panel_width;
@@ -1754,7 +1798,36 @@ fn build_shell(
         center.clone()
     };
 
-    (shell, pane_roots)
+    let framed = GtkBox::new(Orientation::Horizontal, 0);
+    framed.set_hexpand(true);
+    framed.set_vexpand(true);
+    shell.set_hexpand(true);
+    shell.set_vexpand(true);
+    if has_left_panel || has_bottom_panel {
+        framed.append(&left_rail);
+    }
+    framed.append(&shell);
+    if has_right_panel {
+        framed.append(&right_rail);
+    }
+    (framed.upcast(), pane_roots)
+}
+
+fn panel_toggle(panel: &impl IsA<gtk::Widget>, icon: &str, title: &str) -> gtk::ToggleButton {
+    let button = gtk::ToggleButton::new();
+    button.set_icon_name(icon);
+    button.set_tooltip_text(Some(title));
+    button.update_property(&[gtk::accessible::Property::Label(title)]);
+    button.add_css_class("tool-window-button");
+    button.set_active(panel.is_visible());
+    // A binding keeps external visibility changes and the selected icon in sync,
+    // without a callback retaining the panel hierarchy.
+    button
+        .bind_property("active", panel, "visible")
+        .bidirectional()
+        .sync_create()
+        .build();
+    button
 }
 
 fn build_launcher_shell(
@@ -3213,6 +3286,25 @@ fn install_pane_focus_tracking(panes: &[gtk::Widget]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rail_toggle_tracks_panel_visibility_and_releases_panel() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let panel = GtkBox::new(Orientation::Vertical, 0);
+            let weak = panel.downgrade();
+            let button = panel_toggle(&panel, "folder-symbolic", "Project");
+            assert!(button.is_active());
+            button.set_active(false);
+            assert!(!panel.is_visible());
+            panel.set_visible(true);
+            assert!(button.is_active());
+            drop(panel);
+            assert!(weak.upgrade().is_none());
+        });
+    }
 
     #[test]
     fn complete_shell_mode_roundtrip_releases_previous_root() {

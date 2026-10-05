@@ -119,16 +119,16 @@ impl Default for ThemePalette {
     fn default() -> Self {
         Self {
             bg_0: "#2b2d30".to_string(),
-            bg_1: "#3c3f41".to_string(),
-            workbench: "#2b2d30".to_string(),
-            panel_left: "#3c3f41".to_string(),
-            panel_right: "#3c3f41".to_string(),
-            panel_bottom: "#3c3f41".to_string(),
-            border: "#43454a".to_string(),
+            bg_1: "#2b2d30".to_string(),
+            workbench: "#1e1f22".to_string(),
+            panel_left: "#2b2d30".to_string(),
+            panel_right: "#2b2d30".to_string(),
+            panel_bottom: "#2b2d30".to_string(),
+            border: "#393b40".to_string(),
             border_strong: "#54585d".to_string(),
             text_0: "#dfe1e5".to_string(),
             text_1: "#adb0b9".to_string(),
-            text_2: "#787878".to_string(),
+            text_2: "#868a91".to_string(),
             accent: "#3574f0".to_string(),
             accent_strong: "#589df6".to_string(),
         }
@@ -152,7 +152,7 @@ impl Default for ThemeTypography {
             font_family: "\"Inter\", \"Noto Sans\", sans-serif".to_string(),
             mono_font_family: "\"JetBrains Mono\", monospace".to_string(),
             font_size_base: 13,
-            font_size_ui: 12,
+            font_size_ui: 13,
             font_size_small: 11,
             font_size_tiny: 10,
             font_size_title: 20,
@@ -197,7 +197,7 @@ impl Default for ThemeDensity {
             min_bottom_panel_height: 200,
             radius_none: 0,
             radius_small: 2,
-            radius_medium: 2,
+            radius_medium: 4,
             radius_large: 4,
             radius_pill: 3,
             space_xs: 2,
@@ -208,13 +208,13 @@ impl Default for ThemeDensity {
             control_height_small: 24,
             control_height_medium: 28,
             control_height_large: 32,
-            toolbar_height: 32,
-            tab_height: 26,
+            toolbar_height: 40,
+            tab_height: 36,
             icon_size: 16,
             search_width_min: 300,
             search_width_max: 420,
             command_width_min: 220,
-            panel_header_height: 26,
+            panel_header_height: 32,
         }
     }
 }
@@ -797,7 +797,7 @@ fn default_component_tokens(spec: &ThemeSpec) -> BTreeMap<String, String> {
             "color_accent_action_hover".to_string(),
             p.accent_strong.clone(),
         ),
-        ("nav_rail_width".to_string(), "48px".to_string()),
+        ("nav_rail_width".to_string(), "40px".to_string()),
         ("nav_rail_padding".to_string(), "8px 0".to_string()),
         ("color_nav_rail_bg".to_string(), p.bg_1.clone()),
         ("space_nav_rail_group".to_string(), "8px".to_string()),
@@ -845,7 +845,7 @@ fn default_component_tokens(spec: &ThemeSpec) -> BTreeMap<String, String> {
         ("color_separator_fill".to_string(), p.border.clone()),
         ("separator_alpha".to_string(), "1.0".to_string()),
         ("separator_size".to_string(), "1px".to_string()),
-        ("paned_separator_size".to_string(), "2px".to_string()),
+        ("paned_separator_size".to_string(), "1px".to_string()),
         ("drop_zone_width".to_string(), "40px".to_string()),
         ("drop_zone_height".to_string(), "40px".to_string()),
         ("drop_zone_side_width".to_string(), "72px".to_string()),
@@ -897,7 +897,7 @@ fn default_component_tokens(spec: &ThemeSpec) -> BTreeMap<String, String> {
         ),
         ("color_editor_tab_bg".to_string(), p.bg_1.clone()),
         ("color_editor_tab_active".to_string(), p.workbench.clone()),
-        ("tool_tab_height".to_string(), "26px".to_string()),
+        ("tool_tab_height".to_string(), "32px".to_string()),
         ("space_tab_header".to_string(), "8px".to_string()),
         ("tab_close_width".to_string(), "22px".to_string()),
         ("tab_close_height".to_string(), "22px".to_string()),
@@ -921,7 +921,7 @@ fn default_component_tokens(spec: &ThemeSpec) -> BTreeMap<String, String> {
             "tab_strip_scroller_border".to_string(),
             format!("1px solid {}", p.border),
         ),
-        ("tab_strip_height".to_string(), "30px".to_string()),
+        ("tab_strip_height".to_string(), "38px".to_string()),
         (
             "color_workbench_tab_bg".to_string(),
             "transparent".to_string(),
@@ -1008,7 +1008,7 @@ fn default_component_tokens(spec: &ThemeSpec) -> BTreeMap<String, String> {
             "color_scrollbar_slider_hover".to_string(),
             format!("alpha({}, 0.70)", p.border_strong),
         ),
-        ("status_bar_height".to_string(), "28px".to_string()),
+        ("status_bar_height".to_string(), "24px".to_string()),
         ("color_status_bar_bg".to_string(), p.bg_0.clone()),
         ("color_status_item".to_string(), p.text_2.clone()),
         ("color_status_item_strong".to_string(), p.text_1.clone()),
@@ -1506,8 +1506,8 @@ mod tests {
     fn renders_builtin_template_with_default_tokens() {
         let stylesheet = build_stylesheet(&ThemeSpec::default()).expect("default theme renders");
         assert!(stylesheet.contains("@define-color bg_0 #2b2d30;"));
-        assert!(stylesheet.contains("border: 1px solid #43454a;"));
-        assert!(stylesheet.contains("font-size: 12px;"));
+        assert!(stylesheet.contains("border: 1px solid #393b40;"));
+        assert!(stylesheet.contains("font-size: 13px;"));
         assert!(!stylesheet.contains("{{"));
     }
 

@@ -98,6 +98,15 @@ pub fn build(
 
     let has_toolbar_row = chrome.show_toolbar || chrome.show_search;
     match chrome.toolbar_placement {
+        ToolbarPlacement::Unified => {
+            root.append(&unified_topbar_row(
+                spec,
+                chrome,
+                registry,
+                &search,
+                &mut tooltips,
+            ));
+        }
         ToolbarPlacement::InlineWithMenu if chrome.show_menu_bar && has_toolbar_row => {
             root.append(&inline_topbar_row(
                 spec,
@@ -128,6 +137,47 @@ pub fn build(
         search,
         tooltips,
     })
+}
+
+fn unified_topbar_row(
+    spec: &ShellSpec,
+    chrome: ShellChrome,
+    registry: Option<&CommandRegistry>,
+    search: &Entry,
+    tooltips: &mut Vec<IconButtonTooltip>,
+) -> GtkBox {
+    let row = GtkBox::new(Orientation::Horizontal, 8);
+    row.add_css_class("unified-toolbar");
+    if chrome.show_menu_bar {
+        let menu = gtk::MenuButton::new();
+        menu.set_icon_name("open-menu-symbolic");
+        menu.set_tooltip_text(Some("Main menu"));
+        menu.set_menu_model(Some(&build_menu_model(spec)));
+        row.append(&menu);
+    }
+    let title = Label::new(Some(&spec.title));
+    title.add_css_class("workspace-title");
+    title.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    title.set_max_width_chars(28);
+    title.set_xalign(0.0);
+    title.set_hexpand(true);
+    row.append(&title);
+    if chrome.show_toolbar {
+        for item in &spec.toolbar_items {
+            let mut compact = item.clone();
+            if compact.icon_name.is_some() && compact.display_mode != ToolbarDisplayMode::Dropdown {
+                compact.display_mode = ToolbarDisplayMode::IconOnly;
+            }
+            row.append(&action_bar_item_widget(&compact, tooltips, registry));
+        }
+    }
+    if chrome.show_search && spec.search_command_id.is_some() {
+        search.add_css_class("unified-search");
+        search.set_width_chars(18);
+        search.set_placeholder_text(Some(&spec.search_placeholder));
+        row.append(search);
+    }
+    row
 }
 
 fn inline_topbar_row(

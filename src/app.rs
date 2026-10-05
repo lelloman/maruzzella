@@ -3062,8 +3062,7 @@ fn install_preferred_pane_restore(
 }
 
 fn persist_state(state: &ShellState, persistence_id: &str) {
-    let snapshot = state.borrow().clone();
-    layout::save(persistence_id, &snapshot);
+    layout::schedule_save(persistence_id, state);
 }
 
 fn paned_total(paned: &Paned) -> i32 {

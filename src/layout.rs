@@ -320,7 +320,43 @@ fn restore_workbench_app_owned_fields(
     restore(node, &groups);
 }
 
+thread_local! {
+    static PENDING_LAYOUT_SAVES: std::cell::RefCell<HashMap<String, glib::SourceId>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// Coalesce high-frequency UI changes; explicit saves flush the latest state immediately.
+pub(crate) fn schedule_save(
+    persistence_id: &str,
+    state: &std::rc::Rc<std::cell::RefCell<PersistedShell>>,
+) {
+    cancel_scheduled_save(persistence_id);
+    let id = persistence_id.to_string();
+    let weak = std::rc::Rc::downgrade(state);
+    let source = glib::timeout_add_local_once(std::time::Duration::from_millis(200), move || {
+        PENDING_LAYOUT_SAVES.with(|pending| {
+            pending.borrow_mut().remove(&id);
+        });
+        if let Some(state) = weak.upgrade() {
+            save(&id, &state.borrow());
+        }
+    });
+    PENDING_LAYOUT_SAVES.with(|pending| {
+        pending
+            .borrow_mut()
+            .insert(persistence_id.to_string(), source);
+    });
+}
+
+fn cancel_scheduled_save(persistence_id: &str) {
+    PENDING_LAYOUT_SAVES.with(|pending| {
+        if let Some(source) = pending.borrow_mut().remove(persistence_id) {
+            source.remove();
+        }
+    });
+}
+
 pub fn save(persistence_id: &str, shell: &PersistedShell) {
+    cancel_scheduled_save(persistence_id);
     if let Err(error) = try_save(persistence_id, shell) {
         eprintln!("Failed to save layout for {persistence_id}: {error}");
     }
@@ -573,6 +609,23 @@ mod tests {
                 panic!("missing group");
             }
         }
+    }
+
+    #[test]
+    fn explicit_save_flushes_and_cancels_debounced_layout() {
+        let dir = std::env::temp_dir().join(format!("mz-debounce-{}", std::process::id()));
+        let id = dir.to_str().unwrap();
+        let state = std::rc::Rc::new(std::cell::RefCell::new(super::PersistedShell::default()));
+        super::schedule_save(id, &state);
+        state.borrow_mut().spec.title = "latest".into();
+        super::schedule_save(id, &state);
+        assert!(!super::path(id).exists());
+        super::save(id, &state.borrow());
+        let saved: super::PersistedShell =
+            serde_json::from_slice(&std::fs::read(super::path(id)).unwrap()).unwrap();
+        assert_eq!(saved.spec.title, "latest");
+        assert!(super::PENDING_LAYOUT_SAVES.with(|pending| !pending.borrow().contains_key(id)));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

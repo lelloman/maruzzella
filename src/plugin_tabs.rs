@@ -111,10 +111,13 @@ pub fn update_plugin_view_title(
         let Some(tab) = group.tabs.iter_mut().find(|tab| tab.id == tab_id) else {
             return false;
         };
+        if tab.title == title {
+            return true;
+        }
         tab.title = title.to_string();
-        crate::layout::save(persistence_id, &shell.clone());
     }
 
+    crate::layout::schedule_save(persistence_id, shell_state);
     if let Some(handle) = group_handles.borrow().get(&group_id).cloned() {
         handle.set_tab_title(&tab_id, title);
     }

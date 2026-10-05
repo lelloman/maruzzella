@@ -1774,6 +1774,7 @@ fn set_editor_dirty(instance_key: &str, dirty: bool) {
         let Some(session) = sessions.get_mut(instance_key) else {
             return;
         };
+        let changed = session.dirty != dirty;
         session.dirty = dirty;
         if dirty {
             let _ = write_editor_draft(
@@ -1793,7 +1794,9 @@ fn set_editor_dirty(instance_key: &str, dirty: bool) {
                 },
             );
         }
-        refresh_editor_session_inner(session, None);
+        if changed {
+            refresh_editor_session_inner(session, None);
+        }
     });
 }
 

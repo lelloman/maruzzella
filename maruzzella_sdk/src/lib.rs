@@ -24,7 +24,7 @@ use maruzzella_api::{
     MzBytes, MzCommandSpec, MzHostApi, MzMenuItemSpec, MzOpenViewRequest, MzPluginDependency,
     MzPluginDescriptorView, MzPluginVTable, MzServiceQuery, MzServiceSpec, MzStatus, MzStr,
     MzSurfaceContribution, MzToolbarWidgetSpec, MzVersion, MzViewFactorySpec, MzViewQuery,
-    MZ_ABI_VERSION_V3,
+    MZ_ABI_VERSION_V4,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -168,7 +168,7 @@ impl PluginDescriptor {
             version,
             description: "",
             dependencies: &[],
-            required_abi_version: MZ_ABI_VERSION_V3,
+            required_abi_version: MZ_ABI_VERSION_V4,
         }
     }
 
@@ -701,21 +701,22 @@ impl<'a> HostApi<'a> {
         }
     }
 
-    pub fn dispatch_command(
-        &self,
-        command_id: &'static str,
-        payload: &'static [u8],
-    ) -> Result<(), MzStatusCode> {
-        let Some(dispatch) = self.raw.dispatch_command else {
+    pub fn dispatch_command(&self, command_id: &str, payload: &[u8]) -> Result<(), MzStatusCode> {
+        let id = MzStr {
+            ptr: command_id.as_ptr(),
+            len: command_id.len(),
+        };
+        let payload = MzBytes {
+            ptr: payload.as_ptr(),
+            len: payload.len(),
+        };
+        let status = if let Some(dispatch) = self.raw.dispatch_command_in_context {
+            dispatch(self.raw.host_context, id, payload)
+        } else if let Some(dispatch) = self.raw.dispatch_command {
+            dispatch(id, payload)
+        } else {
             return Err(MzStatusCode::NotFound);
         };
-        let status = dispatch(
-            MzStr::from_static(command_id),
-            MzBytes {
-                ptr: payload.as_ptr(),
-                len: payload.len(),
-            },
-        );
         if status.is_ok() {
             Ok(())
         } else {
@@ -1121,7 +1122,7 @@ pub fn plugin_descriptor<T: Plugin>() -> MzPluginDescriptorView {
 
 pub fn plugin_vtable<T: Plugin>() -> MzPluginVTable {
     MzPluginVTable {
-        abi_version: MZ_ABI_VERSION_V3,
+        abi_version: MZ_ABI_VERSION_V4,
         descriptor: descriptor_bridge::<T>,
         register: register_bridge::<T>,
         startup: startup_bridge::<T>,
@@ -1234,7 +1235,7 @@ mod tests {
         let descriptor = plugin_descriptor::<ExamplePlugin>();
         assert_eq!(descriptor.version, Version::new(1, 2, 3).into_ffi());
         assert_eq!(descriptor.dependencies_len, 1);
-        assert_eq!(descriptor.required_abi_version, MZ_ABI_VERSION_V3);
+        assert_eq!(descriptor.required_abi_version, MZ_ABI_VERSION_V4);
     }
 
     #[test]
@@ -1248,7 +1249,7 @@ mod tests {
     #[test]
     fn export_vtable_uses_v2_abi() {
         let vtable = plugin_vtable::<ExamplePlugin>();
-        assert_eq!(vtable.abi_version, MZ_ABI_VERSION_V3);
+        assert_eq!(vtable.abi_version, MZ_ABI_VERSION_V4);
     }
 
     #[test]

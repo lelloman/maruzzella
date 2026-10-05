@@ -18,7 +18,7 @@ use maruzzella_api::{
     MzServiceCatalog, MzSettingsCatalog, MzSettingsCategory, MzSettingsPage, MzStartupTab,
     MzStatus, MzStr, MzSurfaceContribution, MzToolbarItem, MzVersion, MzViewCatalog,
     MzViewFactorySpec, MzViewPlacement, MzViewRequest, MzViewTeardownDecision,
-    MzViewTeardownRequest, MzViewTeardownResult, MZ_ABI_VERSION_V3,
+    MzViewTeardownRequest, MzViewTeardownResult, MZ_ABI_VERSION_V4,
 };
 use maruzzella_sdk::mark_clickable;
 use serde::{Deserialize, Serialize};
@@ -107,7 +107,7 @@ pub fn load() -> LoadedPlugin {
                 minor: 0,
                 patch: 0,
             },
-            required_abi_version: MZ_ABI_VERSION_V3,
+            required_abi_version: MZ_ABI_VERSION_V4,
             description: "Built-in plugin providing core shell commands and menu surfaces"
                 .to_string(),
             dependencies: Vec::new(),
@@ -117,7 +117,7 @@ pub fn load() -> LoadedPlugin {
 }
 
 static BASE_PLUGIN_VTABLE: MzPluginVTable = MzPluginVTable {
-    abi_version: MZ_ABI_VERSION_V3,
+    abi_version: MZ_ABI_VERSION_V4,
     descriptor: base_descriptor,
     register: base_register,
     startup: base_startup,
@@ -129,7 +129,7 @@ extern "C" fn base_descriptor() -> MzPluginDescriptorView {
         id: MzStr::from_static(BASE_PLUGIN_ID),
         name: MzStr::from_static("Maruzzella Base"),
         version: MzVersion::new(1, 0, 0),
-        required_abi_version: MZ_ABI_VERSION_V3,
+        required_abi_version: MZ_ABI_VERSION_V4,
         description: MzStr::from_static(
             "Built-in plugin providing core shell commands and menu surfaces",
         ),

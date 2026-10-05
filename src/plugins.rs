@@ -22,7 +22,7 @@ use maruzzella_api::{
     MzStatusCode, MzStr, MzSurfaceContribution, MzToolbarDisplayMode, MzToolbarWidgetSpec,
     MzViewCatalog, MzViewFactorySpec, MzViewOpenDisposition, MzViewPlacement, MzViewQuery,
     MzViewQueryResult, MzViewSummary, MzViewTeardownDecision, MzViewTeardownReason,
-    MzViewTeardownRequest, MZ_ABI_VERSION_V3,
+    MzViewTeardownRequest, MZ_ABI_VERSION_V4,
 };
 
 use crate::layout;
@@ -224,6 +224,7 @@ impl PluginHost {
 }
 
 pub struct PluginRuntime {
+    persistence_id: String,
     pub(crate) plugins: Vec<LoadedPlugin>,
     pub(crate) activation_order: Vec<String>,
     pub(crate) commands: Vec<RegisteredCommand>,
@@ -308,6 +309,7 @@ impl PluginRuntime {
         host_state.emit_host_event("maruzzella.runtime.ready", None, None, &[]);
 
         Ok(Self {
+            persistence_id: persistence_id.to_string(),
             plugins,
             activation_order,
             commands: host_state.commands,
@@ -325,6 +327,7 @@ impl PluginRuntime {
     #[cfg(test)]
     pub(crate) fn empty_for_tests() -> Self {
         Self {
+            persistence_id: "maruzzella".into(),
             plugins: Vec::new(),
             activation_order: Vec::new(),
             commands: Vec::new(),
@@ -358,7 +361,7 @@ impl PluginRuntime {
             group_handles,
             runtime: Rc::downgrade(self),
             view_api: Box::new(MzHostApi {
-                abi_version: MZ_ABI_VERSION_V3,
+                abi_version: MZ_ABI_VERSION_V4,
                 config_context: std::ptr::null_mut(),
                 read_config_in_context: None,
                 write_config_in_context: None,
@@ -372,6 +375,7 @@ impl PluginRuntime {
                 create_toolbar_widget: Some(host_create_toolbar_widget),
                 register_host_event_subscriber: None,
                 dispatch_command: Some(runtime_dispatch_command),
+                dispatch_command_in_context: Some(dispatch_in_context),
                 open_view: Some(host_open_view),
                 focus_view: Some(host_focus_view),
                 is_view_open: Some(host_is_view_open),
@@ -437,6 +441,7 @@ impl PluginRuntime {
     }
 
     pub fn dispatch_command(&self, command_id: &str, payload: &[u8]) -> Result<(), MzStatusCode> {
+        let _runtime_scope = ActiveRuntimeScope::enter(self);
         let Some(command) = self
             .commands
             .iter()
@@ -467,6 +472,19 @@ impl PluginRuntime {
             );
             return Err(MzStatusCode::NotFound);
         };
+        let persistence_id = self.persistence_id.clone();
+        let mut state = HostState {
+            current_plugin_id: Some(command.plugin_id.clone()),
+            plugin_configs: layout::load_plugin_configs(&persistence_id),
+            persistence_id,
+            command_handlers: self
+                .commands
+                .iter()
+                .filter_map(|c| c.invoke.map(|f| (c.command_id.clone(), f)))
+                .collect(),
+            ..HostState::default()
+        };
+        let _host_scope = ActiveHostScope::enter(&mut state);
         let status = invoke(MzBytes {
             ptr: payload.as_ptr(),
             len: payload.len(),
@@ -875,7 +893,7 @@ pub fn load_plugin(path: impl AsRef<Path>) -> Result<LoadedPlugin, PluginLoadErr
         return Err(PluginLoadError::NullVTable { path });
     };
 
-    if vtable.abi_version != MZ_ABI_VERSION_V3 {
+    if vtable.abi_version != MZ_ABI_VERSION_V4 {
         return Err(PluginLoadError::AbiMismatch {
             path,
             plugin_abi_version: vtable.abi_version,
@@ -884,7 +902,7 @@ pub fn load_plugin(path: impl AsRef<Path>) -> Result<LoadedPlugin, PluginLoadErr
 
     let descriptor_view = (vtable.descriptor)();
     let descriptor = descriptor_from_view(&path, descriptor_view)?;
-    if descriptor.required_abi_version != MZ_ABI_VERSION_V3 {
+    if descriptor.required_abi_version != MZ_ABI_VERSION_V4 {
         return Err(PluginLoadError::DescriptorAbiMismatch {
             path,
             plugin_id: descriptor.id,
@@ -910,7 +928,7 @@ pub fn load_static_plugin(
         return Err(PluginLoadError::NullVTable { path });
     };
 
-    if vtable.abi_version != MZ_ABI_VERSION_V3 {
+    if vtable.abi_version != MZ_ABI_VERSION_V4 {
         return Err(PluginLoadError::AbiMismatch {
             path,
             plugin_abi_version: vtable.abi_version,
@@ -919,7 +937,7 @@ pub fn load_static_plugin(
 
     let descriptor_view = (vtable.descriptor)();
     let descriptor = descriptor_from_view(&path, descriptor_view)?;
-    if descriptor.required_abi_version != MZ_ABI_VERSION_V3 {
+    if descriptor.required_abi_version != MZ_ABI_VERSION_V4 {
         return Err(PluginLoadError::DescriptorAbiMismatch {
             path,
             plugin_id: descriptor.id,
@@ -1122,7 +1140,7 @@ struct HostState {
 impl HostState {
     fn host_api(&mut self) -> MzHostApi {
         MzHostApi {
-            abi_version: MZ_ABI_VERSION_V3,
+            abi_version: MZ_ABI_VERSION_V4,
             config_context: std::ptr::null_mut(),
             read_config_in_context: None,
             write_config_in_context: None,
@@ -1136,6 +1154,7 @@ impl HostState {
             create_toolbar_widget: None,
             register_host_event_subscriber: Some(host_register_host_event_subscriber),
             dispatch_command: Some(host_dispatch_command),
+            dispatch_command_in_context: None,
             open_view: None,
             focus_view: None,
             is_view_open: None,
@@ -2298,7 +2317,9 @@ fn with_shell_host<T>(host: &PluginShellHost, action: impl FnOnce() -> T) -> T {
     ACTIVE_SHELL_HOST.with(|cell| {
         let previous = cell.replace(host as *const _);
         let result = action();
-        cell.set(previous);
+        if cell.get() == host as *const _ {
+            cell.set(previous);
+        }
         result
     })
 }
@@ -2387,33 +2408,82 @@ fn snapshot_bytes<T: serde::Serialize>(buffer: &RefCell<Vec<u8>>, value: &T) -> 
     }
 }
 
-struct ActiveHostScope;
-struct ActiveRuntimeScope;
+struct ActiveHostScope(*mut HostState);
+struct ActiveRuntimeScope(*const PluginRuntime);
 
 impl ActiveHostScope {
     fn enter(state: &mut HostState) -> Self {
-        ACTIVE_HOST_STATE.with(|cell| cell.set(state as *mut _));
-        Self
+        Self(ACTIVE_HOST_STATE.with(|cell| cell.replace(state as *mut _)))
     }
 }
 
 impl Drop for ActiveHostScope {
     fn drop(&mut self) {
-        ACTIVE_HOST_STATE.with(|cell| cell.set(std::ptr::null_mut()));
+        ACTIVE_HOST_STATE.with(|cell| cell.set(self.0));
     }
 }
 
 impl ActiveRuntimeScope {
     fn enter(runtime: &PluginRuntime) -> Self {
-        ACTIVE_RUNTIME.with(|cell| cell.set(runtime as *const _));
-        Self
+        Self(ACTIVE_RUNTIME.with(|cell| cell.replace(runtime as *const _)))
     }
 }
 
 impl Drop for ActiveRuntimeScope {
     fn drop(&mut self) {
-        ACTIVE_RUNTIME.with(|cell| cell.set(std::ptr::null()));
+        ACTIVE_RUNTIME.with(|cell| cell.set(self.0));
     }
+}
+
+extern "C" fn dispatch_in_context(
+    context: *mut std::ffi::c_void,
+    id: MzStr,
+    payload: MzBytes,
+) -> MzStatus {
+    let Some(host) = (unsafe { (context as *const PluginShellHost).as_ref() }) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let Some(runtime) = host.runtime.upgrade() else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    let Ok(id) = decode_runtime_str("command", id) else {
+        return MzStatus::new(MzStatusCode::InvalidArgument);
+    };
+    let host_owner = runtime.view_hosts.borrow().get(&host.surface_id).cloned();
+    let Some(host_owner) = host_owner else {
+        return MzStatus::new(MzStatusCode::NotFound);
+    };
+    let host = host_owner.as_ref();
+    let _scope = ActiveRuntimeScope::enter(&runtime);
+    with_shell_host(host, || {
+        if !id.starts_with("shell.") {
+            return match runtime.dispatch_command(&id, bytes_to_slice(payload)) {
+                Ok(()) => MzStatus::OK,
+                Err(code) => MzStatus::new(code),
+            };
+        }
+        let spec = host.shell_state.borrow().spec.clone();
+        let registry = crate::commands::shell_registry(
+            &host.window,
+            &spec,
+            Some(Rc::new(PluginHost::new(Some(runtime.clone()), vec![]))),
+            &host.layout_persistence_id,
+            Some(host.shell_state.clone()),
+            Some(host.group_handles.clone()),
+        );
+        if let Some(handler) = registry.handler_for(&id) {
+            if !registry.is_enabled(&id) {
+                return MzStatus::new(MzStatusCode::InvalidArgument);
+            }
+            handler(bytes_to_slice(payload));
+            MzStatus::OK
+        } else {
+            match runtime.dispatch_command(&id, bytes_to_slice(payload)) {
+                Ok(()) => MzStatus::OK,
+                Err(code) => MzStatus::new(code),
+            }
+        }
+    })
 }
 
 extern "C" fn runtime_dispatch_command(command_id: MzStr, payload: MzBytes) -> MzStatus {
@@ -2424,9 +2494,7 @@ extern "C" fn runtime_dispatch_command(command_id: MzStr, payload: MzBytes) -> M
         return MzStatus::new(MzStatusCode::InvalidArgument);
     };
 
-    match runtime.dispatch_command(&command_id, unsafe {
-        std::slice::from_raw_parts(payload.ptr, payload.len)
-    }) {
+    match runtime.dispatch_command(&command_id, bytes_to_slice(payload)) {
         Ok(()) => MzStatus::OK,
         Err(status) => MzStatus::new(status),
     }
@@ -2527,6 +2595,36 @@ mod tests {
         assert_eq!(configs.entries["a"].payload, b"first");
         assert_eq!(configs.entries["b"].payload, b"second");
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn command_dispatch_sets_context_and_nested_scopes_restore_it() {
+        extern "C" fn invoke(_: MzBytes) -> MzStatus {
+            if current_runtime().is_none()
+                || current_host_state().map(|s| s.plugin_id().to_string()) != Some("test".into())
+            {
+                return MzStatus::new(MzStatusCode::InternalError);
+            }
+            let nested = PluginRuntime::empty_for_tests();
+            {
+                let _scope = ActiveRuntimeScope::enter(&nested);
+            }
+            if current_runtime().is_none() {
+                return MzStatus::new(MzStatusCode::InternalError);
+            }
+            MzStatus::OK
+        }
+        let mut runtime = PluginRuntime::empty_for_tests();
+        runtime.commands.push(RegisteredCommand {
+            plugin_id: "test".into(),
+            command_id: "test.run".into(),
+            title: "test".into(),
+            invoke: Some(invoke),
+            can_invoke: None,
+        });
+        assert_eq!(runtime.dispatch_command("test.run", &[]), Ok(()));
+        assert!(current_runtime().is_none());
+        assert!(current_host_state().is_none());
     }
 
     static REGISTERED_PLUGIN_A: AtomicUsize = AtomicUsize::new(0);

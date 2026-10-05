@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub const MZ_ABI_VERSION_V1: u32 = 1;
 pub const MZ_ABI_VERSION_V2: u32 = 2;
 pub const MZ_ABI_VERSION_V3: u32 = 3;
+pub const MZ_ABI_VERSION_V4: u32 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Tone {
@@ -1127,6 +1128,7 @@ pub struct MzHostApi {
     pub create_toolbar_widget: Option<MzCreateToolbarWidgetFn>,
     pub register_host_event_subscriber: Option<MzRegisterHostEventSubscriberFn>,
     pub dispatch_command: Option<MzDispatchCommandFn>,
+    pub dispatch_command_in_context: Option<extern "C" fn(*mut c_void, MzStr, MzBytes) -> MzStatus>,
     pub open_view: Option<MzOpenViewFn>,
     pub focus_view: Option<MzFocusViewFn>,
     pub is_view_open: Option<MzIsViewOpenFn>,
@@ -1152,7 +1154,7 @@ pub struct MzHostApi {
 impl MzHostApi {
     pub const fn empty() -> Self {
         Self {
-            abi_version: MZ_ABI_VERSION_V3,
+            abi_version: MZ_ABI_VERSION_V4,
             config_context: core::ptr::null_mut(),
             read_config_in_context: None,
             write_config_in_context: None,
@@ -1166,6 +1168,7 @@ impl MzHostApi {
             create_toolbar_widget: None,
             register_host_event_subscriber: None,
             dispatch_command: None,
+            dispatch_command_in_context: None,
             open_view: None,
             focus_view: None,
             is_view_open: None,

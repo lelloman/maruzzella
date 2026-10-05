@@ -1685,7 +1685,7 @@ pub fn save_editor_by_instance_key(instance_key: &str) -> Result<bool, String> {
                         true,
                     )
                     .to_string();
-                fs::write(path, text)
+                crate::layout::atomic_write(Path::new(path), text.as_bytes())
                     .map_err(|error| format!("Failed to write {path}: {error}"))?;
                 clear_editor_draft(&session.host, &session.document.document_id);
                 session.dirty = false;
@@ -1925,7 +1925,7 @@ pub fn write_editor_contents_to_path(
         .as_deref()
         .map(PathBuf::from)
         .ok_or_else(|| "file payload is missing a path".to_string())?;
-    fs::write(&path, text)
+    crate::layout::atomic_write(&path, text.as_bytes())
         .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
     Ok(payload)
 }

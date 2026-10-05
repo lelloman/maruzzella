@@ -781,8 +781,10 @@ extern "C" fn write_view_config(context: *mut std::ffi::c_void, bytes: MzBytes) 
             payload: record.payload,
         },
     );
-    layout::save_plugin_configs(&context.persistence_id, &configs);
-    MzStatus::OK
+    match layout::save_plugin_configs(&context.persistence_id, &configs) {
+        Ok(()) => MzStatus::OK,
+        Err(_) => MzStatus::new(MzStatusCode::InternalError),
+    }
 }
 
 fn workbench_contains_group(node: &WorkbenchNodeSpec, group_id: &str) -> bool {
@@ -1566,8 +1568,10 @@ extern "C" fn host_write_config(payload: MzBytes) -> MzStatus {
         },
     );
     state.plugin_configs.invalid_entries.remove(&plugin_id);
-    layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs);
-    MzStatus::OK
+    match layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs) {
+        Ok(()) => MzStatus::OK,
+        Err(_) => MzStatus::new(MzStatusCode::InternalError),
+    }
 }
 
 extern "C" fn host_read_config_record() -> MzBytes {
@@ -1607,8 +1611,10 @@ extern "C" fn host_write_config_record(payload: MzBytes) -> MzStatus {
         },
     );
     state.plugin_configs.invalid_entries.remove(&plugin_id);
-    layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs);
-    MzStatus::OK
+    match layout::save_plugin_configs(&state.persistence_id, &state.plugin_configs) {
+        Ok(()) => MzStatus::OK,
+        Err(_) => MzStatus::new(MzStatusCode::InternalError),
+    }
 }
 
 extern "C" fn host_open_view(request: *const MzOpenViewRequest) -> MzOpenViewResult {

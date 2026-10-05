@@ -293,13 +293,50 @@ fn restore_workbench_app_owned_fields(
 }
 
 pub fn save(persistence_id: &str, shell: &PersistedShell) {
-    let path = path(persistence_id);
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+    if let Err(error) = try_save(persistence_id, shell) {
+        eprintln!("Failed to save layout for {persistence_id}: {error}");
     }
-    if let Ok(raw) = serde_json::to_string_pretty(shell) {
-        let _ = fs::write(path, raw);
+}
+
+pub fn try_save(persistence_id: &str, shell: &PersistedShell) -> std::io::Result<()> {
+    let raw = serde_json::to_vec_pretty(shell)?;
+    atomic_write(&path(persistence_id), &raw)
+}
+
+/// Replace a file only after its complete new contents have reached the filesystem.
+pub(crate) fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    fs::create_dir_all(parent)?;
+    let temporary = parent.join(format!(
+        ".maruzzella-{}-{}.tmp",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let result = (|| {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary)?;
+        if let Ok(metadata) = fs::metadata(path) {
+            file.set_permissions(metadata.permissions())?;
+        }
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temporary, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
     }
+    result
 }
 
 pub fn path(persistence_id: &str) -> PathBuf {
@@ -357,11 +394,8 @@ pub fn load_plugin_configs(persistence_id: &str) -> PluginConfigs {
     configs
 }
 
-pub fn save_plugin_configs(persistence_id: &str, configs: &PluginConfigs) {
+pub fn save_plugin_configs(persistence_id: &str, configs: &PluginConfigs) -> std::io::Result<()> {
     let path = plugin_configs_path(persistence_id);
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
     let serializable = configs
         .entries
         .iter()
@@ -375,9 +409,8 @@ pub fn save_plugin_configs(persistence_id: &str, configs: &PluginConfigs) {
             )
         })
         .collect::<HashMap<_, _>>();
-    if let Ok(raw) = serde_json::to_string_pretty(&serializable) {
-        let _ = fs::write(path, raw);
-    }
+    let raw = serde_json::to_vec_pretty(&serializable)?;
+    atomic_write(&path, &raw)
 }
 
 fn plugin_configs_path(persistence_id: &str) -> PathBuf {
@@ -477,6 +510,23 @@ mod tests {
         text_tab, CommandSpec, MenuItemSpec, MenuRootSpec, TabGroupSpec, ToolbarDisplayMode,
         ToolbarItemSpec, WorkbenchNodeSpec,
     };
+
+    #[test]
+    fn atomic_persistence_preserves_previous_file_on_failure() {
+        let dir = std::env::temp_dir().join(format!("mz-atomic-{}", std::process::id()));
+        let path = dir.join("state.json");
+        super::atomic_write(&path, b"old").unwrap();
+        super::atomic_write(&path, b"new").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        assert!(super::atomic_write(&path.join("impossible"), b"bad").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        assert!(super::save_plugin_configs(
+            path.to_str().unwrap(),
+            &super::PluginConfigs::default()
+        )
+        .is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn pane_preferences_round_to_resolution_buckets() {

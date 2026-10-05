@@ -2018,6 +2018,7 @@ fn install_group_persistence(
     let group_id_for_focus = handle.group_id().to_string();
     let plugin_runtime_for_focus = plugin_runtime.clone();
     let focus_click = GestureClick::new();
+    focus_click.set_propagation_phase(gtk::PropagationPhase::Capture);
     focus_click.connect_pressed(move |_, _, _, _| {
         if let Some(tab_id) = handle_for_focus.active_tab_id() {
             notify_surface_activation(
@@ -2029,6 +2030,21 @@ fn install_group_persistence(
         }
     });
     handle.widget().add_controller(focus_click);
+    let focus = gtk::EventControllerFocus::new();
+    let focus_handle = handle.clone();
+    let focus_state = state.clone();
+    let focus_runtime = plugin_runtime.clone();
+    focus.connect_enter(move |_| {
+        if let Some(tab_id) = focus_handle.active_tab_id() {
+            notify_surface_activation(
+                &focus_state,
+                focus_runtime.as_ref(),
+                focus_handle.group_id(),
+                &tab_id,
+            );
+        }
+    });
+    handle.widget().add_controller(focus);
 
     let handle_for_drag = handle.clone();
     let state_for_drag = state;
@@ -2044,6 +2060,7 @@ fn notify_surface_activation(
     group_id: &str,
     tab_id: &str,
 ) {
+    plugin_tabs::remember_active_plugin_tab(state, group_id, tab_id);
     let Some(current) = surface_descriptor_for_tab(&state.borrow().spec, group_id, tab_id) else {
         return;
     };
@@ -3150,6 +3167,44 @@ mod tests {
             assert!(layout::path(&id).exists());
             std::fs::remove_dir_all(dir).unwrap();
         });
+    }
+
+    #[test]
+    fn focusing_selected_tabs_updates_editor_command_target() {
+        let mut shell = PersistedShell::default();
+        shell.spec.workbench = WorkbenchNodeSpec::Split {
+            axis: SplitAxis::Horizontal,
+            children: ["a", "b"]
+                .into_iter()
+                .map(|id| {
+                    WorkbenchNodeSpec::Group(TabGroupSpec::new(
+                        id,
+                        Some(id),
+                        vec![crate::spec::plugin_tab_with_instance(
+                            id,
+                            id,
+                            id,
+                            base_plugin::VIEW_WORKSPACE_EDITOR,
+                            Some(id),
+                            vec![],
+                            "",
+                            true,
+                        )],
+                    ))
+                })
+                .collect(),
+        };
+        let state = Rc::new(RefCell::new(shell));
+        notify_surface_activation(&state, None, "a", "a");
+        notify_surface_activation(&state, None, "b", "b");
+        notify_surface_activation(&state, None, "a", "a");
+        assert_eq!(
+            plugin_tabs::last_active_plugin_tab()
+                .unwrap()
+                .instance_key
+                .as_deref(),
+            Some("a")
+        );
     }
 
     #[test]

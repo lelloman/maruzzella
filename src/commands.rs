@@ -88,8 +88,11 @@ pub fn shell_registry(
         theme::reload();
     });
 
-    let window_for_workspace_switch = window.clone();
+    let window_for_workspace_switch = window.downgrade();
     registry.register(CMD_SWITCH_TO_WORKSPACE, move |payload| {
+        let Some(window_for_workspace_switch) = window_for_workspace_switch.upgrade() else {
+            return;
+        };
         eprintln!(
             "maruzzella: shell.switch_to_workspace received payload_len={}",
             payload.len()
@@ -231,8 +234,11 @@ pub fn shell_registry(
     let persistence_id_for_open_file = persistence_id.to_string();
     let state_for_open_file = shell_state.clone();
     let handles_for_open_file = group_handles.clone();
-    let window_for_open_file = window.clone();
+    let window_for_open_file = window.downgrade();
     registry.register(base_plugin::CMD_OPEN_FILE_EDITOR, move |payload| {
+        let Some(window_for_open_file) = window_for_open_file.upgrade() else {
+            return;
+        };
         let Some(shell_state) = state_for_open_file.as_ref() else {
             return;
         };
@@ -273,11 +279,14 @@ pub fn shell_registry(
         );
     });
 
-    let window_for_save_buffer = window.clone();
+    let window_for_save_buffer = window.downgrade();
     let state_for_save_buffer = shell_state.clone();
     let handles_for_save_buffer = group_handles.clone();
     let persistence_id_for_save_buffer = persistence_id.to_string();
     registry.register(base_plugin::CMD_SAVE_BUFFER, move |_| {
+        let Some(window_for_save_buffer) = window_for_save_buffer.upgrade() else {
+            return;
+        };
         let Some(shell_state) = state_for_save_buffer.as_ref() else {
             return;
         };
@@ -313,11 +322,14 @@ pub fn shell_registry(
         }
     });
 
-    let window_for_save_as = window.clone();
+    let window_for_save_as = window.downgrade();
     let state_for_save_as = shell_state.clone();
     let handles_for_save_as = group_handles.clone();
     let persistence_id_for_save_as = persistence_id.to_string();
     registry.register(base_plugin::CMD_SAVE_BUFFER_AS, move |_| {
+        let Some(window_for_save_as) = window_for_save_as.upgrade() else {
+            return;
+        };
         let Some(shell_state) = state_for_save_as.as_ref() else {
             return;
         };

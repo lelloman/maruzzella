@@ -53,9 +53,12 @@ impl TopBar {
 
             let hover = EventControllerMotion::new();
             let label_enter = label.clone();
-            let button_enter = button.clone();
+            let button_enter = button.downgrade();
             let fixed_enter = fixed_ref.clone();
             hover.connect_enter(move |_, _, _| {
+                let Some(button_enter) = button_enter.upgrade() else {
+                    return;
+                };
                 if let Some((bx, by)) = button_enter.translate_coordinates(&fixed_enter, 0.0, 0.0) {
                     let bw = button_enter.width() as f64;
                     let bh = button_enter.height() as f64;
@@ -595,7 +598,7 @@ pub fn install_actions(
         enabled_checks.push((simple.downgrade(), registry.enabled_checker(action_id)));
         let handler = registry.handler_for(action_id);
         let title = action_id.clone();
-        let window_for_activate = window.clone();
+        let window_for_activate = window.downgrade();
         let registry = registry.clone();
         let action_bindings = Rc::clone(&action_bindings);
         simple.connect_activate(move |_, _| {
@@ -604,7 +607,9 @@ pub fn install_actions(
             } else {
                 eprintln!("unhandled command: {title}");
             }
-            refresh_action_enabled(&window_for_activate, &registry, &action_bindings);
+            if let Some(window) = window_for_activate.upgrade() {
+                refresh_action_enabled(&window, &registry, &action_bindings);
+            }
         });
         window.add_action(&simple);
         installed.push(action_name.clone());

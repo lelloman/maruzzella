@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use gtk::prelude::*;
 use gtk::{
@@ -25,7 +25,10 @@ pub enum SplitPreviewSide {
 }
 
 #[derive(Clone)]
-pub struct CustomWorkbenchGroupHandle {
+pub struct CustomWorkbenchGroupHandle(Rc<WorkbenchGroupInner>);
+
+#[doc(hidden)]
+pub struct WorkbenchGroupInner {
     group_id: String,
     root: Overlay,
     tab_strip: GtkBox,
@@ -53,6 +56,21 @@ pub struct CustomWorkbenchGroupHandle {
     drop_placeholder: GtkBox,
 }
 
+impl std::ops::Deref for CustomWorkbenchGroupHandle {
+    type Target = WorkbenchGroupInner;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct WeakWorkbenchGroup(Weak<WorkbenchGroupInner>);
+impl WeakWorkbenchGroup {
+    pub(crate) fn upgrade(&self) -> Option<CustomWorkbenchGroupHandle> {
+        self.0.upgrade().map(CustomWorkbenchGroupHandle)
+    }
+}
+
 pub struct BuiltCustomWorkbenchGroup {
     pub root: Overlay,
     pub handle: CustomWorkbenchGroupHandle,
@@ -78,6 +96,9 @@ struct DragState {
 }
 
 impl CustomWorkbenchGroupHandle {
+    pub(crate) fn downgrade(&self) -> WeakWorkbenchGroup {
+        WeakWorkbenchGroup(Rc::downgrade(&self.0))
+    }
     pub fn group_id(&self) -> &str {
         &self.group_id
     }
@@ -332,33 +353,35 @@ impl CustomWorkbenchGroupHandle {
     }
 
     fn install_header_controllers(&self, header: &Widget, tab_id: &str, drag_title: &str) {
-        install_header_activation(
-            header,
-            tab_id,
-            self.stack.clone(),
-            self.headers.clone(),
-            self.active_tab_id.clone(),
-            self.active_changed_handler.clone(),
-        );
+        install_header_activation(header, tab_id, self.downgrade());
         if let Some(handler) = self.tab_context_handler.borrow().as_ref().cloned() {
             install_tab_context_controller(header, tab_id, handler);
         }
 
         let drag = GestureDrag::new();
-        let handle = self.clone();
+        let handle = self.downgrade();
         let tab_id_string = tab_id.to_string();
         let drag_title = drag_title.to_string();
         drag.connect_drag_begin(move |_, start_x, start_y| {
+            let Some(handle) = handle.upgrade() else {
+                return;
+            };
             handle.begin_drag(&tab_id_string, &drag_title, start_x, start_y);
         });
 
-        let handle = self.clone();
+        let handle = self.downgrade();
         drag.connect_drag_update(move |_, offset_x, offset_y| {
+            let Some(handle) = handle.upgrade() else {
+                return;
+            };
             handle.update_drag(offset_x, offset_y);
         });
 
-        let handle = self.clone();
+        let handle = self.downgrade();
         drag.connect_drag_end(move |_, _, _| {
+            let Some(handle) = handle.upgrade() else {
+                return;
+            };
             handle.finish_drag();
         });
         header.add_controller(drag);
@@ -758,7 +781,7 @@ pub fn build_group(
     }
     overlay.add_controller(motion);
 
-    let handle = CustomWorkbenchGroupHandle {
+    let handle = CustomWorkbenchGroupHandle(Rc::new(WorkbenchGroupInner {
         group_id: group_id.to_string(),
         root: overlay.clone(),
         tab_strip,
@@ -784,7 +807,7 @@ pub fn build_group(
         active_changed_handler: Rc::new(RefCell::new(None)),
         tab_context_handler: Rc::new(RefCell::new(None)),
         drop_placeholder,
-    };
+    }));
 
     let mut tab_labels = HashMap::new();
     let mut close_buttons = HashMap::new();
@@ -838,43 +861,30 @@ fn install_tab_context_controller(
     let click = GestureClick::new();
     click.set_button(3);
     let tab_id = tab_id.to_string();
-    let context_header = header.clone();
+    let context_header = header.downgrade();
     click.connect_pressed(move |gesture, _, _, _| {
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        handler(tab_id.clone(), context_header.clone());
+        if let Some(header) = context_header.upgrade() {
+            handler(tab_id.clone(), header);
+        }
     });
     header.add_controller(click);
 }
 
-fn install_header_activation(
-    header: &Widget,
-    tab_id: &str,
-    stack: Stack,
-    headers: Rc<RefCell<HashMap<String, Widget>>>,
-    active_tab_id: Rc<RefCell<Option<String>>>,
-    active_changed_handler: Rc<RefCell<Option<Rc<dyn Fn(String)>>>>,
-) {
+fn install_header_activation(header: &Widget, tab_id: &str, handle: WeakWorkbenchGroup) {
     let gesture = GestureClick::new();
-    let header_widget = header.clone();
+    let header_widget = header.downgrade();
     let tab_id = tab_id.to_string();
     gesture.connect_pressed(move |_, _, x, y| {
-        if let Some(picked) = header_widget.pick(x, y, gtk::PickFlags::DEFAULT) {
+        let (Some(header), Some(handle)) = (header_widget.upgrade(), handle.upgrade()) else {
+            return;
+        };
+        if let Some(picked) = header.pick(x, y, gtk::PickFlags::DEFAULT) {
             if widget_or_ancestor_has_css_class(&picked, "tab-close-button") {
                 return;
             }
         }
-        *active_tab_id.borrow_mut() = Some(tab_id.clone());
-        stack.set_visible_child_name(&page_name(&tab_id));
-        for (candidate, header) in headers.borrow().iter() {
-            if candidate == &tab_id {
-                header.add_css_class("active");
-            } else {
-                header.remove_css_class("active");
-            }
-        }
-        if let Some(handler) = active_changed_handler.borrow().as_ref().cloned() {
-            handler(tab_id.clone());
-        }
+        handle.set_active_tab(&tab_id);
     });
     header.add_controller(gesture);
 }

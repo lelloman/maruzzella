@@ -253,6 +253,21 @@ pub struct MaruzzellaHandle {
 }
 
 impl MaruzzellaHandle {
+    pub(crate) fn shutdown(&self) {
+        let controller = self.controller.borrow_mut().take();
+        if let Some(controller) = controller {
+            controller.clear_current_mode();
+            unsafe {
+                let _ = controller
+                    .window
+                    .steal_data::<MaruzzellaHandle>("maruzzella-handle");
+                let _ = controller
+                    .window
+                    .steal_data::<Rc<PluginHost>>("maruzzella-plugin-host");
+            }
+        }
+    }
+
     pub fn switch_to_workspace(&self, session: WorkspaceSession) -> Result<(), ModeSwitchError> {
         let Some(controller) = self.controller.borrow().clone() else {
             return Err(ModeSwitchError::NotActivated);
@@ -2008,12 +2023,15 @@ fn install_group_persistence(
     persistence_id: String,
     plugin_runtime: Option<Rc<PluginRuntime>>,
 ) {
-    let handle_for_active = handle.clone();
+    let handle_for_active = handle.downgrade();
     let state_for_active = state.clone();
     let persistence_id_for_active = persistence_id.clone();
     let group_id_for_active = handle.group_id().to_string();
-    let plugin_runtime_for_active = plugin_runtime.clone();
+    let plugin_runtime_for_active = plugin_runtime.as_ref().map(Rc::downgrade);
     handle.set_active_changed_handler(move |tab_id| {
+        let Some(handle_for_active) = handle_for_active.upgrade() else {
+            return;
+        };
         sync_group_into_state(
             &state_for_active,
             &handle_for_active,
@@ -2022,23 +2040,32 @@ fn install_group_persistence(
         plugin_tabs::remember_active_plugin_tab(&state_for_active, &group_id_for_active, &tab_id);
         notify_surface_activation(
             &state_for_active,
-            plugin_runtime_for_active.as_ref(),
+            plugin_runtime_for_active
+                .as_ref()
+                .and_then(Weak::upgrade)
+                .as_ref(),
             &group_id_for_active,
             &tab_id,
         );
     });
 
-    let handle_for_focus = handle.clone();
+    let handle_for_focus = handle.downgrade();
     let state_for_focus = state.clone();
     let group_id_for_focus = handle.group_id().to_string();
-    let plugin_runtime_for_focus = plugin_runtime.clone();
+    let plugin_runtime_for_focus = plugin_runtime.as_ref().map(Rc::downgrade);
     let focus_click = GestureClick::new();
     focus_click.set_propagation_phase(gtk::PropagationPhase::Capture);
     focus_click.connect_pressed(move |_, _, _, _| {
+        let Some(handle_for_focus) = handle_for_focus.upgrade() else {
+            return;
+        };
         if let Some(tab_id) = handle_for_focus.active_tab_id() {
             notify_surface_activation(
                 &state_for_focus,
-                plugin_runtime_for_focus.as_ref(),
+                plugin_runtime_for_focus
+                    .as_ref()
+                    .and_then(Weak::upgrade)
+                    .as_ref(),
                 &group_id_for_focus,
                 &tab_id,
             );
@@ -2046,14 +2073,17 @@ fn install_group_persistence(
     });
     handle.widget().add_controller(focus_click);
     let focus = gtk::EventControllerFocus::new();
-    let focus_handle = handle.clone();
+    let focus_handle = handle.downgrade();
     let focus_state = state.clone();
-    let focus_runtime = plugin_runtime.clone();
+    let focus_runtime = plugin_runtime.as_ref().map(Rc::downgrade);
     focus.connect_enter(move |_| {
+        let Some(focus_handle) = focus_handle.upgrade() else {
+            return;
+        };
         if let Some(tab_id) = focus_handle.active_tab_id() {
             notify_surface_activation(
                 &focus_state,
-                focus_runtime.as_ref(),
+                focus_runtime.as_ref().and_then(Weak::upgrade).as_ref(),
                 focus_handle.group_id(),
                 &tab_id,
             );
@@ -2061,10 +2091,13 @@ fn install_group_persistence(
     });
     handle.widget().add_controller(focus);
 
-    let handle_for_drag = handle.clone();
+    let handle_for_drag = handle.downgrade();
     let state_for_drag = state;
     let persistence_id_for_drag = persistence_id;
     handle.set_drag_end_handler(move || {
+        let Some(handle_for_drag) = handle_for_drag.upgrade() else {
+            return;
+        };
         sync_group_into_state(&state_for_drag, &handle_for_drag, &persistence_id_for_drag);
     });
 }
@@ -2251,14 +2284,14 @@ fn install_workbench_group_interactions(
     group_handles: GroupHandles,
     drag_context: Rc<RefCell<WorkbenchDragContext>>,
 ) {
-    let source_handle = handle.clone();
-    let source_handle_for_hover = handle.clone();
-    let source_handle_for_drop = handle.clone();
-    let workbench_root_for_split = workbench_root.clone();
-    let workbench_root_for_hover = workbench_root.clone();
-    let group_handles_for_hover = group_handles.clone();
-    let group_handles_for_split = group_handles.clone();
-    let group_handles_for_drop = group_handles.clone();
+    let source_handle = handle.downgrade();
+    let source_handle_for_hover = handle.downgrade();
+    let source_handle_for_drop = handle.downgrade();
+    let workbench_root_for_split = workbench_root.downgrade();
+    let workbench_root_for_hover = workbench_root.downgrade();
+    let group_handles_for_hover = Rc::downgrade(&group_handles);
+    let group_handles_for_split = Rc::downgrade(&group_handles);
+    let group_handles_for_drop = Rc::downgrade(&group_handles);
     let drag_context_for_hover = drag_context.clone();
     let drag_context_for_split = drag_context.clone();
     let drag_context_for_drop = drag_context.clone();
@@ -2266,10 +2299,19 @@ fn install_workbench_group_interactions(
     let state_for_drop = state.clone();
     let persistence_id_for_split = persistence_id.clone();
     let persistence_id_for_drop = persistence_id.clone();
-    let plugin_runtime_for_split = plugin_runtime.clone();
-    let plugin_runtime_for_drop = plugin_runtime.clone();
+    let plugin_runtime_for_split = plugin_runtime.as_ref().map(Rc::downgrade);
+    let plugin_runtime_for_drop = plugin_runtime.as_ref().map(Rc::downgrade);
 
     handle.set_drag_hover_handler(move |tab_id, pointer_x, pointer_y, _drag_height| {
+        let Some(source_handle_for_hover) = source_handle_for_hover.upgrade() else {
+            return;
+        };
+        let Some(workbench_root_for_hover) = workbench_root_for_hover.upgrade() else {
+            return;
+        };
+        let Some(group_handles_for_hover) = group_handles_for_hover.upgrade() else {
+            return;
+        };
         update_cross_group_drop_target(
             &source_handle_for_hover,
             &tab_id,
@@ -2282,6 +2324,16 @@ fn install_workbench_group_interactions(
     });
 
     handle.set_split_drop_handler(move |tab_id, side| {
+        let plugin_runtime_for_split = plugin_runtime_for_split.as_ref().and_then(Weak::upgrade);
+        let Some(source_handle) = source_handle.upgrade() else {
+            return;
+        };
+        let Some(workbench_root_for_split) = workbench_root_for_split.upgrade() else {
+            return;
+        };
+        let Some(group_handles_for_split) = group_handles_for_split.upgrade() else {
+            return;
+        };
         let source_group_id = source_handle.group_id().to_string();
         let Some((new_group, split_position)) = split_workbench_group_in_state(
             &state_for_split,
@@ -2323,6 +2375,13 @@ fn install_workbench_group_interactions(
     });
 
     handle.set_tab_drop_handler(move |tab_id| {
+        let plugin_runtime_for_drop = plugin_runtime_for_drop.as_ref().and_then(Weak::upgrade);
+        let Some(source_handle_for_drop) = source_handle_for_drop.upgrade() else {
+            return;
+        };
+        let Some(group_handles_for_drop) = group_handles_for_drop.upgrade() else {
+            return;
+        };
         let (target_group_id, target_index) = {
             let context = drag_context_for_drop.borrow();
             match (
@@ -3124,15 +3183,23 @@ fn apply_end_panel_resize_policy(
 }
 
 fn install_pane_focus_tracking(panes: &[gtk::Widget]) {
-    let all_panes = Rc::new(panes.to_vec());
+    let all_panes = Rc::new(
+        panes
+            .iter()
+            .map(|pane| pane.downgrade())
+            .collect::<Vec<_>>(),
+    );
     for pane in panes {
         let all = all_panes.clone();
-        let this = pane.clone();
+        let this = pane.downgrade();
         let click = GestureClick::new();
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
         click.connect_pressed(move |_, _, _, _| {
-            for p in all.iter() {
-                if p == &this {
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            for p in all.iter().filter_map(|pane| pane.upgrade()) {
+                if p == this {
                     p.add_css_class("pane-focused");
                 } else {
                     p.remove_css_class("pane-focused");
@@ -3146,6 +3213,54 @@ fn install_pane_focus_tracking(panes: &[gtk::Widget]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workbench_callbacks_do_not_retain_their_group() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let state = Rc::new(RefCell::new(PersistedShell::default()));
+            let handles = Rc::new(RefCell::new(HashMap::new()));
+            let group = TabGroupSpec::new(
+                "workbench-test",
+                Some("tab"),
+                vec![crate::spec::text_tab(
+                    "tab",
+                    "workbench-test",
+                    "Test",
+                    "",
+                    true,
+                )],
+            );
+            let built = build_group(
+                &group,
+                state,
+                "/tmp/mz-weak-test".into(),
+                None,
+                handles.clone(),
+                true,
+            );
+            let weak_handle = built.handle.downgrade();
+            let weak_root = built.root.downgrade();
+            install_workbench_group_interactions(
+                &built.handle,
+                &built.root.clone().upcast(),
+                Rc::new(RefCell::new(PersistedShell::default())),
+                "/tmp/mz-weak-test".into(),
+                None,
+                handles.clone(),
+                Rc::new(RefCell::new(WorkbenchDragContext::default())),
+            );
+            handles
+                .borrow_mut()
+                .insert(group.id.clone(), built.handle.clone());
+            drop(built);
+            drop(handles);
+            assert!(weak_handle.upgrade().is_none());
+            assert!(weak_root.upgrade().is_none());
+        });
+    }
 
     #[test]
     fn mode_cleanup_saves_state_and_releases_detached_surfaces() {

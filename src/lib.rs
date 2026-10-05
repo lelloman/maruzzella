@@ -201,6 +201,8 @@ pub fn build_application_with_handle(config: MaruzzellaConfig) -> (Application, 
     let application = build_application_with_activate(&config.application_id, move |application| {
         app::build(application, &config_for_activate, &handle_for_activate);
     });
+    let shutdown_handle = handle.clone();
+    application.connect_shutdown(move |_| shutdown_handle.shutdown());
     (application, handle)
 }
 

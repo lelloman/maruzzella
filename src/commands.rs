@@ -58,6 +58,13 @@ impl CommandRegistry {
         self.handlers.get(command_id).cloned()
     }
 
+    pub(crate) fn enabled_checker(&self, command_id: &str) -> CommandEnabled {
+        self.enabled
+            .get(command_id)
+            .cloned()
+            .unwrap_or_else(|| Rc::new(|| true))
+    }
+
     pub fn is_enabled(&self, command_id: &str) -> bool {
         self.enabled
             .get(command_id)
@@ -389,11 +396,8 @@ pub fn shell_registry(
         let Some(handler) = registry.handler_for(&command_id) else {
             continue;
         };
-        let enabled_command_id = command_id.clone();
-        let enabled_registry = registry.clone();
-        registry.register_enabled(&action_id, move || {
-            enabled_registry.is_enabled(&enabled_command_id)
-        });
+        let enabled = registry.enabled_checker(&command_id);
+        registry.register_enabled(&action_id, move || enabled());
         registry.register(&action_id, move |_| {
             handler(&payload);
         });

@@ -207,6 +207,16 @@ pub(crate) fn repair_empty_splits(node: &mut WorkbenchNodeSpec, path: &str) {
 mod validation_tests {
     use super::*;
     #[test]
+    fn action_names_do_not_alias_dots_dashes_or_unicode() {
+        let ids = ["a.b", "a-b", "a/b", "a_b", "", "é"];
+        let names: std::collections::HashSet<_> = ids.iter().map(|id| command_name(id)).collect();
+        assert_eq!(names.len(), ids.len());
+        assert!(names
+            .iter()
+            .all(|name| gtk::gio::Action::name_is_valid(name)));
+    }
+
+    #[test]
     fn empty_split_becomes_a_usable_group() {
         let mut node = WorkbenchNodeSpec::Split {
             axis: SplitAxis::Horizontal,
@@ -337,7 +347,12 @@ fn default_show_tab_strip() -> bool {
 }
 
 pub fn command_name(command_id: &str) -> String {
-    command_id.replace('.', "-")
+    let mut name = String::from("cmd-");
+    for byte in command_id.as_bytes() {
+        use std::fmt::Write;
+        write!(&mut name, "{byte:02x}").expect("string formatting");
+    }
+    name
 }
 
 pub fn menu_action_ref(command_id: &str) -> String {

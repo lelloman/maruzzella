@@ -587,10 +587,12 @@ pub fn install_actions(
     registry: &CommandRegistry,
 ) -> Vec<String> {
     let mut installed = Vec::new();
+    let mut enabled_checks = Vec::new();
     let action_bindings = Rc::new(action_bindings(spec, registry));
     for (action_name, action_id) in action_bindings.iter() {
         let simple = gio::SimpleAction::new(action_name, None);
         simple.set_enabled(registry.is_enabled(action_id));
+        enabled_checks.push((simple.downgrade(), registry.enabled_checker(action_id)));
         let handler = registry.handler_for(action_id);
         let title = action_id.clone();
         let window_for_activate = window.clone();
@@ -607,6 +609,21 @@ pub fn install_actions(
         window.add_action(&simple);
         installed.push(action_name.clone());
     }
+    gtk::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        enabled_checks.retain(|(action, check)| {
+            if let Some(action) = action.upgrade() {
+                action.set_enabled(check());
+                true
+            } else {
+                false
+            }
+        });
+        if enabled_checks.is_empty() {
+            gtk::glib::ControlFlow::Break
+        } else {
+            gtk::glib::ControlFlow::Continue
+        }
+    });
     installed
 }
 
@@ -640,5 +657,43 @@ fn refresh_action_enabled(
         {
             action.set_enabled(registry.is_enabled(action_id));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn actions_refresh_enabled_without_another_command() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let window = gtk::ApplicationWindow::builder().build();
+            let mut spec = crate::default_product_spec().shell_spec();
+            spec.commands = vec![crate::spec::CommandSpec {
+                id: "test.toggle".into(),
+                title: "Toggle".into(),
+            }];
+            let ready = Rc::new(std::cell::Cell::new(false));
+            let mut registry = CommandRegistry::new();
+            registry.register("test.toggle", |_| {});
+            let flag = ready.clone();
+            registry.register_enabled("test.toggle", move || flag.get());
+            let installed = install_actions(&window, &spec, &registry);
+            let action = window.lookup_action(&command_name("test.toggle")).unwrap();
+            assert!(!action.is_enabled());
+            ready.set(true);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+            while !action.is_enabled() && std::time::Instant::now() < deadline {
+                gtk::glib::MainContext::default().iteration(false);
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            assert!(action.is_enabled());
+            for id in installed {
+                window.remove_action(&id);
+            }
+        });
     }
 }

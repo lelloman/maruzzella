@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use gtk::glib::translate::IntoGlibPtr;
 use gtk::prelude::*;
@@ -85,6 +86,7 @@ struct EditorSession {
     document: EditorDocumentPayload,
     host: MzHostApi,
     instance_key: String,
+    callback_key: Rc<RefCell<String>>,
     buffer: TextBuffer,
     dirty: bool,
     close_buttons: Vec<Button>,
@@ -1229,12 +1231,14 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
     };
     buffer.set_text(&initial_text);
 
+    let callback_key = Rc::new(RefCell::new(instance_key.clone()));
     register_editor_session(
         &instance_key,
         EditorSession {
             document: document.clone(),
             host: *host,
             instance_key: instance_key.clone(),
+            callback_key: callback_key.clone(),
             buffer: buffer.clone(),
             dirty: initial_dirty,
             close_buttons: Vec::new(),
@@ -1243,14 +1247,13 @@ fn editor_view(host: &MzHostApi, request: &MzViewRequest) -> gtk::Widget {
     refresh_editor_session(&instance_key, None);
 
     {
-        let instance_key = instance_key.clone();
+        let callback_key = callback_key.clone();
         buffer.connect_changed(move |_| {
-            set_editor_dirty(&instance_key, true);
+            set_editor_dirty(&callback_key.borrow(), true);
         });
     }
 
-    let instance_key_for_destroy = instance_key.clone();
-    scrolled.connect_destroy(move |_| unregister_editor_session(&instance_key_for_destroy));
+    scrolled.connect_destroy(move |_| unregister_editor_session(&callback_key.borrow()));
     scrolled.upcast()
 }
 
@@ -1688,6 +1691,7 @@ pub fn replace_editor_document(
         clear_editor_draft(&session.host, &session.document.document_id);
         session.document = new_document;
         session.instance_key = new_instance_key.to_string();
+        *session.callback_key.borrow_mut() = new_instance_key.to_string();
         session.dirty = false;
         clear_editor_draft(&session.host, &session.document.document_id);
         refresh_editor_session_inner(&mut session, None);
@@ -2113,33 +2117,65 @@ mod tests {
     }
 
     #[test]
-    fn editor_session_tracks_dirty_and_saveability() {
-        if gtk::init().is_err() {
+    fn save_as_keeps_change_and_destroy_callbacks_current() {
+        if std::env::var_os("DISPLAY").is_none() {
             return;
         }
-        let instance_key = editor_instance_key("untitled:test");
-        register_editor_session(
-            &instance_key,
-            EditorSession {
-                document: untitled_editor_payload("untitled:test"),
-                host: MzHostApi::empty(),
-                instance_key: instance_key.clone(),
-                buffer: TextBuffer::new(None),
-                dirty: false,
-                close_buttons: Vec::new(),
-            },
-        );
-        assert!(!is_editor_tab_dirty(
-            Some(VIEW_WORKSPACE_EDITOR),
-            Some(&instance_key)
-        ));
+        gtk::test_synced(|| {
+            let old = editor_instance_key("untitled:rename-test");
+            let payload = new_untitled_editor_payload("untitled:rename-test");
+            let request = MzViewRequest {
+                plugin_id: MzStr::empty(),
+                view_id: MzStr::empty(),
+                instance_key: str_to_mzstr(&old),
+                payload: MzBytes {
+                    ptr: payload.as_ptr(),
+                    len: payload.len(),
+                },
+            };
+            let widget = editor_view(&MzHostApi::empty(), &request);
+            let buffer = EDITOR_SESSIONS.with(|sessions| sessions.borrow()[&old].buffer.clone());
+            let new = editor_instance_key("file:rename-test");
+            replace_editor_document(&old, &new, untitled_editor_payload("file:rename-test"))
+                .unwrap();
+            buffer.set_text("changed after Save As");
+            assert!(is_editor_tab_dirty(Some(VIEW_WORKSPACE_EDITOR), Some(&new)));
+            drop(widget);
+            assert!(editor_document_for_instance_key(&new).is_none());
+        });
+    }
 
-        set_editor_dirty(&instance_key, true);
-        assert!(is_editor_tab_dirty(
-            Some(VIEW_WORKSPACE_EDITOR),
-            Some(&instance_key)
-        ));
+    #[test]
+    fn editor_session_tracks_dirty_and_saveability() {
+        if std::env::var_os("DISPLAY").is_none() {
+            return;
+        }
+        gtk::test_synced(|| {
+            let instance_key = editor_instance_key("untitled:test");
+            register_editor_session(
+                &instance_key,
+                EditorSession {
+                    document: untitled_editor_payload("untitled:test"),
+                    host: MzHostApi::empty(),
+                    instance_key: instance_key.clone(),
+                    callback_key: Rc::new(RefCell::new(instance_key.clone())),
+                    buffer: TextBuffer::new(None),
+                    dirty: false,
+                    close_buttons: Vec::new(),
+                },
+            );
+            assert!(!is_editor_tab_dirty(
+                Some(VIEW_WORKSPACE_EDITOR),
+                Some(&instance_key)
+            ));
 
-        unregister_editor_session(&instance_key);
+            set_editor_dirty(&instance_key, true);
+            assert!(is_editor_tab_dirty(
+                Some(VIEW_WORKSPACE_EDITOR),
+                Some(&instance_key)
+            ));
+
+            unregister_editor_session(&instance_key);
+        });
     }
 }

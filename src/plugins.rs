@@ -101,7 +101,16 @@ impl LoadedPlugin {
         &self.descriptor
     }
 
-    pub fn vtable(&self) -> &'static MzPluginVTable {
+    /// The table is borrowed from the library and must not outlive its owner.
+    /// Copied callback pointers must likewise only be invoked while this plugin is loaded.
+    ///
+    /// ```compile_fail
+    /// let plugin = maruzzella::load_plugin("plugin.so").unwrap();
+    /// let table = plugin.vtable();
+    /// drop(plugin);
+    /// let _ = table.abi_version;
+    /// ```
+    pub fn vtable(&self) -> &MzPluginVTable {
         self.vtable
     }
 

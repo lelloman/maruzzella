@@ -180,6 +180,10 @@ pub fn build_tab_page(
                     .editable(false)
                     .monospace(true)
                     .buffer(&built_buffer)
+                    .left_margin(12)
+                    .right_margin(12)
+                    .top_margin(8)
+                    .bottom_margin(8)
                     .build();
                 view.add_css_class(&theme::text_css_class(&tab.text_appearance_id));
                 if css_class == "console-pane" {

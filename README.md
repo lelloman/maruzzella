@@ -76,6 +76,19 @@ Run the default-theme example with:
 cargo run --example default_theme
 ```
 
+The default workspace uses a unified toolbar, a compact main menu, side rails that
+show and hide the tool panels, and a status bar. The dark palette and spacing use
+[IntelliJ IDEA’s New UI](https://blog.jetbrains.com/idea/2024/10/bridging-the-gap-between-the-classic-and-new-uis/)
+as a visual reference. Existing commands, tab dragging, splits, and plugin views
+continue to use Maruzzella’s own implementation. Tool-panel visibility resets when
+a workspace is rebuilt; layout sizes still persist.
+
+`ShellChrome::workspace_default()` selects `ToolbarPlacement::Unified`. Applications
+can still select `BelowMenu`, `InlineWithMenu`, or `Adaptive`. Unified mode displays
+commands with icons compactly and shows a search entry when a search handler is
+configured. The default-theme example opens the real `src/theme.rs` editor, including
+line numbers; its Project and Inspector text remains demonstration content.
+
 Run the notebook example app with:
 
 ```bash

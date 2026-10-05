@@ -101,7 +101,7 @@ fn main() {
     let config = MaruzzellaConfig::new("com.example.maruzzella.plugin-view")
         .with_persistence_id("plugin-view-context-demo")
         .with_workspace_chrome(
-            ShellChrome::workspace_default().with_toolbar_placement(ToolbarPlacement::Adaptive),
+            ShellChrome::workspace_default().with_toolbar_placement(ToolbarPlacement::Unified),
         )
         .with_theme(plugin_demo_theme())
         .with_product(product)
@@ -123,28 +123,7 @@ fn example_plugin_path() -> PathBuf {
 }
 
 fn plugin_demo_theme() -> ThemeSpec {
-    let mut theme = ThemeSpec::default();
-    theme.typography.font_family = "\"Space Grotesk\", \"Noto Sans\", sans-serif".to_string();
-    theme.typography.mono_font_family = "\"JetBrains Mono\", monospace".to_string();
-    theme.palette.bg_0 = "#0f1318".to_string();
-    theme.palette.bg_1 = "#18202a".to_string();
-    theme.palette.workbench = "#0c1015".to_string();
-    theme.palette.panel_left = "#131920".to_string();
-    theme.palette.panel_right = "#131a22".to_string();
-    theme.palette.panel_bottom = "#0a0d12".to_string();
-    theme.palette.border = "#27303c".to_string();
-    theme.palette.border_strong = "#3d4959".to_string();
-    theme.palette.text_0 = "#e3edf7".to_string();
-    theme.palette.text_1 = "#acb9c8".to_string();
-    theme.palette.text_2 = "#738197".to_string();
-    theme.palette.accent = "#36c2a3".to_string();
-    theme.palette.accent_strong = "#72f0cf".to_string();
-    theme.density.radius_medium = 10;
-    theme.density.radius_large = 14;
-    theme.density.toolbar_height = 42;
-    theme.density.tab_height = 30;
-
-    theme
+    ThemeSpec::default()
         .with_surface_appearance(
             "topbar",
             SurfaceAppearance::new(Tone::Primary, SurfaceLevel::Flat, TextRole::BodyStrong),

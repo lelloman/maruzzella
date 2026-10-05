@@ -1329,6 +1329,14 @@ fn editor_view_loaded(
         .child(&text_view)
         .build();
 
+    text_view.add_css_class("source-editor");
+    text_view.set_left_margin(12);
+    text_view.set_right_margin(12);
+    text_view.set_top_margin(8);
+    text_view.set_bottom_margin(8);
+    text_view.set_pixels_above_lines(2);
+    text_view.set_pixels_below_lines(2);
+    install_editor_gutter(&text_view, &scrolled);
     buffer.set_text(&initial_text);
 
     let callback_key = Rc::new(RefCell::new(instance_key.clone()));
@@ -1357,6 +1365,67 @@ fn editor_view_loaded(
 
     scrolled.connect_destroy(move |_| unregister_editor_session(&callback_key.borrow()));
     scrolled.upcast()
+}
+
+// Draw only visible logical lines; cost is independent of document size.
+fn install_editor_gutter(view: &TextView, scrolled: &ScrolledWindow) {
+    let gutter = gtk::DrawingArea::new();
+    gutter.set_content_width(56);
+    gutter.add_css_class("editor-gutter");
+    gutter.set_can_target(false);
+    let weak_view = view.downgrade();
+    gutter.set_draw_func(move |gutter, cr, width, _| {
+        let Some(view) = weak_view.upgrade() else {
+            return;
+        };
+        let visible = view.visible_rect();
+        let (mut iter, _) = view.line_at_y(visible.y());
+        let color = gutter.color();
+        cr.set_source_rgba(
+            color.red() as f64,
+            color.green() as f64,
+            color.blue() as f64,
+            color.alpha() as f64,
+        );
+        cr.select_font_face(
+            "monospace",
+            gtk::cairo::FontSlant::Normal,
+            gtk::cairo::FontWeight::Normal,
+        );
+        let layout = view.create_pango_layout(Some("0"));
+        let (_, height) = layout.pixel_size();
+        cr.set_font_size((height as f64 * 0.75).max(10.0));
+        loop {
+            let rect = view.iter_location(&iter);
+            if rect.y() > visible.y() + visible.height() {
+                break;
+            }
+            let number = (iter.line() + 1).to_string();
+            if let Ok(extents) = cr.text_extents(&number) {
+                cr.move_to(
+                    width as f64 - extents.x_advance() - 12.0,
+                    (rect.y() - visible.y()) as f64 + height as f64 * 0.8,
+                );
+                let _ = cr.show_text(&number);
+            }
+            if !iter.forward_line() {
+                break;
+            }
+        }
+    });
+    view.set_gutter(gtk::TextWindowType::Left, Some(&gutter));
+    let weak = gutter.downgrade();
+    scrolled.vadjustment().connect_value_changed(move |_| {
+        if let Some(gutter) = weak.upgrade() {
+            gutter.queue_draw();
+        }
+    });
+    let weak = gutter.downgrade();
+    view.buffer().connect_changed(move |_| {
+        if let Some(gutter) = weak.upgrade() {
+            gutter.queue_draw();
+        }
+    });
 }
 
 fn fallback_view(message: &str) -> gtk::Widget {

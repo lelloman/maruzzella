@@ -1,14 +1,14 @@
 use maruzzella::{
-    default_product_spec, run, text_tab, BottomPanelLayout, CommandSpec, MaruzzellaConfig,
-    MenuItemSpec, MenuRootSpec, TabGroupSpec, ToolbarDisplayMode, ToolbarItemSpec,
-    WorkbenchNodeSpec,
+    default_product_spec, plugin_tab_with_instance, run, text_tab, BottomPanelLayout, CommandSpec,
+    MaruzzellaConfig, MenuItemSpec, MenuRootSpec, TabGroupSpec, ToolbarDisplayMode,
+    ToolbarItemSpec, WorkbenchNodeSpec,
 };
 
 fn main() {
     let mut product = default_product_spec();
-    product.branding.title = "Default Theme Demo".to_string();
+    product.branding.title = "maruzzella".to_string();
     product.branding.search_placeholder = "Search default theme demo".to_string();
-    product.branding.status_text = "Bundled Maruzzella theme without custom overrides".to_string();
+    product.branding.status_text = "Maruzzella · New UI · UTF-8".to_string();
 
     product.menu_roots = vec![MenuRootSpec {
         id: "demo".to_string(),
@@ -97,17 +97,29 @@ fn main() {
     )
     .with_text_appearance("code");
     product.layout.bottom_panel_layout = BottomPanelLayout::FullWidth;
+    product.layout.left_panel_resize =
+        maruzzella::PanelResizePolicy::CappedProportional { max_factor: 1.4 };
+    product.layout.right_panel_resize =
+        maruzzella::PanelResizePolicy::CappedProportional { max_factor: 1.4 };
+    product.layout.bottom_panel_resize = maruzzella::PanelResizePolicy::Fixed;
 
     product.layout.workbench = WorkbenchNodeSpec::Group(TabGroupSpec::new(
         "workbench-main",
         Some("welcome"),
         vec![
-            text_tab(
+            plugin_tab_with_instance(
                 "welcome",
                 "workbench-main",
-                "Welcome",
-                "This example intentionally uses ThemeSpec::default() through MaruzzellaConfig::new. It shows the default engineering workbench styling without custom palette, typography, density, or appearance overrides.",
-                false,
+                "theme.rs",
+                maruzzella::base_plugin::VIEW_WORKSPACE_EDITOR,
+                Some("new-ui-theme-source"),
+                maruzzella::base_plugin::editor_payload_to_bytes(
+                    &maruzzella::base_plugin::file_editor_payload_for_path(
+                        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/theme.rs"),
+                    ).expect("theme source exists"),
+                ).expect("valid editor payload"),
+                "Unable to load theme source",
+                true,
             ),
             text_tab(
                 "document",
@@ -120,7 +132,7 @@ fn main() {
     ));
 
     let config = MaruzzellaConfig::new("com.example.maruzzella.default-theme")
-        .with_persistence_id("default-theme-demo")
+        .with_persistence_id("new-ui-default-theme-demo")
         .with_product(product);
 
     run(config);
